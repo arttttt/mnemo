@@ -11,6 +11,8 @@ there is no RAM "hog").
 3. **Insight extraction.** Recurring patterns/gotchas → a `learning` record (cross‑project ones → `__global__`).
 4. **Staleness.** Marks records `superseded`/`inactive` that contradict newer ones (with a reason).
 5. **(MAY) Update the session summary** for `session_recap`.
+6. **(planned) Importance scoring.** Re‑score `importance` consistently (heuristic and/or the small model) —
+   it is not set automatically on write today (the caller supplies it, default 0.5).
 
 Everything is soft (recoverable), with audit fields. No physical deletion.
 
