@@ -49,7 +49,7 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
 
 ```jsonc
 {
-  "id": "uuid",
+  "id": "5f3e9c…",                     // 160-bit random hex (40 chars) — longer than a uuid4
   "vector": [/* float32[dim] — embedding of content */],
   "payload": {
     "content": "Markdown text of the memory (problem / solution / reasoning)",
@@ -78,6 +78,23 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
 **Files:** key files + what changed in each
 **Testing:** how it was verified
 ```
+
+## Memory size & atomicity
+
+One memory becomes **one embedding vector**, so its size is bounded by the chosen embedder's context
+window (see [06-models.md](06-models.md); the requirement is "comfortably thousands of words").
+
+**Guidance (soft).** Keep a memory to **one logical unit** — one decision, one lesson, one debugging
+outcome — and keep it focused. Don't write a sprawling wall of text, and don't over‑fragment either: a
+coherent thought stays a single memory even if it spans a few paragraphs. Two failure modes to avoid:
+- **Too big** → a blurry "average" vector that recalls poorly and dilutes precision.
+- **Too fine** → fragmented memories that lose cohesion and add extra linking overhead.
+
+**Hard rule — never silently truncate.** If content exceeds the embedder's window, the write is
+**rejected with an explicit, actionable error** (stating the limit and the actual size), so the calling
+agent — already an LLM — compresses or splits it and re‑submits. The write path stays LLM‑free: it does
+**not** auto‑summarize or auto‑split. Splitting a large document into linked atoms is a separate
+background/ingestion capability — **post‑MVP** (see [10-roadmap.md](10-roadmap.md)).
 
 ## Dedup & evolution on write (no LLM)
 

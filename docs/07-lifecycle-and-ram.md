@@ -59,7 +59,7 @@ If you don't want OS units:
 Rough breakdown of the active state:
 - service runtime (Python/Node): ~100–250 MB;
 - embedded store + index for ~50–100k memories: ~150–400 MB;
-- embedder (bge‑small / Qwen3‑Embedding‑0.6B, ONNX/Q8): ~150–500 MB.
+- embedder (a small ONNX model, e.g. Qwen3‑Embedding‑0.6B or bge‑m3, Q8 — not chosen yet): ~150–500 MB.
 
 Conclusion: ~1 GB while active, ~0 when idle, a brief on‑demand spike for consolidation.
 Comfortable on 16 GB even next to an IDE and agents. If a **local model for the coding agent itself**
@@ -71,7 +71,7 @@ consolidation for machine‑idle.
 MNEMO_PORT=8765
 MNEMO_DATA_DIR=~/.mnemo/data
 MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown
-MNEMO_EMBEDDER=bge-small-en-v1.5
+MNEMO_EMBEDDER=<tbd>                 # production model not chosen yet — see 06-models.md
 MNEMO_GENERATOR=qwen3-4b-instruct-2507-q4   # or "off"
 MNEMO_GENERATOR_ENGINE=llama.cpp            # llama.cpp | ollama
 MNEMO_CONSOLIDATE_EVERY=50          # new records before a trigger

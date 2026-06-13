@@ -5,20 +5,32 @@ background model. Specialist models (NER, reranker) are optional upgrades, not f
 
 > Licenses don't matter to us; where convenient we prefer Apache‑2.0. All options are local, no cloud.
 
-## 1. Embedder (mandatory; hot path; CPU)
+## 1. Embedder (mandatory; hot path)
 
-Needed while the service is alive. It is not an "LLM" but part of semantic search — tiny, fast, on CPU.
+Needed while the service is alive. It is not an "LLM" but part of semantic search — small and fast.
+**The embedder is not chosen yet** — it is selected later against the requirements below. The table is
+**candidates measured against those requirements**, not a default. A trivial hash embedder is used for
+offline tests; it is not a real option.
 
-| Model | Size | Dim | Context | Notes |
+**Requirements (what any chosen embedder must satisfy):**
+- **Local / offline.** Runs entirely on the machine, no cloud call ever.
+- **CPU‑feasible.** Must run acceptably on CPU — the 16 GB target machine often has no discrete/CUDA GPU
+  (e.g. Apple Silicon). A GPU/Metal may be used if present (faster) but is **not** required.
+- **Generous context window.** Comfortably **thousands of words**, not ~512 tokens — a memory is one
+  vector, so the window bounds how large one memory may be (see [04-data-model.md](04-data-model.md)).
+- **Good semantic quality.** Strong retrieval on paraphrased, conceptual queries.
+- **Hybrid‑friendly (ideally).** Plays well with the dense + lexical/sparse hybrid step.
+- **Fixed dimension.** The dimension is fixed at store init — changing the embedder later means a reindex.
+
+| Candidate | Size | Dim | Context | Against the requirements |
 |---|---|---|---|---|
-| **Qwen3‑Embedding‑0.6B** ⭐ | 0.6B | up to 1024 (MRL) | **32K** | long context for large memories; Apache‑2.0; GGUF/ONNX |
-| **bge‑small‑en‑v1.5** | 33M | 384 | 512 | ultra‑light, minimal RAM; for short records |
-| **embeddinggemma‑300m** | 300M | 768 (MRL 128/256/512) | 2048 | great quality/weight; Matryoshka — trim dim for speed |
-| **bge‑m3** | 568M | 1024 | 8192 | dense+sparse+ColBERT in one — handy for hybrid |
+| **Qwen3‑Embedding‑0.6B** | 0.6B | up to 1024 (MRL) | **32K** | wide window — fits large memories; Apache‑2.0; GGUF/ONNX |
+| **bge‑m3** | 568M | 1024 | 8192 | dense+sparse+ColBERT in one — strong for hybrid |
+| **embeddinggemma‑300m** | 300M | 768 (MRL 128/256/512) | 2048 | good quality/weight; Matryoshka — trim dim for speed |
+| **bge‑small‑en‑v1.5** | 33M | 384 | 512 | ultra‑light, but **fails the window requirement** (~512 tokens) — listed only as the small‑and‑fast end of the range |
 
-**v1 default:** `bge-small-en-v1.5` (minimal RAM, enough for short records) **or**
-`Qwen3-Embedding-0.6B` (if memories are long). The dimension is fixed at store init
-(changing the embedder = reindex).
+> No selection is made here. When the embedder is picked, record the choice and the fixed dimension, and
+> note that switching it later forces a reindex.
 
 ## 2. Generator (background; on demand; transient)
 
