@@ -20,6 +20,7 @@ class LanceDbMemoryRepository:
         import lancedb  # heavy, optional dependency — import lazily
 
         self._db = lancedb.connect(uri)
+        self._fts_ready = False
         try:
             self._table = self._db.open_table(_TABLE)
         except ValueError:
@@ -47,22 +48,41 @@ class LanceDbMemoryRepository:
         return None
 
     def search(
-        self, vector: Vector, criteria: SearchCriteria, limit: int
+        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]:
         if self._table is None:
             return []
+        self._ensure_fts_index()
         rows = (
-            self._table.search(list(vector))
-            .metric("cosine")
+            self._table.search(query_type="hybrid")
+            .vector(list(vector))
+            .text(query)
             .where(self._where(criteria), prefilter=True)
             .limit(limit)
             .to_list()
         )
-        # LanceDB cosine distance = 1 - cosine similarity; restore similarity.
+        # Native hybrid fuses dense + full-text via reciprocal-rank fusion.
         return [
-            ScoredMemory(memory=from_dict(row), score=1.0 - row["_distance"])
+            ScoredMemory(memory=from_dict(row), score=row["_relevance_score"])
             for row in rows
         ]
+
+    def _ensure_fts_index(self) -> None:
+        # The full-text index backs the lexical half of hybrid search. Create it
+        # once if absent — this also upgrades a table written before FTS existed
+        # (additive: an index, never a table rebuild). In LanceDB OSS creation is
+        # synchronous; new rows are searchable immediately, and a periodic
+        # optimize() folds them into the index for speed at scale.
+        if self._fts_ready:
+            return
+        for index in self._table.list_indices():
+            if "content" in getattr(index, "columns", []) and "FTS" in str(
+                getattr(index, "index_type", "")
+            ).upper():
+                self._fts_ready = True
+                return
+        self._table.create_fts_index("content")
+        self._fts_ready = True
 
     def _where(self, criteria: SearchCriteria) -> str:
         clauses = ["status = 'active'"]

@@ -45,8 +45,11 @@ class InMemoryMemoryRepository:
         return None
 
     def search(
-        self, vector: Vector, criteria: SearchCriteria, limit: int
+        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]:
+        # Offline/test backend: it approximates hybrid with cosine over the (already
+        # lexical) hash-embedding, so the raw `query` text is not needed here. The
+        # real dense+lexical fusion lives in the LanceDB backend.
         scored = [
             ScoredMemory(memory=memory, score=cosine(vector, stored))
             for memory, stored in self._items

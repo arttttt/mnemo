@@ -72,7 +72,7 @@ def test_search_ranks_by_similarity(open_repo, embedder):
     for content in ["redis caching layer", "postgres migration plan", "redis cache eviction"]:
         _store(repo, embedder, content, project="api")
 
-    hits = repo.search(embedder.encode("redis cache"), _ALL, limit=3)
+    hits = repo.search("redis cache", embedder.encode("redis cache"), _ALL, limit=3)
     assert hits[0].score >= hits[-1].score
     assert "redis" in hits[0].memory.content
 
@@ -83,7 +83,7 @@ def test_search_scopes_to_project(open_repo, embedder):
     _store(repo, embedder, "redis cache eviction notes", project="other")
 
     criteria = SearchCriteria(scope="project", project="api")
-    hits = repo.search(embedder.encode("redis cache"), criteria, limit=5)
+    hits = repo.search("redis cache", embedder.encode("redis cache"), criteria, limit=5)
     assert [hit.memory.id for hit in hits] == [keep.id]
 
 
@@ -96,11 +96,12 @@ def test_search_filters_by_tags_and_files(open_repo, embedder):
     _store(repo, embedder, "jwt rotation note", project="api", tags=["auth"])
 
     by_tags = repo.search(
-        embedder.encode("jwt"), SearchCriteria(scope="all", tags=("auth", "jwt")), limit=5
+        "jwt", embedder.encode("jwt"), SearchCriteria(scope="all", tags=("auth", "jwt")), limit=5
     )
     assert [hit.memory.id for hit in by_tags] == [tagged.id]
 
     by_file = repo.search(
+        "jwt",
         embedder.encode("jwt"),
         SearchCriteria(scope="all", related_files=("src/auth/jwt.ts",)),
         limit=5,
@@ -113,7 +114,26 @@ def test_search_recency_excludes_old(open_repo, embedder):
     _store(repo, embedder, "fresh note", project="api")
 
     future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
-    assert repo.search(embedder.encode("fresh note"), future_cutoff, limit=5) == []
+    assert repo.search("fresh note", embedder.encode("fresh note"), future_cutoff, limit=5) == []
+
+
+@pytest.mark.heavy
+def test_lancedb_hybrid_builds_fts_index_and_finds_exact_token(tmp_path):
+    pytest.importorskip("lancedb")
+    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
+
+    embedder = HashEmbedder()
+    repo = LanceDbMemoryRepository(uri=str(tmp_path / "memory"))
+    target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
+    _store(repo, embedder, "unrelated postgres migration notes", project="api")
+
+    # The table has rows but no FTS index yet; the first search must build it
+    # (the upgrade path for a table written before hybrid) and the exact token
+    # must rank first via the lexical half of the hybrid.
+    hits = repo.search(
+        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
+    )
+    assert hits and hits[0].memory.id == target.id
 
 
 def test_find_active_by_topic_key(open_repo, embedder):

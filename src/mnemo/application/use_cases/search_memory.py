@@ -37,7 +37,7 @@ class SearchMemory:
             created_after=iso_days_ago(recency_days) if recency_days else None,
         )
         vector = self._embedder.encode(query)
-        scored = self._repository.search(vector, criteria, limit=limit)
+        scored = self._repository.search(query, vector, criteria, limit=limit)
         return [
             SearchResult(
                 id=item.memory.id,
