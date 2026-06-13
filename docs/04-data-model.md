@@ -59,7 +59,7 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
     "session_id": "2026-06-13T...",     // which session created this (used by session_recap)
     "related_files": ["src/auth/jwt.ts"],
     "tags": ["authentication", "jwt"],
-    "importance": 0.8,                  // 0.0..1.0
+    "importance": 0.8,                  // 0.0..1.0; caller-set (default 0.5). Auto-scoring planned
     "hash": "sha256(normalized_content)",// for exact dedup
     "status": "active",                // active | superseded | inactive
     "supersedes": null,                // id of the previous version (record evolution)

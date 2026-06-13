@@ -36,7 +36,7 @@ Phased plan. Each phase is shippable and testable on its own.
 - [ ] Generator wrapper (llama.cpp, `Qwen3-4B-Instruct-2507` Q4) with on‑demand load/unload.
 - [ ] GBNF/guided‑JSON contract; flat schema; `temperature=0`.
 - [ ] Triggers (by volume / idle / manual); batch selection by embedding neighborhood.
-- [ ] Operations: near‑dup merge, cluster summarize, insight extraction, staleness marking.
+- [ ] Operations: near‑dup merge, cluster summarize, insight extraction, staleness marking, importance scoring.
 - [ ] Idempotency + failure isolation; consolidation log.
 - [ ] `MNEMO_GENERATOR=off` degradation path (cosine‑only).
 - **Done when:** FR‑14/FR‑15 hold; generator RAM is transient; consolidation never blocks writes.
