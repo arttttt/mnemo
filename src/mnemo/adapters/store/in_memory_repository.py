@@ -11,7 +11,8 @@ from pathlib import Path
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.similarity import cosine
 from mnemo.application.scored_memory import ScoredMemory
-from mnemo.application.types import MemoryPredicate, Vector
+from mnemo.application.search_criteria import SearchCriteria
+from mnemo.application.types import Vector
 from mnemo.domain.memory import Memory
 
 
@@ -44,12 +45,12 @@ class InMemoryMemoryRepository:
         return None
 
     def search(
-        self, vector: Vector, limit: int, predicate: MemoryPredicate | None = None
+        self, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]:
         scored = [
             ScoredMemory(memory=memory, score=cosine(vector, stored))
             for memory, stored in self._items
-            if predicate is None or predicate(memory)
+            if criteria.matches(memory)
         ]
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:limit]

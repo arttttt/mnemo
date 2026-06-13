@@ -70,6 +70,15 @@ def search(
     type: Optional[str] = typer.Option(
         None, "--type", "-t", help=f"Restrict to one type: {_TYPES}."
     ),
+    tags: Optional[list[str]] = typer.Option(
+        None, "--tag", help="Keep only memories carrying ALL of these tags (repeatable)."
+    ),
+    related_files: Optional[list[str]] = typer.Option(
+        None, "--file", help="Keep only memories referencing ANY of these files (repeatable)."
+    ),
+    recency_days: Optional[int] = typer.Option(
+        None, "--recency-days", min=1, help="Only memories created within the last N days."
+    ),
     limit: int = typer.Option(
         10, "--limit", "-l", min=1, max=100, help="Maximum number of hits."
     ),
@@ -78,7 +87,14 @@ def search(
     container = build_container()
     try:
         results = container.search.execute(
-            query=query, scope=scope, project=project, type=type, limit=limit
+            query=query,
+            scope=scope,
+            project=project,
+            type=type,
+            tags=tags,
+            related_files=related_files,
+            recency_days=recency_days,
+            limit=limit,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))

@@ -1,6 +1,6 @@
 """Id and timestamp generators."""
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def new_id() -> str:
@@ -10,3 +10,8 @@ def new_id() -> str:
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def iso_days_ago(days: int) -> str:
+    # Same UTC ISO format as now(), so string comparison stays chronological.
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()

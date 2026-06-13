@@ -81,6 +81,21 @@ def test_cross_project_search_with_scope_all():
     assert {a.id, b.id} <= ids
 
 
+def test_search_filters_by_tag():
+    _, remember, search, _ = _wiring()
+    auth = remember.execute(content="jwt rotation", project="api", tags=["auth"])
+    remember.execute(content="redis cache layer", project="api", tags=["cache"])
+    hits = search.execute(query="jwt rotation", project="api", tags=["auth"])
+    assert [hit.id for hit in hits] == [auth.id]
+
+
+def test_search_recency_days_keeps_fresh():
+    _, remember, search, _ = _wiring()
+    fresh = remember.execute(content="fresh decision today", project="api")
+    hits = search.execute(query="fresh decision today", project="api", recency_days=7)
+    assert any(hit.id == fresh.id for hit in hits)
+
+
 def test_delete_clear_purge():
     repo, remember, _, deletion = _wiring()
     a = remember.execute(content="one", project="api")

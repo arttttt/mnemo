@@ -36,18 +36,21 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
 - **Rules** are just `remember(type="rule")`; `recall` returns existing rules (no separate rule tools). The agent
   stores a rule only on an explicit user request.
 
-### `search(query, scope?, project?, type?, tags?, limit?, full?) -> list[MemoryHit]`
-The single retrieval tool. `scope` decides project vs. global vs. **cross‑project**.
+### `search(query, scope?, project?, type?, tags?, related_files?, recency_days?, limit?) -> list[MemoryHit]`
+The single retrieval tool. `scope` decides project vs. global vs. **cross‑project**; the optional filters narrow it.
 ```python
-search("how do we handle auth errors")                 # current project + global (default)
-search("connection pool limits", scope="all")          # cross‑project
-search("redis", scope="all", type="decision", limit=5) # cross‑project, typed
-search("article-x", tags=["article-x"])                # filter by tag
+search("how do we handle auth errors")                  # current project + global (default)
+search("connection pool limits", scope="all")           # cross‑project
+search("redis", scope="all", type="decision", limit=5)  # cross‑project, typed
+search("article-x", tags=["article-x"])                 # ALL given tags must be present
+search("jwt", related_files=["src/auth/jwt.ts"])        # references ANY of these files
+search("recent changes", recency_days=7)                # only memories from the last 7 days
 ```
 - `scope`: `project` (default = current project + global) | `global` | `all` (every project). (`session` is post‑MVP.)
+- Filters (all optional): `type` (one type), `tags` (memory must carry **all** of them), `related_files`
+  (references **any** of them), `recency_days` (created within the last N days).
 - Cross‑project hits may also surface in the default scope, ranked lower and labeled with their `project` (soft isolation).
-- `full=false` → previews (`MemoryHit`); `full=true` → complete `content` (replaces a separate `expand` tool).
-- `MemoryHit = {id, score, type, project, scope, content_preview, related_files, created_at}`.
+- `MemoryHit = {id, score, type, scope, project, content, related_files, created_at}`.
 
 ### Deletion — `delete` / `clear` / `purge`
 Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.

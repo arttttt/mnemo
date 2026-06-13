@@ -8,15 +8,11 @@ from __future__ import annotations
 
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.application.scored_memory import ScoredMemory
-from mnemo.application.types import MemoryPredicate, Vector
+from mnemo.application.search_criteria import SearchCriteria
+from mnemo.application.types import Vector
 from mnemo.domain.memory import Memory
 
 _TABLE = "memories"
-# Vector search returns nearest-first; the (Python) scope/type predicate is applied
-# afterwards, so over-fetch candidates to still fill `limit`. Pushing filters into
-# the query itself is a separate, later concern.
-_CANDIDATE_FACTOR = 10
-_MIN_CANDIDATES = 100
 
 
 class LanceDbMemoryRepository:
@@ -51,27 +47,45 @@ class LanceDbMemoryRepository:
         return None
 
     def search(
-        self, vector: Vector, limit: int, predicate: MemoryPredicate | None = None
+        self, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]:
         if self._table is None:
             return []
-        candidates = max(limit * _CANDIDATE_FACTOR, _MIN_CANDIDATES)
         rows = (
             self._table.search(list(vector))
             .metric("cosine")
-            .limit(candidates)
+            .where(self._where(criteria), prefilter=True)
+            .limit(limit)
             .to_list()
         )
-        results: list[ScoredMemory] = []
-        for row in rows:
-            memory = from_dict(row)
-            if predicate is not None and not predicate(memory):
-                continue
-            # LanceDB cosine distance = 1 - cosine similarity; restore similarity.
-            results.append(ScoredMemory(memory=memory, score=1.0 - row["_distance"]))
-            if len(results) >= limit:
-                break
-        return results
+        # LanceDB cosine distance = 1 - cosine similarity; restore similarity.
+        return [
+            ScoredMemory(memory=from_dict(row), score=1.0 - row["_distance"])
+            for row in rows
+        ]
+
+    def _where(self, criteria: SearchCriteria) -> str:
+        clauses = ["status = 'active'"]
+        if criteria.scope == "global":
+            clauses.append("scope = 'global'")
+        elif criteria.scope != "all":  # 'project' = this project OR global (soft scope)
+            if criteria.project is None:
+                clauses.append("(project IS NULL OR scope = 'global')")
+            else:
+                clauses.append(f"(project = {self._quote(criteria.project)} OR scope = 'global')")
+        if criteria.type is not None:
+            clauses.append(f"type = {self._quote(criteria.type.value)}")
+        for tag in criteria.tags:  # ALL tags must be present
+            clauses.append(f"array_has(tags, {self._quote(tag)})")
+        if criteria.related_files:  # ANY of the files
+            ors = " OR ".join(
+                f"array_has(related_files, {self._quote(path)})"
+                for path in criteria.related_files
+            )
+            clauses.append(f"({ors})")
+        if criteria.created_after is not None:
+            clauses.append(f"created_at >= {self._quote(criteria.created_after)}")
+        return " AND ".join(clauses)
 
     def register_duplicate(self, memory_id: str) -> None:
         memory = self._by_id(memory_id)

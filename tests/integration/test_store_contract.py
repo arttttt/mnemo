@@ -7,7 +7,10 @@ The in-memory backend runs always (offline). The LanceDB backend is marked
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory import Memory
+
+_ALL = SearchCriteria(scope="all")
 
 
 def _in_memory(tmp_path):
@@ -69,22 +72,48 @@ def test_search_ranks_by_similarity(open_repo, embedder):
     for content in ["redis caching layer", "postgres migration plan", "redis cache eviction"]:
         _store(repo, embedder, content, project="api")
 
-    hits = repo.search(embedder.encode("redis cache"), limit=3)
+    hits = repo.search(embedder.encode("redis cache"), _ALL, limit=3)
     assert hits[0].score >= hits[-1].score
     assert "redis" in hits[0].memory.content
 
 
-def test_search_honors_predicate(open_repo, embedder):
+def test_search_scopes_to_project(open_repo, embedder):
     repo = open_repo()
     keep = _store(repo, embedder, "redis cache eviction", project="api")
     _store(repo, embedder, "redis cache eviction notes", project="other")
 
-    hits = repo.search(
-        embedder.encode("redis cache"),
-        limit=5,
-        predicate=lambda m: m.project == "api",
-    )
+    criteria = SearchCriteria(scope="project", project="api")
+    hits = repo.search(embedder.encode("redis cache"), criteria, limit=5)
     assert [hit.memory.id for hit in hits] == [keep.id]
+
+
+def test_search_filters_by_tags_and_files(open_repo, embedder):
+    repo = open_repo()
+    tagged = _store(
+        repo, embedder, "jwt rotation policy", project="api",
+        tags=["auth", "jwt"], related_files=["src/auth/jwt.ts"],
+    )
+    _store(repo, embedder, "jwt rotation note", project="api", tags=["auth"])
+
+    by_tags = repo.search(
+        embedder.encode("jwt"), SearchCriteria(scope="all", tags=("auth", "jwt")), limit=5
+    )
+    assert [hit.memory.id for hit in by_tags] == [tagged.id]
+
+    by_file = repo.search(
+        embedder.encode("jwt"),
+        SearchCriteria(scope="all", related_files=("src/auth/jwt.ts",)),
+        limit=5,
+    )
+    assert [hit.memory.id for hit in by_file] == [tagged.id]
+
+
+def test_search_recency_excludes_old(open_repo, embedder):
+    repo = open_repo()
+    _store(repo, embedder, "fresh note", project="api")
+
+    future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
+    assert repo.search(embedder.encode("fresh note"), future_cutoff, limit=5) == []
 
 
 def test_find_active_by_topic_key(open_repo, embedder):
