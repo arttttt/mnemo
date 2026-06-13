@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import math
 
-from mnemo.application.ports import Vector
+from mnemo.application.types import Vector
 
 
 class HashEmbedder:

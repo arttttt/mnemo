@@ -5,9 +5,9 @@ import pytest
 pytest.importorskip("mcp")
 
 from mnemo.adapters.mcp.server import build_mcp
-from mnemo.domain.memory import MemoryType
+from mnemo.domain.memory_type import MemoryType
+from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
-from mnemo.infrastructure.container import build_container
 
 
 def _container(tmp_path):
@@ -25,8 +25,8 @@ def _tools(tmp_path):
     return {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
 
 
-def test_mcp_exposes_remember_and_search(tmp_path):
-    assert {"remember", "search"} <= set(_tools(tmp_path))
+def test_mcp_exposes_the_agent_tools(tmp_path):
+    assert {"remember", "search", "delete", "clear", "purge"} <= set(_tools(tmp_path))
 
 
 def test_remember_advertises_allowed_types(tmp_path):

@@ -2,7 +2,8 @@
 from typing import get_args
 
 from mnemo.adapters.mcp.server import MemoryTypeName, SearchScope, StoreScope
-from mnemo.domain.memory import MemoryType, Scope
+from mnemo.domain.memory_type import MemoryType
+from mnemo.domain.scope import Scope
 
 
 def test_mcp_memory_type_literal_matches_domain():
