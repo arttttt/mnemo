@@ -4,6 +4,8 @@ from __future__ import annotations
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.use_cases.delete_memory import DeleteMemory
+from mnemo.application.use_cases.interfaces.migrate_memories import MigrateMemoriesUseCase
+from mnemo.application.use_cases.migrate_memories import MigrateMemories
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
 from mnemo.infrastructure.config import Config
@@ -22,6 +24,17 @@ def build_container(config: Config | None = None) -> Container:
         search=SearchMemory(repository, embedder),
         delete=DeleteMemory(repository),
     )
+
+
+def build_migration(config: Config | None = None) -> MigrateMemoriesUseCase:
+    """Wire the one-off migration from the JSON store into the LanceDB store."""
+    config = config or Config.from_env()
+    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
+
+    source = InMemoryMemoryRepository(path=config.store_path)
+    target = LanceDbMemoryRepository(uri=config.lancedb_uri)
+    return MigrateMemories(source, target, _build_embedder(config.embedder))
 
 
 def _build_embedder(name: str) -> EmbedderPort:

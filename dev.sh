@@ -17,15 +17,15 @@ require_uv() {
 cmd_install() {
   require_uv
   uv venv
-  uv pip install -e ".[dev,embed]"
+  uv pip install -e ".[dev,embed,store]"
   echo
-  echo "Installed (editable: dev + embed)."
+  echo "Installed (editable: dev + embed + store)."
 }
 
 cmd_update() {
   # Re-sync the environment to the current checkout (you manage git/branches yourself).
   require_uv
-  uv pip install -e ".[dev,embed]"
+  uv pip install -e ".[dev,embed,store]"
 }
 
 cmd_test() {
@@ -61,6 +61,11 @@ cmd_mcp() {
   echo "  claude mcp add --scope user mnemo -- uv run --directory \"$(pwd)\" mnemo-mcp"
 }
 
+cmd_migrate() {
+  require_uv
+  uv run mnemo migrate
+}
+
 cmd_clean() {
   rm -rf "$VENV" build dist .pytest_cache ./*.egg-info src/*.egg-info
   find . -type d -name __pycache__ -prune -exec rm -rf {} +
@@ -80,14 +85,15 @@ print_menu() {
 
   mnemo dev helper
   ----------------
-  1) install        create .venv + editable install (dev + embed)
+  1) install        create .venv + editable install (dev + embed + store)
   2) update         reinstall deps (no git, no tests)
   3) test           run the test suite (offline)
   4) test (heavy)   real-embedder tests (downloads model)
   5) demo           quick offline CLI demo
   6) mcp            print the Claude Code MCP add command
   7) clean          remove .venv, caches, build artifacts
-  8) purge-data     delete memory data ($DATA_DIR)  [destructive]
+  8) migrate        copy memories from the JSON store into LanceDB (idempotent)
+  9) purge-data     delete memory data ($DATA_DIR)  [destructive]
   0) quit
 EOF
 }
@@ -101,7 +107,8 @@ dispatch() {
     5 | demo) cmd_demo ;;
     6 | mcp) cmd_mcp ;;
     7 | clean) cmd_clean ;;
-    8 | purge-data | purge_data) cmd_purge_data ;;
+    8 | migrate) cmd_migrate ;;
+    9 | purge-data | purge_data) cmd_purge_data ;;
     *) echo "invalid choice: $1" >&2; return 1 ;;
   esac
 }

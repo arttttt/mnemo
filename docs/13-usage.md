@@ -92,9 +92,14 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 | Variable | Default | Meaning |
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
-| `MNEMO_STORE_PATH` | `<data>/memory.json` | store file (Phase 0 JSON) |
+| `MNEMO_STORE` | `lancedb` | `lancedb` (default, persistent ANN) or `memory` (in‑memory/JSON; offline/tests) |
+| `MNEMO_LANCEDB_URI` | `<data>/memory.db` | LanceDB store directory |
+| `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend and as the migration source |
 | `MNEMO_EMBEDDER` | `fastembed` | `fastembed` (real, local) or `hash` (offline) |
-| `MNEMO_STORE` | `memory` | `memory` (Phase 0); `lancedb` arrives in Phase 1 |
+
+> **Switching an existing JSON store to LanceDB:** run `mnemo migrate` (or the `migrate` item in `dev.sh`).
+> It copies every record from the JSON store into LanceDB, is safe to re‑run (idempotent), and leaves the
+> JSON file untouched as a fallback.
 
 ## 5. Use it — MCP (Claude Code / Cursor)
 

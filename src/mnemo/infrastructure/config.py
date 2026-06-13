@@ -21,7 +21,7 @@ class Config:
         return Config(
             data_dir=data_dir,
             embedder=os.environ.get("MNEMO_EMBEDDER", "fastembed"),
-            store=os.environ.get("MNEMO_STORE", "memory"),
+            store=os.environ.get("MNEMO_STORE", "lancedb"),
             store_path=os.environ.get(
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
             ),
