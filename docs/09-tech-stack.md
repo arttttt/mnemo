@@ -5,7 +5,7 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 ## Language / runtime: **Python**
 
 - **Why:** the richest "batteries‑included" path for this stack — MCP SDK (FastMCP), ONNX/`fastembed`,
-  `lancedb`/`sqlite-vec`, `llama-cpp-python`, model tooling.
+  `lancedb`, `llama-cpp-python`, model tooling.
 - **Alternative:** TypeScript/Node (good MCP SDK, single‑binary‑ish via Bun). Viable, but the local‑ML
   ecosystem (embedders, llama.cpp bindings, GBNF) is smoother in Python. Pick TS only if the team is TS‑first.
 
@@ -14,12 +14,11 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 - Exposes the tools from [05-mcp-api.md](05-mcp-api.md).
 - Transport: **streamable‑http** for the shared service + a thin **stdio shim** for client compatibility.
 
-## Vector store (embedded): **LanceDB** (primary) or **sqlite‑vec** (minimalist)
+## Vector store (embedded): **LanceDB**
 
-| Option | Pros | Cons | Pick when |
-|---|---|---|---|
-| **LanceDB** ⭐ | embedded (no server/Docker), dense + full‑text/hybrid, fast, handles concurrent reads, columnar, scales well | a heavier dependency than sqlite‑vec | default — want hybrid search and headroom |
-| **sqlite‑vec** | a single `.sqlite` file, tiny, trivially embeddable, FTS5 available for lexical | younger vector ext, manual hybrid wiring | want the absolute minimum footprint/deps |
+Embedded (no server/Docker): dense + full‑text **hybrid** search with reranking, real ANN (IVF/HNSW),
+columnar with mmap reads (low RAM at scale), concurrent reads. Data is a directory under `~/.mnemo/data/`.
+**One backend only — we don't mix stores.**
 
 - **Rejected: Qdrant/Chroma in server/Docker mode** — they are excellent concurrent servers, but require an
   always‑on daemon, which contradicts NFR‑5/NFR‑7 (on‑demand, no Docker). With a single shared service process,
@@ -53,7 +52,7 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 
 ```
 mcp                      # FastMCP server + stdio shim
-lancedb        OR  sqlite-vec + sqlite-utils
+lancedb                  # embedded vector store (Phase 1)
 fastembed      OR  onnxruntime + tokenizers
 llama-cpp-python         # generator (optional at runtime)
 pydantic                 # schemas / config
@@ -87,7 +86,7 @@ src/mnemo/
 
 ## What we deliberately do NOT build
 
-- A vector store / ANN index (use LanceDB/sqlite‑vec).
+- A vector store / ANN index (use LanceDB).
 - An embedding model or inference engine (use ONNX / llama.cpp).
 - A knowledge graph DB (out of scope; payload + hybrid search covers the need).
 

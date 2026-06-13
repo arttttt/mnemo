@@ -103,7 +103,7 @@ is done by background consolidation ([08-consolidation.md](08-consolidation.md))
 
 ## Storage
 
-- Embedded: **LanceDB** (file tables, dense + full‑text) or **sqlite‑vec** (a single `.sqlite`).
+- Embedded: **LanceDB** (file tables, dense + full‑text/hybrid, real ANN). One backend only — no mixing stores.
 - **One collection/table for all projects** (cross‑project search is cheap); `project`/`scope` are payload fields.
 - Data directory: `~/.mnemo/data/`. One directory = the whole state (backup/move = copy the folder).
 - Engine choice and rationale — in [09-tech-stack.md](09-tech-stack.md).

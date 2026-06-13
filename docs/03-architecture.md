@@ -26,9 +26,9 @@ separately and only runs in the background.
               │  └──────┬─────────┘  └───────┬────────┘  │
               │  ┌──────▼─────────┐  ┌───────▼────────┐  │
               │  │  Embedder      │  │  Store         │  │
-              │  │  (ONNX, CPU)   │  │ LanceDB /      │  │
-              │  │  loaded while  │  │ sqlite‑vec     │  │
-              │  │  service alive │  │ (embedded)     │  │
+              │  │  (ONNX, CPU)   │  │ LanceDB        │  │
+              │  │  loaded while  │  │ (embedded,     │  │
+              │  │  service alive │  │ on disk)       │  │
               │  └────────────────┘  └───────┬────────┘  │
               └──────────────────────────────┼───────────┘
                                              │ read/write
@@ -58,7 +58,7 @@ separately and only runs in the background.
   Writes are serialized through an internal queue/lock to avoid races.
 - **Read path**: `search` → query embedding → ANN/hybrid + payload filter → (optional) rerank.
 - **Embedder**: a small ONNX model loaded into the process while the service is alive. CPU, no GPU.
-- **Store**: an embedded vector DB (LanceDB or sqlite‑vec). Files in `~/.mnemo/data/`. No separate daemon/Docker.
+- **Store**: an embedded vector DB (LanceDB). Files in `~/.mnemo/data/`. No separate daemon/Docker.
 
 ### 3. Consolidation worker (background)
 - Triggered by N new records / idle / schedule.
@@ -108,7 +108,7 @@ recall(project)
 
 | Decision | Why |
 |---|---|
-| Embedded store (LanceDB/sqlite‑vec), not a Qdrant daemon | on‑demand + no always‑on Docker; one process ⇒ the single‑writer lock is not a problem |
+| Embedded store (LanceDB), not a Qdrant daemon | on‑demand + no always‑on Docker; one process ⇒ the single‑writer lock is not a problem |
 | One shared service + shims, not N stdio servers | otherwise N copies of the embedder in RAM and N writers on one file |
 | LLM in the background only, transiently | cheap concurrent writes; no RAM "hog"; a small model is enough |
 | llama.cpp on‑demand, not a resident vLLM | RAM ~0 when idle; the generator is off the hot path ⇒ vLLM batching is unnecessary |
