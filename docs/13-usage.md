@@ -5,19 +5,24 @@ A practical flow for running and testing mnemo. Commands below are verified agai
 
 ## Quick commands — `dev.sh`
 
-A helper script at the repo root wraps the common flows:
+Run the helper from the repo and pick from the menu:
 
 ```bash
-./dev.sh install      # create .venv + editable install (dev + embed)
-./dev.sh test         # run the test suite (pass args: ./dev.sh test -m heavy)
-./dev.sh update       # git pull + reinstall deps + run tests
-./dev.sh demo         # quick offline CLI demo
-./dev.sh mcp          # print the Claude Code MCP add command
-./dev.sh clean        # remove .venv, caches, build artifacts (uninstall)
-./dev.sh purge-data   # delete the memory data dir (destructive)
-./dev.sh help
+./dev.sh
+```
+```
+  1) install        create .venv + editable install (dev + embed)
+  2) update         git pull + reinstall + run tests
+  3) test           run the test suite (offline)
+  4) test (heavy)   real-embedder tests (downloads model)
+  5) demo           quick offline CLI demo
+  6) mcp            print the Claude Code MCP add command
+  7) clean          remove .venv, caches, build artifacts
+  8) purge-data     delete the memory data dir (destructive)
+  0) quit
 ```
 
+(For scripting/CI you can also pass a choice directly, e.g. `./dev.sh test -m heavy`.)
 The sections below explain the same steps manually (and the `pip` alternative).
 
 ## Prerequisites

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# mnemo dev helper — one entry point for the common flows.
-# Usage: ./dev.sh <command> [args]
+# mnemo dev helper. Run it from the repo:  ./dev.sh  -> shows a menu.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -20,7 +19,7 @@ cmd_install() {
   uv venv
   uv pip install -e ".[dev,embed]"
   echo
-  echo "Installed (editable: dev + embed). Try:  ./dev.sh test   |   ./dev.sh demo"
+  echo "Installed (editable: dev + embed)."
 }
 
 cmd_update() {
@@ -32,23 +31,29 @@ cmd_update() {
 
 cmd_test() {
   require_uv
-  # pass-through args, e.g.:  ./dev.sh test -m heavy   |   ./dev.sh test tests/unit
   uv run pytest "$@"
+}
+
+cmd_test_heavy() {
+  require_uv
+  uv run pytest -m heavy
 }
 
 cmd_demo() {
   require_uv
-  local tmp
-  tmp="$(mktemp -d)"
-  export MNEMO_EMBEDDER=hash MNEMO_DATA_DIR="$tmp"
-  echo "--- store ---"
-  uv run mnemo store "Use JWT with refresh rotation; httpOnly cookies" --type decision --project demo
-  uv run mnemo store "Always confirm destructive DB operations" --type rule --scope global
-  echo "--- search (project + global) ---"
-  uv run mnemo search "destructive operations" --project demo
-  echo "--- stats ---"
-  uv run mnemo stats
-  rm -rf "$tmp"
+  # subshell so the demo env does not leak into the menu session
+  (
+    tmp="$(mktemp -d)"
+    export MNEMO_EMBEDDER=hash MNEMO_DATA_DIR="$tmp"
+    echo "--- store ---"
+    uv run mnemo store "Use JWT with refresh rotation; httpOnly cookies" --type decision --project demo
+    uv run mnemo store "Always confirm destructive DB operations" --type rule --scope global
+    echo "--- search (project + global) ---"
+    uv run mnemo search "destructive operations" --project demo
+    echo "--- stats ---"
+    uv run mnemo stats
+    rm -rf "$tmp"
+  )
 }
 
 cmd_mcp() {
@@ -71,31 +76,53 @@ cmd_purge_data() {
   esac
 }
 
-cmd_help() {
+print_menu() {
   cat <<EOF
-mnemo dev helper
 
-Usage: ./dev.sh <command> [args]
-
-  install       create .venv and install editable (dev + embed)
-  update        git pull, reinstall deps, run tests
-  test [args]   run pytest  (e.g. ./dev.sh test -m heavy  |  ./dev.sh test tests/unit)
-  demo          quick offline CLI demo (hash embedder, temp data dir)
-  mcp           print the Claude Code MCP add command for this checkout
-  clean         remove .venv, caches and build artifacts (uninstall)
-  purge-data    delete the memory data directory ($DATA_DIR)   [destructive]
-  help          show this help
+  mnemo dev helper
+  ----------------
+  1) install        create .venv + editable install (dev + embed)
+  2) update         git pull + reinstall + run tests
+  3) test           run the test suite (offline)
+  4) test (heavy)   real-embedder tests (downloads model)
+  5) demo           quick offline CLI demo
+  6) mcp            print the Claude Code MCP add command
+  7) clean          remove .venv, caches, build artifacts
+  8) purge-data     delete memory data ($DATA_DIR)  [destructive]
+  0) quit
 EOF
 }
 
-case "${1:-help}" in
-  install) cmd_install ;;
-  update) cmd_update ;;
-  test) shift; cmd_test "$@" ;;
-  demo) cmd_demo ;;
-  mcp) cmd_mcp ;;
-  clean) cmd_clean ;;
-  purge-data | purge_data) cmd_purge_data ;;
-  help | -h | --help) cmd_help ;;
-  *) echo "unknown command: $1" >&2; echo; cmd_help; exit 1 ;;
-esac
+dispatch() {
+  case "$1" in
+    1 | install) cmd_install ;;
+    2 | update) cmd_update ;;
+    3 | test) shift || true; cmd_test "$@" ;;
+    4 | test-heavy) cmd_test_heavy ;;
+    5 | demo) cmd_demo ;;
+    6 | mcp) cmd_mcp ;;
+    7 | clean) cmd_clean ;;
+    8 | purge-data | purge_data) cmd_purge_data ;;
+    *) echo "invalid choice: $1" >&2; return 1 ;;
+  esac
+}
+
+# Escape hatch for scripting/CI:  ./dev.sh test -m heavy
+if [ "$#" -gt 0 ]; then
+  dispatch "$@"
+  exit $?
+fi
+
+# Default: interactive menu
+while true; do
+  print_menu
+  read -r -p "> " choice || break
+  case "$choice" in
+    0 | q | quit | exit) break ;;
+    "") continue ;;
+  esac
+  set +e
+  dispatch "$choice"
+  set -e
+  echo
+done
