@@ -4,7 +4,8 @@ from __future__ import annotations
 from typing import Protocol
 
 from mnemo.application.scored_memory import ScoredMemory
-from mnemo.application.types import MemoryPredicate, Vector
+from mnemo.application.search_criteria import SearchCriteria
+from mnemo.application.types import Vector
 from mnemo.domain.memory import Memory
 
 
@@ -18,7 +19,7 @@ class MemoryRepositoryPort(Protocol):
     ) -> Memory | None: ...
 
     def search(
-        self, vector: Vector, limit: int, predicate: MemoryPredicate | None = None
+        self, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]: ...
 
     def register_duplicate(self, memory_id: str) -> None: ...

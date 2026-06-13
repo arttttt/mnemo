@@ -1,10 +1,12 @@
-"""Retrieve active memories by similarity within a (soft) scope."""
+"""Retrieve active memories by similarity within a (soft) scope and filters."""
 from __future__ import annotations
 
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.results.search_result import SearchResult
-from mnemo.application.scoping import scope_predicate
+from mnemo.application.search_criteria import SearchCriteria
+from mnemo.domain.generators import iso_days_ago
+from mnemo.domain.memory_type import MemoryType
 
 
 class SearchMemory:
@@ -21,11 +23,21 @@ class SearchMemory:
         scope: str = "project",
         project: str | None = None,
         type: str | None = None,
+        tags: list[str] | None = None,
+        related_files: list[str] | None = None,
+        recency_days: int | None = None,
         limit: int = 10,
     ) -> list[SearchResult]:
+        criteria = SearchCriteria(
+            scope=scope,
+            project=project,
+            type=MemoryType(type) if type else None,
+            tags=tuple(tags or ()),
+            related_files=tuple(related_files or ()),
+            created_after=iso_days_ago(recency_days) if recency_days else None,
+        )
         vector = self._embedder.encode(query)
-        predicate = scope_predicate(scope=scope, project=project, type_filter=type)
-        scored = self._repository.search(vector, limit=limit, predicate=predicate)
+        scored = self._repository.search(vector, criteria, limit=limit)
         return [
             SearchResult(
                 id=item.memory.id,
