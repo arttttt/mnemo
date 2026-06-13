@@ -3,6 +3,23 @@
 A practical flow for running and testing mnemo. Commands below are verified against the Phase 0 build
 (Python 3.14, uv 0.10). `uv` is the primary path; plain `pip`/`venv` works too.
 
+## Quick commands — `dev.sh`
+
+A helper script at the repo root wraps the common flows:
+
+```bash
+./dev.sh install      # create .venv + editable install (dev + embed)
+./dev.sh test         # run the test suite (pass args: ./dev.sh test -m heavy)
+./dev.sh update       # git pull + reinstall deps + run tests
+./dev.sh demo         # quick offline CLI demo
+./dev.sh mcp          # print the Claude Code MCP add command
+./dev.sh clean        # remove .venv, caches, build artifacts (uninstall)
+./dev.sh purge-data   # delete the memory data dir (destructive)
+./dev.sh help
+```
+
+The sections below explain the same steps manually (and the `pip` alternative).
+
 ## Prerequisites
 
 - **Python 3.10+** (tested on 3.14).
