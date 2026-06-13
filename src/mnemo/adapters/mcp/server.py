@@ -63,7 +63,7 @@ def build_mcp(container: Optional[Container] = None):
         ] = None,
         importance: Annotated[
             float,
-            Field(ge=0.0, le=1.0, description="0.0-1.0 (0.9 critical, 0.7 important, 0.5 normal, 0.3 minor). Optional; caller-set, defaults to 0.5. Automatic scoring is planned."),
+            Field(ge=0.0, le=1.0, description="0.0-1.0 (0.9 critical, 0.7 important, 0.5 normal, 0.3 minor). Optional; defaults to 0.5."),
         ] = 0.5,
         topic_key: Annotated[
             Optional[str],
