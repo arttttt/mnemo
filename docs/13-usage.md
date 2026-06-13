@@ -93,7 +93,7 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
 | `MNEMO_STORE` | `lancedb` | `lancedb` (default, persistent ANN) or `memory` (in‑memory/JSON; offline/tests) |
-| `MNEMO_LANCEDB_URI` | `<data>/memory.db` | LanceDB store directory |
+| `MNEMO_LANCEDB_URI` | `<data>/memory` | LanceDB store directory |
 | `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend and as the migration source |
 | `MNEMO_EMBEDDER` | `fastembed` | `fastembed` (real, local) or `hash` (offline) |
 
