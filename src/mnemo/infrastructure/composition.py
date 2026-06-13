@@ -42,5 +42,7 @@ def _build_repository(config: Config) -> MemoryRepositoryPort:
 
         return InMemoryMemoryRepository(path=config.store_path)
     if config.store == "lancedb":
-        raise NotImplementedError("the LanceDB repository is not built yet")
+        from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
+
+        return LanceDbMemoryRepository(uri=config.lancedb_uri)
     raise ValueError(f"unknown store: {config.store!r}")
