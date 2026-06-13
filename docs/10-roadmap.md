@@ -49,6 +49,11 @@ Phased plan. Each phase is shippable and testable on its own.
 - [ ] Air‑gapped mode (pre‑seeded model cache).
 
 ## Explicitly deferred (post‑v1)
+- **Full bi‑temporal validity model** (transaction‑time `created_at`/`expired_at` + valid‑time `valid_from`/`valid_to`,
+  point‑in‑time queries, retro‑corrections) — **committed post‑MVP**, done in full (no half‑measures). MVP uses
+  `created_at` + supersede chain + `status`; the schema stays forward‑compatible so the four timestamps add cleanly.
+- Revision tooling for memory currency (list / inactivate / review flagged contradictions) — the human/agent
+  decides; the system never auto‑invalidates. UX TBD.
 - `session` scope (transient session‑keyed memory) — cheap to add later; use `working-notes` for now.
 - Knowledge graph / multi‑hop; web dashboard; document/PDF ingestion; multi‑user/RBAC/cloud sync.
 
