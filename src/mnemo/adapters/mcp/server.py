@@ -1,15 +1,15 @@
 """MCP controller: exposes the use cases as MCP tools for AI agents.
 
 `mcp` and `pydantic.Field` are imported lazily so the core and offline tests
-don't require them. The `Literal` aliases below are surfaced to MCP clients as
-JSON-schema enums (so agents pick valid values instead of guessing) and are kept
-in sync with the domain enums by a test.
+don't require them. The `Literal` aliases are surfaced to MCP clients as
+JSON-schema enums (so agents pick valid values) and are kept in sync with the
+domain enums by a test.
 """
-
 from dataclasses import asdict
 from typing import Annotated, Literal, Optional
 
-from mnemo.infrastructure.container import Container, build_container
+from mnemo.infrastructure.composition import build_container
+from mnemo.infrastructure.container import Container
 
 MemoryTypeName = Literal[
     "decision",
@@ -47,7 +47,7 @@ def build_mcp(container: Optional[Container] = None):
         ] = "working-notes",
         project: Annotated[
             Optional[str],
-            Field(description="Project slug in kebab-case this memory belongs to. Omit and set scope='global' for cross-project knowledge."),
+            Field(description="Project slug in kebab-case. Omit and set scope='global' for cross-project knowledge."),
         ] = None,
         scope: Annotated[
             StoreScope,
@@ -61,10 +61,6 @@ def build_mcp(container: Optional[Container] = None):
             Optional[list[str]],
             Field(description="Optional keywords for later filtering."),
         ] = None,
-        importance: Annotated[
-            float,
-            Field(ge=0.0, le=1.0, description="0.0-1.0 (0.9 critical, 0.7 important, 0.5 normal, 0.3 minor). Optional; defaults to 0.5."),
-        ] = 0.5,
         topic_key: Annotated[
             Optional[str],
             Field(description="Stable key (e.g. 'auth/jwt-model') to evolve one memory over time instead of creating duplicates."),
@@ -72,9 +68,8 @@ def build_mcp(container: Optional[Container] = None):
     ) -> dict:
         """Save a memory to the local store so it can be recalled later.
 
-        No LLM runs on write. Call this after a meaningful decision, bug fix,
-        learning, or progress checkpoint. Returns {id, dedup, score}: `dedup` is
-        null for a new memory, or "exact"/"near" if it matched an existing one.
+        No LLM runs on write. Reusing a `topic_key` supersedes the prior memory of
+        that key. Returns {id, dedup, superseded}.
         """
         result = container.remember.execute(
             content=content,
@@ -83,7 +78,6 @@ def build_mcp(container: Optional[Container] = None):
             scope=scope,
             related_files=related_files,
             tags=tags,
-            importance=importance,
             topic_key=topic_key,
         )
         return asdict(result)
@@ -120,6 +114,25 @@ def build_mcp(container: Optional[Container] = None):
             query=query, scope=scope, project=project, type=type, limit=limit
         )
         return [asdict(result) for result in results]
+
+    @mcp.tool()
+    def delete(
+        ids: Annotated[list[str], Field(description="Ids of the memories to delete.")],
+    ) -> dict:
+        """Permanently delete specific memories. Returns {deleted}."""
+        return asdict(container.delete.delete(ids))
+
+    @mcp.tool()
+    def clear(
+        project: Annotated[str, Field(description="Project whose memories to delete.")],
+    ) -> dict:
+        """Permanently delete all memories of one project. Returns {deleted}."""
+        return asdict(container.delete.clear(project))
+
+    @mcp.tool()
+    def purge() -> dict:
+        """Permanently delete ALL memories. Returns {deleted}."""
+        return asdict(container.delete.purge())
 
     return mcp
 

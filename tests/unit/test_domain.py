@@ -1,11 +1,8 @@
-from mnemo.domain.memory import (
-    GLOBAL_PROJECT,
-    Memory,
-    MemoryType,
-    Scope,
-    content_hash,
-    normalize,
-)
+from mnemo.domain.constants import GLOBAL_PROJECT
+from mnemo.domain.hashing import content_hash, normalize
+from mnemo.domain.memory import Memory
+from mnemo.domain.memory_type import MemoryType
+from mnemo.domain.scope import Scope
 
 
 def test_normalize_collapses_whitespace_and_lowercases():
@@ -34,3 +31,9 @@ def test_register_duplicate_increments_count():
     memory = Memory.create("x")
     memory.register_duplicate()
     assert memory.duplicate_count == 1
+
+
+def test_mark_superseded():
+    memory = Memory.create("x")
+    memory.mark_superseded()
+    assert memory.status == "superseded"

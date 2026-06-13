@@ -1,5 +1,5 @@
-from mnemo.adapters.embedding.hashing import HashEmbedder
-from mnemo.adapters.store.in_memory import InMemoryMemoryRepository
+from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 from mnemo.domain.memory import Memory
 
 
@@ -30,3 +30,14 @@ def test_search_ranks_by_cosine():
     hits = repo.search(embedder.encode("redis cache"), limit=3)
     assert hits[0].score >= hits[-1].score
     assert "redis" in hits[0].memory.content
+
+
+def test_find_active_by_topic_key(tmp_path):
+    embedder = HashEmbedder()
+    repo = InMemoryMemoryRepository()
+    memory = Memory.create("auth model", project="api", topic_key="auth/model")
+    repo.add(memory, embedder.encode(memory.content))
+
+    found = repo.find_active_by_topic_key("auth/model", "api")
+    assert found is not None and found.id == memory.id
+    assert repo.find_active_by_topic_key("auth/model", "other") is None

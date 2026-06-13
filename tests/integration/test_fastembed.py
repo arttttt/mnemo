@@ -6,7 +6,7 @@ pytestmark = pytest.mark.heavy
 
 
 def test_fastembed_is_local_and_deterministic():
-    from mnemo.adapters.embedding.fastembed import FastEmbedEmbedder
+    from mnemo.adapters.embedding.fastembed_embedder import FastEmbedEmbedder
 
     embedder = FastEmbedEmbedder()
     first = embedder.encode("hello world")

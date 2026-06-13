@@ -1,5 +1,5 @@
+from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
-from mnemo.infrastructure.container import build_container
 
 
 def test_container_wires_working_use_cases(tmp_path):
@@ -14,3 +14,5 @@ def test_container_wires_working_use_cases(tmp_path):
     stored = container.remember.execute(content="wired note", project="api")
     hits = container.search.execute(query="wired note", project="api")
     assert any(hit.id == stored.id for hit in hits)
+
+    assert container.delete.purge().deleted == 1

@@ -8,8 +8,8 @@ from typing import Optional
 
 import typer
 
-from mnemo.domain.memory import MemoryType
-from mnemo.infrastructure.container import build_container
+from mnemo.domain.memory_type import MemoryType
+from mnemo.infrastructure.composition import build_container
 
 _TYPES = ", ".join(member.value for member in MemoryType)
 
@@ -40,24 +40,15 @@ def store(
         "-s",
         help="'project' (belongs to one project) or 'global' (applies everywhere).",
     ),
-    importance: float = typer.Option(
-        0.5,
-        "--importance",
-        "-i",
-        min=0.0,
-        max=1.0,
-        help="0.0-1.0 (0.9 critical, 0.5 normal, 0.3 minor). Defaults to 0.5.",
+    topic_key: Optional[str] = typer.Option(
+        None, "--topic-key", "-k", help="Stable key to evolve one memory instead of duplicating."
     ),
 ) -> None:
-    """Store a memory. No LLM runs on write; prints {id, dedup, score}."""
+    """Store a memory. No LLM runs on write; prints {id, dedup, superseded}."""
     container = build_container()
     try:
         result = container.remember.execute(
-            content=content,
-            type=type,
-            project=project,
-            scope=scope,
-            importance=importance,
+            content=content, type=type, project=project, scope=scope, topic_key=topic_key
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
@@ -101,6 +92,31 @@ def stats() -> None:
     memories = container.repository.list_all()
     by_type = Counter(memory.type.value for memory in memories)
     typer.echo(json.dumps({"total": len(memories), "by_type": dict(by_type)}, indent=2))
+
+
+@app.command()
+def delete(
+    ids: list[str] = typer.Argument(..., help="Ids of the memories to delete."),
+) -> None:
+    """Permanently delete specific memories."""
+    result = build_container().delete.delete(ids)
+    typer.echo(json.dumps(asdict(result)))
+
+
+@app.command()
+def clear(
+    project: str = typer.Argument(..., help="Project whose memories to delete."),
+) -> None:
+    """Permanently delete all memories of one project."""
+    result = build_container().delete.clear(project)
+    typer.echo(json.dumps(asdict(result)))
+
+
+@app.command()
+def purge() -> None:
+    """Permanently delete ALL memories."""
+    result = build_container().delete.purge()
+    typer.echo(json.dumps(asdict(result)))
 
 
 def main() -> None:

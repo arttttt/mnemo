@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from mnemo.application.ports import Vector
+from mnemo.application.types import Vector
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 
