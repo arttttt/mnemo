@@ -100,6 +100,11 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **NFR‑25 (SHOULD).** Tests run **offline and fast by default** (hash embedder + in‑memory/JSON store). Heavy or
   networked backends (fastembed, lancedb) sit behind an opt‑in marker. Strategy in [12-testing.md](12-testing.md).
 
+### Version control
+- **NFR‑26 (MUST).** Commit messages and pull/merge‑request titles & descriptions describe a change by its
+  **behavior and intent** — they must **not** reference internal planning artifacts (phase numbers, step numbers,
+  roadmap item ids, "MVP", or similar). The roadmap is internal structure, not changelog vocabulary.
+
 ## Core axiom constraints (what sets this project apart)
 
 1. **No LLM on the write path.**
