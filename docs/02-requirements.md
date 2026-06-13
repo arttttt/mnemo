@@ -8,13 +8,16 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑1 (MUST).** Store typed "memories" (see [04-data-model.md](04-data-model.md)):
   `decision, debug, progress, feature, research, code-snippet, rule, learning, discussion, design, working-notes`.
 - **FR‑2 (MUST).** Each memory holds: `content`, `type`, `project`, `related_files[]`, `tags[]`,
-  `importance`, `session_id`, `created_at`, `hash`.
+  `session_id`, `created_at`, `hash`. (`importance` is **post‑MVP** — not in the MVP model.)
 - **FR‑3 (MUST).** Scopes: `project` (local) and `global`. Isolation is **soft** — projects organize memory,
   they are not a search wall. (A `session` scope is deferred — post‑v1, cheap to add later.)
 - **FR‑3b (MUST).** Cross‑project search: retrieval can span all projects (`scope="all"`). The default scope
   (current project + global) may also surface strongly‑relevant cross‑project hits, ranked lower and labeled.
-- **FR‑4 (SHOULD).** Dedup on write: do not spawn near‑duplicates (hash + cosine threshold).
-- **FR‑5 (MAY).** Soft delete/inactivation (recoverable), audit trail.
+- **FR‑4 (SHOULD).** Dedup on write: drop **exact** duplicates only (hash of normalized content). Near‑similar
+  memories are **not** suppressed on write — search returns them; the background worker may merge/flag genuine
+  duplicates later (with context).
+- **FR‑5 (MUST).** Deletion: `delete(ids)`, `clear(project)`, `purge()` — **hard**, available to both the agent
+  and the CLI. No soft‑delete/inactivation.
 
 ### Search and retrieval
 - **FR‑6 (MUST).** Semantic search over local embeddings.
@@ -96,6 +99,11 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
   store persistence (round‑trip), embedder, MCP controller, CLI, and the composition root.
 - **NFR‑25 (SHOULD).** Tests run **offline and fast by default** (hash embedder + in‑memory/JSON store). Heavy or
   networked backends (fastembed, lancedb) sit behind an opt‑in marker. Strategy in [12-testing.md](12-testing.md).
+
+### Version control
+- **NFR‑26 (MUST).** Commit messages and pull/merge‑request titles & descriptions describe a change by its
+  **behavior and intent** — they must **not** reference internal planning artifacts (phase numbers, step numbers,
+  roadmap item ids, "MVP", or similar). The roadmap is internal structure, not changelog vocabulary.
 
 ## Core axiom constraints (what sets this project apart)
 

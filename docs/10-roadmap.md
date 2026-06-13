@@ -1,62 +1,26 @@
-# 10 — Roadmap
+# 10 — Roadmap (index)
 
-Phased plan. Each phase is shippable and testable on its own.
+The MVP is **all of Phases 0–4**. Everything under Post‑MVP lands **after Phase 4**.
 
-## Phase 0 — Skeleton (walking skeleton)
-**Goal:** an agent can store and search memory locally via MCP.
-- [ ] Project scaffold (Python, `uv`, package layout, CLI via Typer).
-- [ ] Embedded store wrapper (LanceDB) — create/upsert/query, payload schema from [04](04-data-model.md).
-- [ ] Embedder wrapper (fastembed/ONNX, `bge-small-en-v1.5`), dimension pinned at init.
-- [ ] FastMCP service with `store_memory` and `search` (semantic only).
-- [ ] stdio shim → shared http service; manual start (no lifecycle yet).
-- [ ] CLI: `mnemo store/search/stats`.
-- **Done when:** Claude Code can `store_memory` and `search` against a local store, no cloud.
+Each phase has its own file with small, independently verifiable steps. Every step is written as:
 
-## Phase 1 — Memory layer (v1 core)
-**Goal:** typed memory with scoping, dedup, session context.
-- [ ] All `store_*` wrappers + typed payload, importance, tags, related_files.
-- [ ] Per‑project scoping + `__global__`; `get_rules`/`store_rule`.
-- [ ] Hot‑path dedup (hash + cosine threshold + `topic_key` upsert).
-- [ ] Hybrid search (dense + lexical/FTS, RRF) + filters.
-- [ ] `recall(project)` + `session_recap` + sessions table.
-- [ ] `expand`, `update_memory`, `inactivate`, `supersede`.
-- [ ] Internal write queue/lock; verify 10+ concurrent agents (no lost writes, no "db locked").
-- **Done when:** the requirements FR‑1..FR‑13 hold; 10‑agent concurrency test passes.
+- **What** — the goal, in a line or two.
+- **Depends on** — which earlier steps must be done first.
+- **Done when** — a concrete, checkable condition (a passing test or an observable behavior).
 
-## Phase 2 — On‑demand lifecycle
-**Goal:** nothing resident; spins up/down per the [07](07-lifecycle-and-ram.md) scheme.
-- [ ] Ref‑counting in the shim; grace‑timer shutdown.
-- [ ] Socket activation: launchd plist (macOS) + systemd socket/service (Linux).
-- [ ] `mnemo init <client>` writes MCP config + installs activation.
-- [ ] RAM budget verification (idle ~0, active ~1 GB).
-- **Done when:** NFR‑5..NFR‑8 verified on macOS and Linux.
+A step is sized to ship and review on its own. No implementation/file details here — only behavior and verification.
 
-## Phase 3 — Background consolidation
-**Goal:** the small LLM improves memory off the hot path.
-- [ ] Generator wrapper (llama.cpp, `Qwen3-4B-Instruct-2507` Q4) with on‑demand load/unload.
-- [ ] GBNF/guided‑JSON contract; flat schema; `temperature=0`.
-- [ ] Triggers (by volume / idle / manual); batch selection by embedding neighborhood.
-- [ ] Operations: near‑dup merge, cluster summarize, insight extraction, staleness marking, importance scoring.
-- [ ] Idempotency + failure isolation; consolidation log.
-- [ ] `MNEMO_GENERATOR=off` degradation path (cosine‑only).
-- **Done when:** FR‑14/FR‑15 hold; generator RAM is transient; consolidation never blocks writes.
+## Phases
 
-## Phase 4 — Polish & optional upgrades
-- [ ] Optional reranker (`Qwen3-Reranker-0.6B`) and GLiNER2 dedup.
-- [ ] `tasks` API.
-- [ ] Export/import (portability).
-- [ ] Packaging (`uvx`/`pipx`), docs, install guides per IDE.
-- [ ] Air‑gapped mode (pre‑seeded model cache).
+| Phase | Goal | File |
+|---|---|---|
+| 0 — Walking skeleton ✅ | store + search locally via MCP | [roadmap/phase-0-skeleton.md](roadmap/phase-0-skeleton.md) |
+| 1 — Memory layer | typed, scoped, persistent memory; hybrid search; recall; sessions; deletion; deterministic links; 10+ concurrency | [roadmap/phase-1-memory-layer.md](roadmap/phase-1-memory-layer.md) |
+| 2 — On‑demand lifecycle | one shared service, spins up/down, ~0 idle RAM | [roadmap/phase-2-lifecycle.md](roadmap/phase-2-lifecycle.md) |
+| 3 — Background consolidation | small model improves memory off the hot path, concurrent from the start | [roadmap/phase-3-consolidation.md](roadmap/phase-3-consolidation.md) |
+| 4 — Polish & optional upgrades | reranker/NER, export/import, packaging, air‑gapped | [roadmap/phase-4-polish.md](roadmap/phase-4-polish.md) |
+| Post‑MVP | bi‑temporal, importance, revision tooling, session scope | [roadmap/post-mvp.md](roadmap/post-mvp.md) |
 
-## Explicitly deferred (post‑v1)
-- **Full bi‑temporal validity model** (transaction‑time `created_at`/`expired_at` + valid‑time `valid_from`/`valid_to`,
-  point‑in‑time queries, retro‑corrections) — **committed post‑MVP**, done in full (no half‑measures). MVP uses
-  `created_at` + supersede chain + `status`; the schema stays forward‑compatible so the four timestamps add cleanly.
-- Revision tooling for memory currency (list / inactivate / review flagged contradictions) — the human/agent
-  decides; the system never auto‑invalidates. UX TBD.
-- `session` scope (transient session‑keyed memory) — cheap to add later; use `working-notes` for now.
-- Knowledge graph / multi‑hop; web dashboard; document/PDF ingestion; multi‑user/RBAC/cloud sync.
-
-## Definition of done for v1
-FR‑1..FR‑16 (MUST/SHOULD) + NFR‑1..NFR‑13 satisfied; works on a 16 GB machine with 10+ agents,
-strictly offline, no resident daemon, no Docker.
+## Definition of done for the MVP
+Phases 0–4 complete; runs on a 16 GB machine with 10+ agents, strictly offline, on‑demand (no resident
+daemon, no Docker), on LanceDB; an agent works through `recall` / `remember` / `search` / `delete`.

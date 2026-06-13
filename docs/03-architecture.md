@@ -72,7 +72,7 @@ separately and only runs in the background.
 ```
 remember(content, type, project, scope, related_files, ...)
    → normalize + hash
-   → dedup: hash match? cosine > threshold vs neighbors? → merge/skip or new record
+   → exact-dup: hash match? bump counter & skip  |  topic_key match? supersede (upsert)  |  else: new record
    → embedder.encode(content)            # CPU, ms
    → store.upsert(vector, payload)       # through the write queue
    → reply to agent (id)
