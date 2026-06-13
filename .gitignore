@@ -16,8 +16,6 @@ dist/
 # Memory data and indexes (never commit)
 /data/
 *.lance/
-*.sqlite
-*.sqlite-vec
 *.db
 
 # Local model weights

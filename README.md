@@ -9,7 +9,7 @@ remembers decisions, bugs, progress, and rules across sessions. What sets it apa
 
 - **strictly local** — zero cloud calls; embeddings and LLM run only on your machine;
 - **on‑demand** — nothing runs in the background; the service spins up under load and shuts down after a grace period;
-- **no Docker daemon** — embedded storage inside a single process (LanceDB / sqlite‑vec);
+- **no Docker daemon** — embedded storage inside a single process (LanceDB);
 - **lightweight** — ~1 GB RAM while active, ~0 when idle; a small model (Qwen3‑4B / Gemma 4) runs only during background consolidation;
 - **concurrent** — one shared service serves 10+ agents; writes are cheap (embed + insert, no LLM on the hot path);
 - **simple** — 3 core MCP verbs (`recall` / `remember` / `search`); soft project scoping with first‑class cross‑project search.
