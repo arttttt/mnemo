@@ -39,8 +39,9 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑17 (SHOULD).** A CLI for debugging (`mnemo search/store/stats/consolidate`).
 
 ### API simplicity
-- **FR‑18 (MUST).** Minimal, obvious agent‑facing API: ~3 core verbs (`recall`, `remember`, `search`);
-  behavior via parameters (type/scope/filters), not a tool per type or per operation.
+- **FR‑18 (MUST).** Minimal, obvious agent‑facing API **driven by real tasks — not a fixed number of tools**.
+  Prefer behavior via parameters (type/scope/filters) over a tool per type or per operation; add a tool only
+  when a real task needs it (e.g. `recall`, `remember`, `search`, and later a revision affordance). Minimal ≠ exactly two.
 - **FR‑19 (MUST).** Operational commands (`stats`, `consolidate`, `doctor`, export/import) live in the CLI,
   NOT in the agent‑facing MCP surface.
 

@@ -90,10 +90,23 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
 Cosine and hash are cheap, so dedup stays on the hot path. "Smart" semantic merging (paraphrases)
 is done by background consolidation ([08-consolidation.md](08-consolidation.md)).
 
-## Evolution / staleness
+## Evolution & staleness
 
-- A changed decision → a new record with `supersedes` = id of the old one; the old one → `status: superseded` (recoverable).
-- Background consolidation can mark stale memories `inactive` (with a reason) without physically deleting them.
+**Currency changes only on an explicit signal from the writer — the system never decides on its own.**
+
+- A changed fact/decision → a new record; the writer signals it by **reusing the same `topic_key`** (or an
+  explicit `supersede`). In response the system *mechanically* marks the old record `status: superseded` and
+  links them (`supersedes` = old id). This is bookkeeping, not a judgement. Recoverable; nothing is deleted.
+- **No automatic staleness.** The background consolidation worker may only *flag* likely contradictions for
+  review — it never marks a memory stale/inactive by itself. The human or coding‑agent decides, via revision
+  tools (list / inactivate). Exact revision UX is still **TBD** (a future design question).
+- Age is surfaced (`created_at`) so callers judge freshness themselves. Re‑verifying a fact against current
+  code is the **coding‑agent's** job, not the memory's — mnemo does **not** watch files or index code.
+
+**Temporal model:** the MVP stays simple — `created_at` + supersede chain + `status`. A full **bi‑temporal**
+validity model (transaction‑time + valid‑time, point‑in‑time queries, retro‑corrections) is a committed
+**post‑MVP** item, to be done *in full* (not half‑measures). The schema stays forward‑compatible: the four
+timestamps are added later as nullable fields, no breaking migration. See [10-roadmap.md](10-roadmap.md).
 
 ## Additional entities (v1+)
 
