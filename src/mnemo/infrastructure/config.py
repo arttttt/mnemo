@@ -12,6 +12,7 @@ class Config:
     embedder: str
     store: str
     store_path: str
+    lancedb_uri: str = ""
 
     @staticmethod
     def from_env() -> "Config":
@@ -23,5 +24,8 @@ class Config:
             store=os.environ.get("MNEMO_STORE", "memory"),
             store_path=os.environ.get(
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
+            ),
+            lancedb_uri=os.environ.get(
+                "MNEMO_LANCEDB_URI", os.path.join(data_dir, "memory.db")
             ),
         )

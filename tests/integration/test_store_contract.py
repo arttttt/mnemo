@@ -1,0 +1,127 @@
+"""One contract, run against every MemoryRepositoryPort backend.
+
+The in-memory backend runs always (offline). The LanceDB backend is marked
+`heavy` so it is skipped by the default offline run and exercised only with
+`-m heavy` (it needs the optional `lancedb` dependency).
+"""
+import pytest
+
+from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.domain.memory import Memory
+
+
+def _in_memory(tmp_path):
+    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+
+    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+
+
+def _lancedb(tmp_path):
+    pytest.importorskip("lancedb")
+    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
+
+    return LanceDbMemoryRepository(uri=str(tmp_path / "lancedb"))
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(_in_memory, id="in_memory"),
+        pytest.param(_lancedb, id="lancedb", marks=pytest.mark.heavy),
+    ]
+)
+def open_repo(request, tmp_path):
+    """Return a zero-arg factory that (re)opens a repo at one fixed location."""
+    return lambda: request.param(tmp_path)
+
+
+@pytest.fixture
+def embedder():
+    return HashEmbedder()
+
+
+def _store(repo, embedder, content, **kwargs):
+    memory = Memory.create(content, **kwargs)
+    repo.add(memory, embedder.encode(memory.content))
+    return memory
+
+
+def test_add_and_find_by_hash(open_repo, embedder):
+    repo = open_repo()
+    memory = _store(repo, embedder, "durable note", type="decision", project="api")
+
+    found = repo.find_by_hash(memory.hash)
+    assert found is not None and found.id == memory.id
+    assert found.type == memory.type and found.content == "durable note"
+    assert repo.find_by_hash("does-not-exist") is None
+
+
+def test_persists_across_reopen(open_repo, embedder):
+    memory = _store(open_repo(), embedder, "remembered after reopen", project="api")
+
+    reopened = open_repo()
+    stored = reopened.list_all()
+    assert [m.id for m in stored] == [memory.id]
+    assert reopened.find_by_hash(memory.hash) is not None
+
+
+def test_search_ranks_by_similarity(open_repo, embedder):
+    repo = open_repo()
+    for content in ["redis caching layer", "postgres migration plan", "redis cache eviction"]:
+        _store(repo, embedder, content, project="api")
+
+    hits = repo.search(embedder.encode("redis cache"), limit=3)
+    assert hits[0].score >= hits[-1].score
+    assert "redis" in hits[0].memory.content
+
+
+def test_search_honors_predicate(open_repo, embedder):
+    repo = open_repo()
+    keep = _store(repo, embedder, "redis cache eviction", project="api")
+    _store(repo, embedder, "redis cache eviction notes", project="other")
+
+    hits = repo.search(
+        embedder.encode("redis cache"),
+        limit=5,
+        predicate=lambda m: m.project == "api",
+    )
+    assert [hit.memory.id for hit in hits] == [keep.id]
+
+
+def test_find_active_by_topic_key(open_repo, embedder):
+    repo = open_repo()
+    memory = _store(repo, embedder, "auth model", project="api", topic_key="auth/model")
+
+    found = repo.find_active_by_topic_key("auth/model", "api")
+    assert found is not None and found.id == memory.id
+    assert repo.find_active_by_topic_key("auth/model", "other") is None
+    assert repo.find_active_by_topic_key("absent/key", "api") is None
+
+
+def test_register_duplicate_increments_count(open_repo, embedder):
+    repo = open_repo()
+    memory = _store(repo, embedder, "seen twice", project="api")
+
+    repo.register_duplicate(memory.id)
+    assert repo.find_by_hash(memory.hash).duplicate_count == 1
+
+
+def test_mark_superseded_sets_status(open_repo, embedder):
+    repo = open_repo()
+    memory = _store(repo, embedder, "old version", project="api")
+
+    repo.mark_superseded(memory.id)
+    status_by_id = {m.id: m.status for m in repo.list_all()}
+    assert status_by_id[memory.id] == "superseded"
+
+
+def test_delete_clear_purge(open_repo, embedder):
+    repo = open_repo()
+    one = _store(repo, embedder, "one", project="api")
+    _store(repo, embedder, "two", project="api")
+    _store(repo, embedder, "three", project="other")
+
+    assert repo.delete([one.id]) == 1
+    assert repo.delete_by_project("api") == 1
+    assert {m.project for m in repo.list_all()} == {"other"}
+    assert repo.delete_all() == 1
+    assert repo.list_all() == []
