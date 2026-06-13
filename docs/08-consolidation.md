@@ -6,13 +6,15 @@ there is no RAM "hog").
 
 ## What consolidation does
 
-1. **Near‑dup merge.** Merges near‑duplicates and paraphrases that the cosine threshold on write only flagged as candidates.
-2. **Cluster summarization.** A group of small same‑topic records → one compressed memory (keeping the originals as inactive).
+1. **Near‑dup merge.** The write path no longer suppresses near‑duplicates, so the worker merges genuine
+   near‑duplicates / paraphrases here — with full context, not a blind write‑time threshold.
+2. **Cluster summarization.** A group of small same‑topic records → one compressed memory (originals kept as `superseded`).
 3. **Insight extraction.** Recurring patterns/gotchas → a `learning` record (cross‑project ones → `__global__`).
-4. **Staleness.** Marks records `superseded`/`inactive` that contradict newer ones (with a reason).
+4. **Contradiction flags.** *Flags* likely contradictions for human/agent review — it does **not** auto‑mark
+   anything stale (currency changes only on an explicit signal; see [04-data-model.md](04-data-model.md)).
 5. **(MAY) Update the session summary** for `session_recap`.
-6. **(planned) Importance scoring.** Re‑score `importance` consistently (heuristic and/or the small model) —
-   it is not set automatically on write today (the caller supplies it, default 0.5).
+6. **(post‑MVP) Importance scoring.** Once `importance` returns (post‑MVP), the worker can score it consistently
+   (heuristic and/or the small model).
 
 Everything is soft (recoverable), with audit fields. No physical deletion.
 
@@ -29,14 +31,17 @@ Everything is soft (recoverable), with audit fields. No physical deletion.
 trigger → select a batch of candidates (new records + their embedding neighbors, scope = project)
         → load the generator (llama.cpp + Qwen3‑4B Q4)        # ← model load
         → for each group: a single guided‑JSON call
-            (input: a set of memories; output: {action, merged_content, supersede_ids, tags, importance})
-        → apply to the store (merge/supersede/inactivate/insert) through the write queue
+            (input: a set of memories; output: {action, merged_content, supersede_ids, tags})
+        → apply to the store (merge/supersede/insert) through the write queue
         → unload the generator                                # ← RAM freed
         → write a consolidation log
 ```
 
-The generator lives only for the job's duration. Since this is **a single batch process**, there is
-no concurrent inference → llama.cpp on‑demand is sufficient (vLLM/continuous batching unnecessary).
+The generator lives only for the job's duration. Consolidation is **designed concurrent from the start** —
+a worker pool over batches, not one serial pass — since 10+ agents accumulate memory quickly. The local
+inference server is chosen for concurrency: **vLLM/SGLang** (continuous batching) when the model must serve
+parallel requests; llama.cpp on‑demand for the lightest single‑stream case. The store backend (LanceDB)
+absorbs concurrent writes.
 
 ## Model call contract (reliability at 4B)
 
@@ -50,7 +55,6 @@ no concurrent inference → llama.cpp on‑demand is sufficient (vLLM/continuous
   "result_content": "final markdown",
   "supersede_ids": ["id1", "id2"],
   "tags": ["..."],
-  "importance": 0.7,
   "reason": "short why"
 }
 ```

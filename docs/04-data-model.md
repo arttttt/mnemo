@@ -58,10 +58,9 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
     "project": "checkout-api",          // kebab-case; ignored when scope=global
     "session_id": "2026-06-13T...",     // which session created this (used by session_recap)
     "related_files": ["src/auth/jwt.ts"],
-    "tags": ["authentication", "jwt"],
-    "importance": 0.8,                  // 0.0..1.0; caller-set (default 0.5). Auto-scoring planned
+    "tags": ["authentication", "jwt"],   // optional keyword list; a property (not a type), searchable
     "hash": "sha256(normalized_content)",// for exact dedup
-    "status": "active",                // active | superseded | inactive
+    "status": "active",                // active | superseded
     "supersedes": null,                // id of the previous version (record evolution)
     "topic_key": "auth/jwt-model",      // stable key for upserting an "evolving" record
     "created_at": "2026-06-13T18:42:00Z",
@@ -80,15 +79,19 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
 **Testing:** how it was verified
 ```
 
-## Dedup (on the hot path, no LLM)
+## Dedup & evolution on write (no LLM)
 
-1. **Exact:** the `hash` of normalized content matches → update `last_seen_at`, `duplicate_count`, do not spawn a record.
-2. **Near‑dup:** cosine to nearest neighbors > threshold (e.g. 0.95) within the same `scope`(+`project` for local) →
-   mark as a merge candidate (the merge itself happens in the background) or upsert by `topic_key`.
-3. **topic_key:** if set — upsert the "live" record (versioned) instead of a new row.
+1. **Exact duplicate** → the `hash` of normalized content matches an existing record: bump `last_seen_at` /
+   `duplicate_count`, don't spawn a new record. Identical text carries no new information.
+2. **`topic_key` upsert (explicit evolution)** → if `topic_key` matches an existing record, the new one
+   supersedes it (old → `status: superseded`, kept). This is the writer's explicit signal — **not** dedup.
+3. **Near‑similar is NOT acted on here.** We do **not** suppress near‑duplicates on write — a small but
+   important difference could be lost, and the system must not decide that for the user. Such memories coexist;
+   search returns them. Genuine duplication is merged/flagged later by the background worker, with context
+   ([08-consolidation.md](08-consolidation.md)).
 
-Cosine and hash are cheap, so dedup stays on the hot path. "Smart" semantic merging (paraphrases)
-is done by background consolidation ([08-consolidation.md](08-consolidation.md)).
+Only a `hash` lookup and (for upsert) a `topic_key` lookup are on the write path — both cheap; no
+embedding‑neighbour scan, no LLM.
 
 ## Evolution & staleness
 
@@ -98,8 +101,8 @@ is done by background consolidation ([08-consolidation.md](08-consolidation.md))
   explicit `supersede`). In response the system *mechanically* marks the old record `status: superseded` and
   links them (`supersedes` = old id). This is bookkeeping, not a judgement. Recoverable; nothing is deleted.
 - **No automatic staleness.** The background consolidation worker may only *flag* likely contradictions for
-  review — it never marks a memory stale/inactive by itself. The human or coding‑agent decides, via revision
-  tools (list / inactivate). Exact revision UX is still **TBD** (a future design question).
+  review — it never marks a memory stale by itself. The human or coding‑agent decides, via `delete` (smarter
+  review tooling for flagged contradictions is **post‑MVP**). Exact revision UX is still **TBD**.
 - Age is surfaced (`created_at`) so callers judge freshness themselves. Re‑verifying a fact against current
   code is the **coding‑agent's** job, not the memory's — mnemo does **not** watch files or index code.
 
@@ -107,6 +110,15 @@ is done by background consolidation ([08-consolidation.md](08-consolidation.md))
 validity model (transaction‑time + valid‑time, point‑in‑time queries, retro‑corrections) is a committed
 **post‑MVP** item, to be done *in full* (not half‑measures). The schema stays forward‑compatible: the four
 timestamps are added later as nullable fields, no breaking migration. See [10-roadmap.md](10-roadmap.md).
+
+## Deletion
+
+Hard delete only — no soft‑delete/inactivation. All three are available to **both the agent and the CLI**:
+- `delete(ids)` — remove specific memories.
+- `clear(project)` — remove all memories of one project.
+- `purge()` — remove everything.
+
+Superseding is separate: it keeps history via `status: superseded`; deletion physically removes records.
 
 ## Additional entities (v1+)
 

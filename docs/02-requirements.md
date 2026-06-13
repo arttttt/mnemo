@@ -8,13 +8,16 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑1 (MUST).** Store typed "memories" (see [04-data-model.md](04-data-model.md)):
   `decision, debug, progress, feature, research, code-snippet, rule, learning, discussion, design, working-notes`.
 - **FR‑2 (MUST).** Each memory holds: `content`, `type`, `project`, `related_files[]`, `tags[]`,
-  `importance`, `session_id`, `created_at`, `hash`.
+  `session_id`, `created_at`, `hash`. (`importance` is **post‑MVP** — not in the MVP model.)
 - **FR‑3 (MUST).** Scopes: `project` (local) and `global`. Isolation is **soft** — projects organize memory,
   they are not a search wall. (A `session` scope is deferred — post‑v1, cheap to add later.)
 - **FR‑3b (MUST).** Cross‑project search: retrieval can span all projects (`scope="all"`). The default scope
   (current project + global) may also surface strongly‑relevant cross‑project hits, ranked lower and labeled.
-- **FR‑4 (SHOULD).** Dedup on write: do not spawn near‑duplicates (hash + cosine threshold).
-- **FR‑5 (MAY).** Soft delete/inactivation (recoverable), audit trail.
+- **FR‑4 (SHOULD).** Dedup on write: drop **exact** duplicates only (hash of normalized content). Near‑similar
+  memories are **not** suppressed on write — search returns them; the background worker may merge/flag genuine
+  duplicates later (with context).
+- **FR‑5 (MUST).** Deletion: `delete(ids)`, `clear(project)`, `purge()` — **hard**, available to both the agent
+  and the CLI. No soft‑delete/inactivation.
 
 ### Search and retrieval
 - **FR‑6 (MUST).** Semantic search over local embeddings.
