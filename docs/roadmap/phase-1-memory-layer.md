@@ -22,11 +22,19 @@ full payload (type, scope, project, tags, related_files, hash, status, topic_key
 at startup by config; the in‑memory store stays available as the offline/test backend so unit and most integration
 tests keep running with no downloads. All data lives under the single `~/.mnemo/data/` directory.
 
+**Migration of existing data.** Anyone dogfooding the tool already has memories in the JSON store, and switching
+backends must **lose nothing**. Provide a **one‑time, idempotent migration** that reads the existing JSON store and
+writes every record (re‑embedding as needed) into LanceDB. Expose it as a **menu action in the dev helper script**
+so a developer can run it explicitly; it must be safe to run twice (no duplicates) and must not delete the JSON
+source (the original stays as a fallback until the developer removes it).
+
 **Done when.**
 - The LanceDB store passes the **same store‑contract tests** as in‑memory: write → find by hash, similarity
   ranking, list, and persistence across a reopen.
 - Choosing the backend is one config switch; nothing else in the code changes.
 - The in‑memory backend still works for offline tests.
+- Running the migration moves all existing JSON memories into LanceDB with nothing lost; running it again is a
+  no‑op (idempotent); the dev script offers it as a menu item.
 
 **Depends on:** Phase 0.
 
@@ -104,7 +112,31 @@ near‑duplication, if it accumulates, is cleaned up later by the background wor
 
 ---
 
-### 1.5 Deletion — `delete` / `clear` / `purge`
+### 1.5 Reject over‑window content (explicit overflow error)
+
+**Why.** A memory becomes exactly **one embedding vector**, so its length is bounded by the embedder's context
+window. When content exceeds that window there are only three options, and two are unacceptable: silently
+**truncate** (loses information invisibly — rejected), **auto‑split/summarize** (a judgement call that needs an
+LLM — not allowed on the write path), or **refuse with a clear error**. We refuse. The caller is already an LLM and
+is the right party to compress or split and re‑submit, which keeps the write path LLM‑free and never loses data.
+
+**What.** On write, **before embedding**, check the content size against the active embedder's window. If it fits,
+proceed. If it exceeds, do **not** store and do **not** truncate — return an explicit, actionable error stating the
+limit and the actual size so the agent can compress or split and retry. (Automatically splitting a large document
+into linked atoms is a separate background/ingestion capability — post‑MVP.)
+
+**Done when.**
+- Content within the window stores normally.
+- Over‑window content is rejected with a clear error naming the limit and the actual size; nothing is stored and
+  nothing is truncated.
+- The error surfaces through both the MCP tool and the CLI.
+- Tests cover the boundary (just under / just over).
+
+**Depends on:** 1.1, 1.3.
+
+---
+
+### 1.6 Deletion — `delete` / `clear` / `purge`
 
 **Why.** Managing memory — removing wrong or obsolete entries, wiping a project, starting over — is a real, frequent
 task, so it belongs in the API (minimal ≠ "only read/write"). We decided deletion is **hard** (an agent's mental
@@ -126,7 +158,7 @@ mechanism that keeps history; deletion physically removes.
 
 ---
 
-### 1.6 Sessions + session‑tracking
+### 1.7 Sessions + session‑tracking
 
 **Why.** Two things need to know "what belongs to this working session": `session_recap` (telling the agent where
 it left off) and the background worker (which benefits from a coherent working set to reason over). We decided
@@ -147,7 +179,7 @@ about tracking provenance and enabling recap.)
 
 ---
 
-### 1.7 `recall(project)`
+### 1.8 `recall(project)`
 
 **Why.** This is the product's headline behavior — the "magic word". One call at the start of a session loads enough
 context that the agent stops re‑asking the developer to re‑explain the setup. The agent's API stays tiny because
@@ -161,11 +193,11 @@ feature is enabled.)
 - `recall("p")` returns rules + recent activity + session_recap.
 - Exposed as an MCP tool and tested end‑to‑end.
 
-**Depends on:** 1.6.
+**Depends on:** 1.7.
 
 ---
 
-### 1.8 Deterministic links + provenance
+### 1.9 Deterministic links + provenance
 
 **Why.** Relations between memories (this decision *superseded* that one; this learning *derived from* that debug
 session) make context navigable and give evolution real structure — but the **coding agent must not be the one
@@ -193,7 +225,7 @@ normal actions. And, taking the one genuinely useful idea from code‑graph tool
 
 ---
 
-### 1.9 Concurrency — one shared process, 10+ agents
+### 1.10 Concurrency — one shared process, 10+ agents
 
 **Why.** The defining constraint of the project: a single shared process must serve **10+ agents** without losing
 writes or throwing "database is locked" — the failure mode of the multi‑process‑on‑one‑file tools we surveyed.
@@ -207,7 +239,7 @@ concurrent writers never corrupt or lose data, while reads run in parallel.
 - A stress test with **≥10 parallel writers** shows zero lost writes and no lock errors.
 - Reads run concurrently with writes.
 
-**Depends on:** 1.1–1.5.
+**Depends on:** 1.1–1.6.
 
 ---
 

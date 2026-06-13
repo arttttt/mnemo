@@ -28,7 +28,7 @@ columnar with mmap reads (low RAM at scale), concurrent reads. Data is a directo
 
 ## Embeddings: **ONNX Runtime** via `fastembed` (or `onnxruntime` directly)
 
-- Local, CPU, no API key. Default model per [06-models.md](06-models.md) (`bge-small-en-v1.5` or `Qwen3-Embedding-0.6B`).
+- Local, CPU, no API key. The specific model is **not chosen yet** — it is selected against the requirements in [06-models.md](06-models.md).
 - One‑time weights download at install; afterwards fully offline.
 
 ## Generator inference: **llama.cpp** via `llama-cpp-python`
