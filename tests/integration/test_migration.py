@@ -19,7 +19,7 @@ def _lancedb_target(tmp_path):
     pytest.importorskip("lancedb")
     from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
 
-    return LanceDbMemoryRepository(uri=str(tmp_path / "memory.db"))
+    return LanceDbMemoryRepository(uri=str(tmp_path / "memory"))
 
 
 @pytest.fixture(

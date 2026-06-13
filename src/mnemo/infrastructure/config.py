@@ -26,6 +26,6 @@ class Config:
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
             ),
             lancedb_uri=os.environ.get(
-                "MNEMO_LANCEDB_URI", os.path.join(data_dir, "memory.db")
+                "MNEMO_LANCEDB_URI", os.path.join(data_dir, "memory")
             ),
         )
