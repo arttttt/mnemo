@@ -46,7 +46,7 @@ def build_mcp(container: Optional[Container] = None):
             Field(description="Kind of memory (shapes retrieval): decision, debug, progress, feature, research, code-snippet, rule, learning, discussion, design, working-notes."),
         ] = "working-notes",
         project: Annotated[
-            Optional[str],
+            str,
             Field(description="Project slug in kebab-case. Omit and set scope='global' for cross-project knowledge."),
         ] = None,
         scope: Annotated[
@@ -54,15 +54,15 @@ def build_mcp(container: Optional[Container] = None):
             Field(description="'project' = belongs to one project; 'global' = applies everywhere (rules, cross-project lessons)."),
         ] = "project",
         related_files: Annotated[
-            Optional[list[str]],
+            list[str],
             Field(description="File paths this memory concerns."),
         ] = None,
         tags: Annotated[
-            Optional[list[str]],
+            list[str],
             Field(description="Optional keywords for later filtering."),
         ] = None,
         topic_key: Annotated[
-            Optional[str],
+            str,
             Field(description="Stable key (e.g. 'auth/jwt-model') to evolve one memory over time instead of creating duplicates."),
         ] = None,
     ) -> dict:
@@ -93,23 +93,23 @@ def build_mcp(container: Optional[Container] = None):
             Field(description="'project' (default) = current project + global; 'global' = only global; 'all' = every project (cross-project)."),
         ] = "project",
         project: Annotated[
-            Optional[str],
+            str,
             Field(description="Project slug to scope to when scope='project'."),
         ] = None,
         type: Annotated[
-            Optional[MemoryTypeName],
+            MemoryTypeName,
             Field(description="Restrict results to a single memory type."),
         ] = None,
         tags: Annotated[
-            Optional[list[str]],
+            list[str],
             Field(description="Keep only memories carrying ALL of these tags."),
         ] = None,
         related_files: Annotated[
-            Optional[list[str]],
+            list[str],
             Field(description="Keep only memories referencing ANY of these file paths."),
         ] = None,
         recency_days: Annotated[
-            Optional[int],
+            int,
             Field(ge=1, description="Keep only memories created within the last N days."),
         ] = None,
         limit: Annotated[
