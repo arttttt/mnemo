@@ -7,11 +7,12 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.2.0",
     "typer>=0.12.0",
+    "sqlite-vec>=0.1.6",       # default store: vector search inside SQLite (FTS5 is built in)
 ]
 
 [project.optional-dependencies]
 embed = ["fastembed>=0.4.0"]   # local ONNX embeddings (heavy)
-store = ["lancedb>=0.13.0"]    # Phase 1 scaling backend
+store = ["lancedb>=0.13.0"]    # legacy backend — only for the one-time migration to SQLite
 dev = ["pytest>=8.0"]
 
 [project.scripts]

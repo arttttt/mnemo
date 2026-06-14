@@ -1,8 +1,10 @@
 """One contract, run against every MemoryRepositoryPort backend.
 
-The in-memory backend runs always (offline). The LanceDB backend is marked
-`heavy` so it is skipped by the default offline run and exercised only with
-`-m heavy` (it needs the optional `lancedb` dependency).
+The in-memory and SQLite (`sqlite-vec` + FTS5) backends run always — both are
+offline and light (`sqlite-vec` is a small extension, skipped gracefully if
+absent). The LanceDB backend is marked `heavy` so it is skipped by the default
+offline run and exercised only with `-m heavy` (it needs the optional `lancedb`
+dependency).
 """
 import pytest
 
@@ -19,6 +21,13 @@ def _in_memory(tmp_path):
     return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
 
 
+def _sqlite(tmp_path):
+    pytest.importorskip("sqlite_vec")
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+
+
 def _lancedb(tmp_path):
     pytest.importorskip("lancedb")
     from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
@@ -29,6 +38,7 @@ def _lancedb(tmp_path):
 @pytest.fixture(
     params=[
         pytest.param(_in_memory, id="in_memory"),
+        pytest.param(_sqlite, id="sqlite"),
         pytest.param(_lancedb, id="lancedb", marks=pytest.mark.heavy),
     ]
 )
@@ -118,6 +128,23 @@ def test_search_recency_excludes_old(open_repo, embedder):
 
     future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
     assert repo.search("fresh note", embedder.encode("fresh note"), future_cutoff, limit=5) == []
+
+
+def test_sqlite_hybrid_finds_exact_token(tmp_path):
+    pytest.importorskip("sqlite_vec")
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+    embedder = HashEmbedder()
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+    target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
+    _store(repo, embedder, "unrelated postgres migration notes", project="api")
+
+    # FTS5 is created with the schema, so an exact token ranks first via the
+    # lexical (BM25) half of the hybrid, even though it is a rare term.
+    hits = repo.search(
+        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
+    )
+    assert hits and hits[0].memory.id == target.id
 
 
 @pytest.mark.heavy
