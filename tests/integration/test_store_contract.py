@@ -59,11 +59,14 @@ def test_add_and_find_by_hash(open_repo, embedder):
 
 
 def test_persists_across_reopen(open_repo, embedder):
-    memory = _store(open_repo(), embedder, "remembered after reopen", project="api")
+    memory = _store(
+        open_repo(), embedder, "remembered after reopen", project="api", session_id="run-1"
+    )
 
     reopened = open_repo()
     stored = reopened.list_all()
     assert [m.id for m in stored] == [memory.id]
+    assert stored[0].session_id == "run-1"  # session_id round-trips through the store
     assert reopened.find_by_hash(memory.hash) is not None
 
 
