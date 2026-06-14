@@ -6,15 +6,14 @@ deterministic part of evolution. (Concurrency under 10+ agents is an *architectu
 Each step is **Why** (the requirement and the reasoning behind it) · **What** (exactly what to build, including
 what *not* to do) · **Done when** (verifiable) · **Depends on**.
 
-> **Status.** The memory layer is built (1.1–1.7): typed store, hybrid search + filters, dedup / `topic_key`
-> upsert, deletion, session tracking. **The store is now being re‑platformed from LanceDB to SQLite +
-> `sqlite-vec` + FTS5** — a sub‑phase before the architecture work; see
-> [adr/0001-storage-engine.md](../adr/0001-storage-engine.md). **1.9** (typed links + provenance) folds into
-> that re‑platform — on SQLite, links are a native table, not denormalized. **1.5** (over‑window) moved to the
-> embedder boundary ([06-models.md](../06-models.md)); **1.8** (`recall`) is [post‑MVP](post-mvp.md);
-> **1.10** (concurrency) moved to the architecture section ([03-architecture.md](../03-architecture.md)) — it
-> depends on the target topology. Step bodies below describe what was built on the LanceDB skeleton; the engine
-> is superseded by the ADR.
+> **Status — COMPLETE (v0.1.0).** The memory layer is done: typed store, hybrid search + filters, dedup /
+> `topic_key` upsert, deletion, session tracking, and the deterministic part of evolution. **The store was
+> re‑platformed from LanceDB to SQLite + `sqlite-vec` + FTS5** (the [sub‑phase](sqlite-migration.md), now
+> finished; see [adr/0001-storage-engine.md](../adr/0001-storage-engine.md)), and **1.9** (typed links +
+> provenance) landed with it as a native `links` table. **1.5** (over‑window) moved to the embedder boundary
+> ([06-models.md](../06-models.md)); **1.8** (`recall`) is [post‑MVP](post-mvp.md); **1.10** (concurrency) moved
+> to the architecture section ([03-architecture.md](../03-architecture.md)) — it depends on the target topology.
+> Step bodies below describe what was first built on the LanceDB skeleton; the engine is superseded by the ADR.
 
 ---
 
@@ -230,4 +229,4 @@ solve the wrong problem.
 
 ---
 
-**Phase done when:** the MVP FRs hold (FR‑11 `recall` is post‑MVP); the store is SQLite + `sqlite-vec` + FTS5. (Concurrency validation is an architecture milestone — see [03-architecture.md](../03-architecture.md).)
+**Phase done when:** the MVP FRs hold (FR‑11 `recall` is post‑MVP); the store is SQLite + `sqlite-vec` + FTS5. (Concurrency validation is an architecture milestone — see [03-architecture.md](../03-architecture.md).) — **Met at v0.1.0.**

@@ -1,5 +1,10 @@
 # Sub‑phase — Re‑platform the store to SQLite
 
+> **Status — DONE (v0.1.0).** All steps below shipped: the SQLite + `sqlite-vec` + FTS5 adapter and RRF hybrid
+> (S.1–S.2), the typed `links` table (S.3), SQLite as the default backend with the `mnemo migrate` re‑point
+> (S.4), the live dogfooding data migrated (S.5), and the integration tests in the same PRs (S.6). The store now
+> runs on SQLite; LanceDB remains only as a legacy migration source.
+
 Between the memory layer ([phase-1-memory-layer.md](phase-1-memory-layer.md)) and the architecture work: swap
 the store engine from LanceDB to **SQLite + `sqlite-vec` + FTS5**. Rationale and alternatives are in
 [adr/0001-storage-engine.md](../adr/0001-storage-engine.md) — in short, mnemo's mutable typed core is OLTP‑shaped
