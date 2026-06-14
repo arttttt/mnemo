@@ -82,6 +82,18 @@ axiom, re‑typing is a cheap, reindex‑free, reversible filter‑facet correct
 `provenance=llm` and a before→after log, rather than flag‑only (which would create review noise for every typo).
 Settle the policy when the worker's op set is designed.
 
+### Management surface — audit & correct memory *through the server*
+**Why:** auditing and correcting memory (find stale entries, supersede, re‑type, delete) must go through the
+**real service** — the one owner of the store — but the MCP surface can't support it: there is no list/browse, no
+fetch by `id` or `topic_key`, and `search` returns neither `topic_key` nor `status`. So a sweep over the active
+memories to fix them isn't expressible through the server, which forces a **direct read of the SQLite file** — a
+side‑channel around the service that owns the store (observed during a real memory audit). This is the *ops*
+driver behind the `get`/`neighbors` and browse items above, not just retrieval polish.
+**What:** a small ops surface exposed *by the service* — `get(id | topic_key)` and a query‑less `list`/browse
+(filter by type / tags / scope / recency, returning `topic_key` + `status`) — so the store is audited and
+corrected through its single owner, never a side‑channel. Writes already go through the service (`remember` /
+`delete`); reads for management must too.
+
 ### Deferred indefinitely
 **Why:** out of the local, single‑user, lightweight scope mnemo targets.
 **What (not doing unless the scope changes):** knowledge graph / multi‑hop traversal; web dashboard; document/PDF
