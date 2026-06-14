@@ -30,7 +30,7 @@ tests/
 
 - **Fast & offline by default:** unit and most integration tests use the `hash` embedder + in‑memory/JSON store —
   no network, no heavy deps.
-- **Heavy/networked tests are opt‑in:** real backends (fastembed, lancedb) live behind `@pytest.mark.heavy` and
+- **Heavy/networked tests are opt‑in:** the real embedder (fastembed) lives behind `@pytest.mark.heavy` and
   are skipped unless explicitly requested.
 - **Ports enable isolation:** because use cases depend on ports, unit tests inject fakes — no MCP/DB needed to test core logic.
 - **One behavior per test;** integration tests assert the adapter honors its port contract.

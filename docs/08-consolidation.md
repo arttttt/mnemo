@@ -40,7 +40,7 @@ trigger → select a batch of candidates (new records + their embedding neighbor
 The generator lives only for the job's duration. Consolidation is **designed concurrent from the start** —
 a worker pool over batches, not one serial pass — since 10+ agents accumulate memory quickly. The local
 inference server is chosen for concurrency: **vLLM/SGLang** (continuous batching) when the model must serve
-parallel requests; llama.cpp on‑demand for the lightest single‑stream case. The store backend (LanceDB)
+parallel requests; llama.cpp on‑demand for the lightest single‑stream case. The store backend (SQLite)
 absorbs concurrent writes.
 
 ## Model call contract (reliability at 4B)
