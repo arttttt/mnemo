@@ -98,22 +98,30 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 | `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend |
 | `MNEMO_EMBEDDER` | `fastembed` | `fastembed` (real, local) or `hash` (offline) |
 
-## 5. Use it — MCP (Claude Code / Cursor)
+## 5. Use it — MCP (one-command setup)
 
-Point your MCP client at the `mnemo-mcp` entry point. Simplest with uv (no global install — runs in the project venv):
+`mnemo setup` wires a client to the connector for you — no hand-editing JSON. It resolves the right
+launch command (an absolute `mnemo-mcp`, or `uv run --directory <repo> mnemo-mcp` from a checkout) and
+either runs the client's own `mcp add` or writes its config file.
 
 ```bash
+mnemo setup                 # detect installed clients, list them, pick which to wire
+mnemo setup cursor          # wire one explicitly (no prompt)
+mnemo setup --all           # wire every detected client
+mnemo setup --dry-run       # show what it would do, write nothing
+```
+
+Supported clients: **claude-code**, **codex**, **kimi-code** (via each one's official `mcp add`), and
+**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has two tools:
+**`remember`** and **`search`**.
+
+Prefer to wire it by hand? Point the client's MCP config (stdio transport) at `mnemo-mcp`, e.g. for
+Claude Code:
+```bash
+claude mcp add --scope user mnemo -- mnemo-mcp
+# or, from a checkout without a global install:
 claude mcp add --scope user mnemo -- uv run --directory /ABS/PATH/to/mnemo mnemo-mcp
 ```
-
-Or install it as a global tool and reference the bare command:
-```bash
-uv tool install --from . "mnemo[embed]"          # provides `mnemo` and `mnemo-mcp` on PATH
-claude mcp add --scope user mnemo -- mnemo-mcp
-```
-
-The agent then has two tools: **`remember`** and **`search`**. For Cursor/Windsurf, put the same
-`mnemo-mcp` command into the client's MCP config (stdio transport).
 
 > The on‑demand lifecycle is live: the `mnemo-mcp` connector **auto‑starts** the shared service on first use and
 > the service **idle‑exits** after a grace period once no connector is alive — see

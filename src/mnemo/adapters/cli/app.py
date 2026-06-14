@@ -135,5 +135,69 @@ def purge() -> None:
     typer.echo(json.dumps(asdict(result)))
 
 
+@app.command()
+def setup(
+    client: Optional[str] = typer.Argument(
+        None,
+        help="Client to wire: claude-code, codex, kimi-code, cursor, windsurf, opencode. "
+        "Omit to detect installed clients and pick from a list.",
+    ),
+    all_clients: bool = typer.Option(
+        False, "--all", help="Wire every detected client without prompting."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be done; write nothing."
+    ),
+) -> None:
+    """Wire an MCP client to mnemo, or detect installed clients and offer to."""
+    from mnemo.adapters.setup.client_registry import build_installers
+    from mnemo.adapters.setup.selection import parse_selection
+
+    installers = build_installers()
+    by_name = {installer.name: installer for installer in installers}
+
+    if client is not None:
+        target = by_name.get(client)
+        if target is None:
+            raise typer.BadParameter(f"unknown client '{client}'. Known: {', '.join(by_name)}")
+        _apply([target], dry_run)
+        return
+
+    detected = [installer for installer in installers if installer.detect()]
+    if not detected:
+        typer.echo(
+            "No supported MCP clients detected. Wire one explicitly: "
+            f"mnemo setup <{'|'.join(by_name)}>"
+        )
+        return
+
+    typer.echo("Detected clients:")
+    for number, installer in enumerate(detected, start=1):
+        typer.echo(f"  {number}) {installer.name} — {installer.describe()}")
+    if dry_run:
+        return
+
+    if all_clients:
+        chosen = detected
+    else:
+        answer = typer.prompt("Select clients to wire (e.g. 1,3 or 'all')", default="all")
+        chosen = [detected[index] for index in parse_selection(answer, len(detected))]
+    _apply(chosen, dry_run=False)
+
+
+def _apply(installers, dry_run: bool) -> None:
+    if not installers:
+        typer.echo("Nothing to do.")
+        return
+    for installer in installers:
+        if dry_run:
+            typer.echo(f"[dry-run] {installer.name}: {installer.describe()}")
+            continue
+        result = installer.install()
+        mark = "✓" if result.status == "ok" else "✗"
+        suffix = f"  ({result.message})" if result.message else ""
+        typer.echo(f"{mark} {result.client}: {result.target}{suffix}")
+
+
 def main() -> None:
     app()

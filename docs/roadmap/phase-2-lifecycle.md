@@ -5,12 +5,13 @@ connected**, no Docker.
 
 Each step is **Why** (the requirement and reasoning) · **What** (exactly what to build) · **Done when** · **Depends on**.
 
-> **Status (v0.1.2).** **2.1 and 2.2 are built.** 2.1: one shared `mnemo-service` over streamable-http owning a
-> single embedder + thread-safe store; a thin `mnemo-mcp` connector that proxies into it, **spawns it on demand**
+> **Status (v0.1.3).** **2.1, 2.2 and 2.4 are built.** 2.1: one shared `mnemo-service` over streamable-http owning
+> a single embedder + thread-safe store; a thin `mnemo-mcp` connector that proxies into it, **spawns it on demand**
 > (no socket activation — see 2.3), and **owns the run's session id** (sent to the service as request metadata, so
 > the service never invents one). The embedder is shared, so the footprint is `S + c·N`, not `S·N` — validated on
 > real hardware (~170 MB service + ~40 MB per connector). 2.2: the service **idle-exits** when no connector is
-> alive (see below). Remaining: 2.4 (setup), 2.5 (footprint check), and the 10+-agent concurrency stress.
+> alive (see below). 2.4: `mnemo setup` wires six MCP clients (one command, no hand-editing). Remaining: 2.5
+> (footprint check) and the 10+-agent concurrency stress.
 
 ---
 
@@ -69,13 +70,22 @@ launchd‑vs‑systemd portability cost disappears. Idle‑**exit** stays the se
 
 ---
 
-### 2.4 One‑command setup per client
+### 2.4 One‑command setup per client — **built**
 
 **Why.** Setup must be one or two commands, not hand‑editing JSON config, or people won't adopt it.
 
-**What.** A command that wires a given client (Claude Code / Cursor) to mnemo and installs the activation.
+**What (built).** `mnemo setup` resolves the connector launch command (absolute `mnemo-mcp`, or
+`uv run --directory <repo> mnemo-mcp` from a checkout — absolute so GUI clients' PATH resolves it) and
+wires a client to it. Six clients, two integration styles behind one `ClientInstaller` port: those that
+ship an official `mcp add` (**claude-code**, **codex**, **kimi-code**) are shelled out to; the rest
+(**cursor**, **windsurf**, **opencode**) have their MCP config written directly (idempotent upsert,
+other entries preserved). `mnemo setup` with no client **detects** installed clients, lists them, and
+wires the picked subset; `mnemo setup <client>` wires one; `--all` wires all detected; `--dry-run`
+writes nothing. No socket/launchd activation to install (the connector spawns the service on demand).
 
-**Done when.** Running it yields a working connection with no manual editing.
+**Done when.** ✅ Running it yields a working connection with no manual editing. Covered by unit tests
+(selection parsing, command resolution) and real-boundary integration (file writes per client, the CLI
+installer's exact argv via a fake runner, and the `setup` command through the real CLI app).
 
 **Depends on:** 2.1, 2.3.
 
