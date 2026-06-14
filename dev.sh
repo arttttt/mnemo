@@ -66,6 +66,25 @@ cmd_migrate() {
   uv run mnemo migrate
 }
 
+# ONE-TIME migration (temporary — delete this once your store is reindexed).
+# Builds the full-text index on a LanceDB store created before hybrid search.
+# New stores are created with the index already, so they never need this.
+cmd_reindex() {
+  require_uv
+  uv run python -c "
+from mnemo.adapters.store.lancedb_repository import _TABLE
+from mnemo.infrastructure.config import Config
+import lancedb
+cfg = Config.from_env()
+t = lancedb.connect(cfg.lancedb_uri).open_table(_TABLE)
+if any('content' in getattr(i, 'columns', []) for i in t.list_indices()):
+    print('FTS index already present - nothing to do.')
+else:
+    t.create_fts_index('content')
+    print('Built FTS index on', cfg.lancedb_uri)
+"
+}
+
 cmd_clean() {
   rm -rf "$VENV" build dist .pytest_cache ./*.egg-info src/*.egg-info
   find . -type d -name __pycache__ -prune -exec rm -rf {} +
@@ -94,6 +113,7 @@ print_menu() {
   7) clean          remove .venv, caches, build artifacts
   8) migrate        copy memories from the JSON store into LanceDB (idempotent)
   9) purge-data     delete memory data ($DATA_DIR)  [destructive]
+ 10) reindex        one-time: build the FTS index on a pre-hybrid store [temporary]
   0) quit
 EOF
 }
@@ -109,6 +129,7 @@ dispatch() {
     7 | clean) cmd_clean ;;
     8 | migrate) cmd_migrate ;;
     9 | purge-data | purge_data) cmd_purge_data ;;
+    10 | reindex) cmd_reindex ;;
     *) echo "invalid choice: $1" >&2; return 1 ;;
   esac
 }

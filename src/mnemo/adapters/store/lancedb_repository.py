@@ -47,20 +47,21 @@ class LanceDbMemoryRepository:
         return None
 
     def search(
-        self, vector: Vector, criteria: SearchCriteria, limit: int
+        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
     ) -> list[ScoredMemory]:
         if self._table is None:
             return []
         rows = (
-            self._table.search(list(vector))
-            .metric("cosine")
+            self._table.search(query_type="hybrid")
+            .vector(list(vector))
+            .text(query)
             .where(self._where(criteria), prefilter=True)
             .limit(limit)
             .to_list()
         )
-        # LanceDB cosine distance = 1 - cosine similarity; restore similarity.
+        # Native hybrid fuses dense + full-text via reciprocal-rank fusion.
         return [
-            ScoredMemory(memory=from_dict(row), score=1.0 - row["_distance"])
+            ScoredMemory(memory=from_dict(row), score=row["_relevance_score"])
             for row in rows
         ]
 
@@ -139,6 +140,10 @@ class LanceDbMemoryRepository:
     def _ensure_table(self, dim: int):
         if self._table is None:
             self._table = self._db.create_table(_TABLE, schema=self._schema(dim))
+            # Build the full-text index up front so hybrid search works from the
+            # first query — a new store is born hybrid-ready. (A store created
+            # before hybrid is upgraded once via the dev-script reindex step.)
+            self._table.create_fts_index("content")
         return self._table
 
     def _first(self, predicate: str) -> Memory | None:
