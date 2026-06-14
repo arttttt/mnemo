@@ -115,8 +115,10 @@ claude mcp add --scope user mnemo -- mnemo-mcp
 The agent then has two tools: **`remember`** and **`search`**. For Cursor/Windsurf, put the same
 `mnemo-mcp` command into the client's MCP config (stdio transport).
 
-> Phase 0 is launched per session / manually. The on‑demand lifecycle (auto start + grace shutdown)
-> is Phase 2 — see [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md).
+> The on‑demand lifecycle is live: the `mnemo-mcp` connector **auto‑starts** the shared service on first use and
+> the service **idle‑exits** after a grace period once no connector is alive — see
+> [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md). No manual start/stop needed (`./dev.sh stop` remains as a
+> manual override).
 
 ## 6. Update (later)
 
