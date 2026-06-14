@@ -22,11 +22,13 @@ from pathlib import Path
 import sqlite_vec
 from sqlite_vec import serialize_float32
 
+from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 # Payload columns, qualified to the `m` alias so they stay unambiguous when the
@@ -62,6 +64,16 @@ class SqliteVecMemoryRepository:
             ).fetchone()
             is not None
         )
+        # The links table is dimension-independent, so it exists from the start
+        # (an edge can be written before, or independently of, any memory row).
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS links ("
+            " source_id TEXT NOT NULL, target_id TEXT NOT NULL, type TEXT NOT NULL,"
+            " provenance TEXT NOT NULL, created_at TEXT NOT NULL,"
+            " PRIMARY KEY (source_id, target_id, type))"
+        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS links_target ON links(target_id)")
+        self._conn.commit()
 
     def add(self, memory: Memory, vector: Vector) -> None:
         if not self._ready:
@@ -154,6 +166,11 @@ class SqliteVecMemoryRepository:
         if not self._ready or not ids:
             return 0
         placeholders = ", ".join("?" for _ in ids)
+        self._conn.execute(
+            f"DELETE FROM links WHERE source_id IN ({placeholders})"
+            f" OR target_id IN ({placeholders})",
+            (*ids, *ids),
+        )
         cursor = self._conn.execute(
             f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
         )
@@ -163,6 +180,12 @@ class SqliteVecMemoryRepository:
     def delete_by_project(self, project: str) -> int:
         if not self._ready:
             return 0
+        self._conn.execute(
+            "DELETE FROM links WHERE source_id IN"
+            " (SELECT id FROM memories WHERE project = ?) OR target_id IN"
+            " (SELECT id FROM memories WHERE project = ?)",
+            (project, project),
+        )
         cursor = self._conn.execute(
             "DELETE FROM memories WHERE project = ?", (project,)
         )
@@ -170,7 +193,9 @@ class SqliteVecMemoryRepository:
         return cursor.rowcount
 
     def delete_all(self) -> int:
+        self._conn.execute("DELETE FROM links")
         if not self._ready:
+            self._conn.commit()
             return 0
         (removed,) = self._conn.execute("SELECT count(*) FROM memories").fetchone()
         self._conn.execute("DELETE FROM memories")
@@ -182,6 +207,23 @@ class SqliteVecMemoryRepository:
             return []
         rows = self._conn.execute(f"SELECT {_PAYLOAD} FROM memories m").fetchall()
         return [self._to_memory(row) for row in rows]
+
+    def add_link(self, link: Link) -> None:
+        data = link_to_dict(link)
+        self._conn.execute(
+            "INSERT OR REPLACE INTO links (source_id, target_id, type, provenance,"
+            " created_at) VALUES (:source_id, :target_id, :type, :provenance, :created_at)",
+            data,
+        )
+        self._conn.commit()
+
+    def links_for(self, memory_id: str) -> list[Link]:
+        rows = self._conn.execute(
+            "SELECT source_id, target_id, type, provenance, created_at FROM links"
+            " WHERE source_id = ? OR target_id = ?",
+            (memory_id, memory_id),
+        ).fetchall()
+        return [link_from_dict(dict(row)) for row in rows]
 
     # --- internals ---
 

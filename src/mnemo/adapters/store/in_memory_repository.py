@@ -8,11 +8,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.similarity import cosine
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 
@@ -21,6 +23,7 @@ class InMemoryMemoryRepository:
         self._path = Path(path) if path else None
         self._items: list[tuple[Memory, Vector]] = []
         self._index_by_hash: dict[str, int] = {}
+        self._links: list[Link] = []
         self._load()
 
     def add(self, memory: Memory, vector: Vector) -> None:
@@ -83,24 +86,42 @@ class InMemoryMemoryRepository:
         removed = len(self._items)
         self._items = []
         self._index_by_hash = {}
+        self._links = []
         self._persist()
         return removed
 
     def list_all(self) -> list[Memory]:
         return [memory for memory, _ in self._items]
 
+    def add_link(self, link: Link) -> None:
+        self._links.append(link)
+        self._persist()
+
+    def links_for(self, memory_id: str) -> list[Link]:
+        return [
+            link
+            for link in self._links
+            if memory_id in (link.source_id, link.target_id)
+        ]
+
     # --- internals ---
 
     def _remove(self, should_remove) -> int:
-        before = len(self._items)
+        removed_ids = {memory.id for memory, _ in self._items if should_remove(memory)}
         self._items = [
             (memory, vector)
             for memory, vector in self._items
             if not should_remove(memory)
         ]
+        # Drop edges that would dangle once their endpoint is gone.
+        self._links = [
+            link
+            for link in self._links
+            if link.source_id not in removed_ids and link.target_id not in removed_ids
+        ]
         self._reindex()
         self._persist()
-        return before - len(self._items)
+        return len(removed_ids)
 
     def _reindex(self) -> None:
         self._index_by_hash = {
@@ -111,16 +132,24 @@ class InMemoryMemoryRepository:
         if self._path is None:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        payload = [
-            {"memory": to_dict(memory), "vector": vector}
-            for memory, vector in self._items
-        ]
+        payload = {
+            "memories": [
+                {"memory": to_dict(memory), "vector": vector}
+                for memory, vector in self._items
+            ],
+            "links": [link_to_dict(link) for link in self._links],
+        }
         self._path.write_text(json.dumps(payload))
 
     def _load(self) -> None:
         if self._path is None or not self._path.exists():
             return
-        for row in json.loads(self._path.read_text()):
+        raw = json.loads(self._path.read_text())
+        # Back-compat: the pre-links format was a bare list of memory rows.
+        rows = raw["memories"] if isinstance(raw, dict) else raw
+        for row in rows:
             memory = from_dict(row["memory"])
             self._index_by_hash[memory.hash] = len(self._items)
             self._items.append((memory, list(row["vector"])))
+        if isinstance(raw, dict):
+            self._links = [link_from_dict(link) for link in raw.get("links", [])]

@@ -6,6 +6,7 @@ from typing import Protocol
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 
@@ -33,3 +34,7 @@ class MemoryRepositoryPort(Protocol):
     def delete_all(self) -> int: ...
 
     def list_all(self) -> list[Memory]: ...
+
+    def add_link(self, link: Link) -> None: ...
+
+    def links_for(self, memory_id: str) -> list[Link]: ...

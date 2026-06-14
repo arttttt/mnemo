@@ -6,6 +6,7 @@ from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.domain.constants import DEFAULT_TYPE
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
@@ -68,4 +69,16 @@ class RememberMemory:
         # worker may merge/flag genuine duplicates later (docs/04-data-model.md).
         vector = self._embedder.encode(memory.content)
         self._repository.add(memory, vector)
+
+        # Deterministic typed edge: record the supersede as a link with provenance
+        # (the topic_key that triggered it). Built FOR the agent, never inferred.
+        if superseded_id is not None:
+            self._repository.add_link(
+                Link.supersedes(
+                    source_id=memory.id,
+                    target_id=superseded_id,
+                    provenance=memory.topic_key,
+                )
+            )
+
         return RememberResult(id=memory.id, superseded=superseded_id)

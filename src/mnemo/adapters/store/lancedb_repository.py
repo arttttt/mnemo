@@ -135,6 +135,16 @@ class LanceDbMemoryRepository:
             return []
         return [from_dict(row) for row in self._table.to_arrow().to_pylist()]
 
+    def add_link(self, link) -> None:
+        # Legacy backend (migration source only): the typed `links` table is a
+        # SQLite-era feature and is not reproduced on LanceDB's join-less store.
+        # The supersede relation is still captured by the denormalized
+        # `Memory.supersedes` pointer, so no relationship is lost on this path.
+        return None
+
+    def links_for(self, memory_id: str) -> list:
+        return []
+
     # --- internals ---
 
     def _ensure_table(self, dim: int):
