@@ -92,7 +92,7 @@ print_menu() {
   5) demo           quick offline CLI demo
   6) mcp            print the Claude Code MCP add command
   7) clean          remove .venv, caches, build artifacts
-  8) migrate        copy memories from the JSON store into LanceDB (idempotent)
+  8) migrate        copy memories from the legacy LanceDB store into SQLite (idempotent)
   9) purge-data     delete memory data ($DATA_DIR)  [destructive]
   0) quit
 EOF

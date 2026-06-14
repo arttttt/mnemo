@@ -60,14 +60,15 @@ Editable install (`-e`) means code changes take effect immediately — no reinst
 ## 3. Run the tests
 
 ```bash
-uv run pytest                    # unit + offline integration  -> 16 passed, 1 skipped
+uv run pytest                    # unit + offline integration (in‑memory + SQLite backends)
 uv run pytest tests/unit         # only unit
-uv run pytest -m heavy           # real fastembed (downloads the model)
+uv run pytest -m heavy           # real fastembed (downloads the model) + LanceDB migration
 ```
 
-Covered: unit (domain, use cases) + integration (store persistence, DI container, CLI, MCP).
-Offline and fast by default — the `hash` embedder is used so nothing is downloaded; the real‑embedder
-test is marked `heavy` and skipped unless requested.
+Covered: unit (domain, use cases, rank fusion) + integration (store contract on in‑memory and SQLite,
+DI container, CLI, MCP, migration). Offline and fast by default — the `hash` embedder is used so nothing is
+downloaded, and the SQLite backend runs offline (`sqlite-vec` is a small extension). The real‑embedder and the
+legacy LanceDB tests are marked `heavy` and skipped unless requested.
 
 ## 4. Use it — CLI
 
@@ -92,14 +93,15 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 | Variable | Default | Meaning |
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
-| `MNEMO_STORE` | `lancedb` | `lancedb` (default, persistent ANN) or `memory` (in‑memory/JSON; offline/tests) |
-| `MNEMO_LANCEDB_URI` | `<data>/memory` | LanceDB store directory |
-| `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend and as the migration source |
+| `MNEMO_STORE` | `sqlite` | `sqlite` (default — SQLite + `sqlite-vec` + FTS5), `memory` (in‑memory/JSON; offline/tests), or `lancedb` (legacy) |
+| `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (the default backend) |
+| `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend |
+| `MNEMO_LANCEDB_URI` | `<data>/memory` | legacy LanceDB store directory (migration source only) |
 | `MNEMO_EMBEDDER` | `fastembed` | `fastembed` (real, local) or `hash` (offline) |
 
-> **Switching an existing JSON store to LanceDB:** run `mnemo migrate` (or the `migrate` item in `dev.sh`).
-> It copies every record from the JSON store into LanceDB, is safe to re‑run (idempotent), and leaves the
-> JSON file untouched as a fallback.
+> **Re‑platforming a legacy LanceDB store to SQLite:** run `mnemo migrate` (or the `migrate` item in `dev.sh`).
+> It copies every record from the LanceDB store into SQLite (re‑embedding with the configured embedder), is safe
+> to re‑run (idempotent), and leaves the LanceDB directory untouched as a fallback.
 
 ## 5. Use it — MCP (Claude Code / Cursor)
 
