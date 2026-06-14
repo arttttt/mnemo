@@ -32,6 +32,17 @@ offline tests; it is not a real option.
 > No selection is made here. When the embedder is picked, record the choice and the fixed dimension, and
 > note that switching it later forces a reindex.
 
+### Content window (over-size handling)
+
+Because one memory is one vector, the embedder's context window is the **hard upper bound on a memory's size**
+— this is an embedder concern, not a memory‑layer one. The chosen embedder's adapter **owns and enforces** it:
+on input that exceeds the window, `encode()` raises an explicit, actionable error stating the limit and the
+actual size. It never silently truncates and never auto‑splits (auto‑split needs an LLM and is a post‑MVP
+ingestion task). The write use case simply **surfaces** that error to the caller — already an LLM — which
+compresses or splits the content and re‑submits, keeping the write path LLM‑free. Concrete enforcement lands
+**with the embedder choice** (the window value is the model's, not a guess); the offline hash embedder has no
+meaningful window and imposes no limit. The policy ("never truncate") is in [04-data-model.md](04-data-model.md).
+
 ## 2. Generator (background; on demand; transient)
 
 A single small instruct LLM. Loaded only for the consolidation window, then unloaded.

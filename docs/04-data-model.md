@@ -41,7 +41,7 @@ A memory has a **scope** that controls where it lives and how it surfaces in sea
 
 > **`session` scope is deferred (not in v1).** For transient context, use `working-notes` for now. Adding a
 > `session` scope later is cheap (one scope value + a filter), so we leave it out until there's a clear need.
-> Note: `session_id` is still recorded on every memory (for `session_recap`) — that is independent of a session *scope*.
+> Note: `session_id` is still recorded on every memory (session tracking — provenance/grouping) — that is independent of a session *scope*.
 
 ## Record
 
@@ -56,7 +56,7 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
     "type": "decision",                 // one of the types above; default "working-notes"
     "scope": "project",                // project | global   (session scope deferred, not v1)
     "project": "checkout-api",          // kebab-case; ignored when scope=global
-    "session_id": "2026-06-13T...",     // which session created this (used by session_recap)
+    "session_id": "2026-06-13T...",     // which run created this (session tracking)
     "related_files": ["src/auth/jwt.ts"],
     "tags": ["authentication", "jwt"],   // optional keyword list; a property (not a type), searchable
     "hash": "sha256(normalized_content)",// for exact dedup
@@ -91,7 +91,8 @@ coherent thought stays a single memory even if it spans a few paragraphs. Two fa
 - **Too fine** → fragmented memories that lose cohesion and add extra linking overhead.
 
 **Hard rule — never silently truncate.** If content exceeds the embedder's window, the write is
-**rejected with an explicit, actionable error** (stating the limit and the actual size), so the calling
+**rejected with an explicit, actionable error** (stating the limit and the actual size) — enforced at the
+embedder boundary (see [06-models.md](06-models.md)), so the calling
 agent — already an LLM — compresses or splits it and re‑submits. The write path stays LLM‑free: it does
 **not** auto‑summarize or auto‑split. Splitting a large document into linked atoms is a separate
 background/ingestion capability — **post‑MVP** (see [10-roadmap.md](10-roadmap.md)).
@@ -139,7 +140,7 @@ Superseding is separate: it keeps history via `status: superseded`; deletion phy
 
 ## Additional entities (v1+)
 
-- **sessions:** `id, project, started_at, ended_at, summary` — for `session_recap`.
+- **sessions:** `id, project, started_at, ended_at` — tracking only (provenance/grouping). A stored summary and `recall` are **post‑MVP**.
 - **rules:** plain memories with `type: rule` (scope `project` or `global`).
 - **tasks (MAY):** `id, project, description, status, linked_memory_ids[]`.
 

@@ -26,12 +26,16 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑9 (SHOULD).** Rerank top candidates (optional local reranker).
 
 ### Sessions and context
-- **FR‑10 (MUST).** `recall(project)` at session start: rules + recent activity + pending + recap.
-- **FR‑11 (SHOULD).** `session_recap()` — where we left off last time.
+- **FR‑10 (MUST).** Session tracking: stamp every memory with the `session_id` of the run that wrote it
+  (provenance / grouping / a coherent set for consolidation). Identity is per connection; concurrent runs in
+  one project get distinct sessions. No "resume" hook and no `session_recap`.
+- **FR‑11 (post‑MVP).** `recall(project)` — an aggregated context bundle. Deferred: a useful (non‑dumping)
+  recall needs LLM synthesis, kept off the read path. Meanwhile "where did I leave off" is an on‑demand
+  `search` for `type=progress`. See [roadmap/post-mvp.md](roadmap/post-mvp.md).
 - **FR‑12 (MAY).** Tasks linked to memories.
 
 ### Rules
-- **FR‑13 (SHOULD).** Per‑project and global rules (`rule`), loaded at session start.
+- **FR‑13 (SHOULD).** Per‑project and global rules (`rule`), retrievable by `search` (`type=rule`).
 
 ### Background processing
 - **FR‑14 (SHOULD).** Periodic consolidation by a small LLM: dedup‑merge, summarization, insight extraction.
@@ -44,7 +48,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 ### API simplicity
 - **FR‑18 (MUST).** Minimal, obvious agent‑facing API **driven by real tasks — not a fixed number of tools**.
   Prefer behavior via parameters (type/scope/filters) over a tool per type or per operation; add a tool only
-  when a real task needs it (e.g. `recall`, `remember`, `search`, and later a revision affordance). Minimal ≠ exactly two.
+  when a real task needs it (e.g. `remember`, `search`, deletion, and later `recall` / a revision affordance). Minimal ≠ exactly two.
 - **FR‑19 (MUST).** Operational commands (`stats`, `consolidate`, `doctor`, export/import) live in the CLI,
   NOT in the agent‑facing MCP surface.
 

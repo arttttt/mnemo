@@ -28,8 +28,8 @@ Step format: **Why** (the requirement) · **What** (exactly what to do) · **Don
 
 ### 4.5 Tasks (optional)
 **Why:** tasks linked to memories are useful (FR‑12, optional).
-**What:** minimal create / list / complete for tasks, linkable to memories and surfaced in `recall`.
-**Done when:** tasks persist, link to memories, and appear in `recall`.
+**What:** minimal create / list / complete for tasks, linkable to memories and retrievable via `search`.
+**Done when:** tasks persist, link to memories, and are retrievable.
 
 ---
 

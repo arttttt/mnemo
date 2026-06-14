@@ -6,17 +6,11 @@ real task needs it. An agent should learn the surface in seconds.
 
 ## Agent‑facing MCP tools
 
-### `recall(project) -> Context`  *(Phase 1)*
-The "magic word" at session start. Loads aggregated context:
-```jsonc
-{
-  "project": "checkout-api",
-  "rules":        [/* type=rule, scope project + global */],
-  "recent":       [/* recent activity for the project */],
-  "pending_tasks":[/* open tasks, if the tasks feature is enabled */],
-  "session_recap":"where we left off last time"
-}
-```
+### `recall(project)` — **post‑MVP** (not an MVP tool)
+A single aggregated context bundle was the original "magic word", but a *useful* one (concise, not a context
+dump) needs LLM synthesis, which we keep off the read path — so `recall` is **deferred to post‑MVP**
+(see [roadmap/post-mvp.md](roadmap/post-mvp.md)). In the MVP the agent retrieves **on demand** with `search`:
+`search("...", type="rule")` for rules, `search("...", type="progress")` for where it left off.
 
 ### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, dedup}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)
@@ -33,8 +27,8 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
 - Behavior: normalize → **exact‑dup** check (hash) → **`topic_key` upsert** if matched (supersede) → embed → insert.
   Near‑similar memories are **not** suppressed here (see [04-data-model.md](04-data-model.md)).
 - Returns `{id, dedup}`: `dedup` is `null` (new), or `"exact"` (identical existing record).
-- **Rules** are just `remember(type="rule")`; `recall` returns existing rules (no separate rule tools). The agent
-  stores a rule only on an explicit user request.
+- **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
+  agent stores a rule only on an explicit user request.
 
 ### `search(query, scope?, project?, type?, tags?, related_files?, recency_days?, limit?) -> list[MemoryHit]`
 The single retrieval tool. `scope` decides project vs. global vs. **cross‑project**; the optional filters narrow it.
@@ -72,7 +66,7 @@ mnemo export / import                # portability (Phase 4)
 (`delete` / `clear` / `purge` are also available as CLI commands.)
 
 ## Design notes
-- One write verb, one read verb, one context verb, plus deletion — type/scope/filters are parameters.
+- One write verb, one read verb, plus deletion — type/scope/filters are parameters. (`recall` is post‑MVP.)
 - `search` defaults to **hybrid** (dense + lexical) so exact matches (function names, error codes) aren't missed.
 - `remember` is fast and idempotent by `hash` / `topic_key`.
 - Cross‑project search is a `scope="all"` flag, not a separate tool.

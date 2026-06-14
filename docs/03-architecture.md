@@ -87,13 +87,13 @@ search(query, scope?, project?, type?, filters?)   # scope="all" → cross-proje
    → return top‑N with payload
 ```
 
-### Session start
+### On‑demand retrieval (no session‑start bundle)
+There is no aggregated session‑start call in the MVP — `recall` is post‑MVP (a useful one needs LLM synthesis,
+kept off the read path). The agent retrieves on demand:
 ```
-recall(project)
-   → rules (project + __global__, type=rule)
-   → recent activity (project, recent_only)
-   → pending tasks
-   → session_recap (last session)
+search(project, type="rule")       → active rules (project + __global__)
+search(project, type="progress")   → where it left off
+search(project, "<question>")      → relevant decisions / notes
 ```
 
 ## Concurrency (10+ agents)
