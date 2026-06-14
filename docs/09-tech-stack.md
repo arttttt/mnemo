@@ -22,10 +22,14 @@ relational one *with* a vector index, not a vector DB with bolted‑on relationa
 under `~/.mnemo/data/`, no server, ~0 idle RAM. **One backend only — we don't mix stores.**
 
 - **Relational core, edges, transactions, point lookups, in‑place updates:** native SQLite.
-- **Vector search:** `sqlite-vec` (`vec0` virtual table), brute‑force KNN — well under ~100 ms at our scale
-  (single user; thousands–low‑hundred‑thousands of records); ANN is unnecessary.
-- **Lexical search:** FTS5 (BM25), built into SQLite.
-- **Hybrid:** dense + lexical fused by reciprocal‑rank fusion in one SQL query.
+- **Vector search:** `sqlite-vec` — the embedding is a `BLOB` column on the `memories` row, ranked by the
+  `vec_distance_cosine` scalar over a `WHERE`‑filtered scan (brute‑force; **no `vec0` virtual table**, so every
+  structured filter — including the list‑valued `tags`/`related_files` via `json_each` — is a plain `WHERE`).
+  Well under ~100 ms at our scale (single user; thousands–low‑hundred‑thousands of records); ANN is unnecessary.
+  See [the ADR](adr/0001-storage-engine.md#why-a-blob-column--scalar-distance-not-a-vec0-virtual-table) for why
+  `BLOB`+scalar over `vec0`.
+- **Lexical search:** FTS5 (BM25), built into SQLite (external‑content over `content`, trigger‑synced).
+- **Hybrid:** dense + lexical fused by reciprocal‑rank fusion (k=60) in the adapter.
 
 Full rationale and the alternatives weighed (LanceDB, a two‑store split, DuckDB, Postgres+pgvector, libSQL) are
 in [adr/0001-storage-engine.md](adr/0001-storage-engine.md). In short: LanceDB (the earlier choice) is an

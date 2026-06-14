@@ -41,13 +41,41 @@ Use **SQLite + the `sqlite-vec` extension + FTS5** as the single embedded store,
 `MemoryRepositoryPort`.
 
 - **Relational core, edges, transactions, point lookups, in-place updates** — native to SQLite.
-- **Vector search** — `sqlite-vec` (`vec0` virtual table), brute-force KNN. At mnemo's scale this is well under
+- **Vector search** — `sqlite-vec`, brute-force: the embedding is a **`BLOB` column on the `memories` row**
+  (with a `CHECK(vec_length(...))` dimension guard), ranked by the `vec_distance_cosine` scalar over a
+  `WHERE`-filtered scan — **not** a `vec0` virtual table (rationale below). At mnemo's scale this is well under
   ~100 ms; ANN is unnecessary.
-- **Lexical search** — FTS5 (BM25), built into SQLite.
-- **Hybrid** — reciprocal-rank fusion computed in one SQL query over the `vec0` and FTS5 results (the canonical
-  sqlite-vec pattern).
+- **Lexical search** — FTS5 (BM25), built into SQLite, as an external-content table over `content` kept in sync
+  by triggers.
+- **Hybrid** — reciprocal-rank fusion (k=60) computed **in the adapter** over the two ranked result lists
+  (dense `vec_distance_cosine` + FTS5 BM25).
 - **One embedded file**, no daemon, ~0 idle RAM — fits the on-demand / strictly-offline axioms even better than
   LanceDB.
+
+### Why a `BLOB` column + scalar distance, not a `vec0` virtual table
+
+`sqlite-vec` officially supports both, framing it as a trade-off (`vec0` is faster/more compact but needs JOINs
+and a restricted filter set; the manual `BLOB` + `vec_distance_*` scan is more flexible). For mnemo's *own* shape
+the manual scan is the better fit on **correctness** and **convenience**, and the only thing `vec0` buys —
+speed at scale — is precisely what we don't need (single user; thousands–low-hundred-thousands of records; no
+hot-path latency budget):
+
+- **Filters are correct by construction.** Our retrieval filters include **list-valued** ones (`tags` ALL,
+  `related_files` ANY). `vec0` metadata columns only support scalar operators (`= != < <= > >=`) — no arrays,
+  no `json_each`, no `LIKE` — so array/recency filters can't be pushed into the KNN; `vec0` users resort to
+  over-fetch-then-post-filter (which can silently return fewer than *k*) or a single `rowid IN (...)` subquery.
+  With the embedding as a column on `memories`, **every** filter — scalar and array (`json_each`) — is a plain
+  `WHERE` in the same SELECT that computes the distance, so ranking happens over exactly the filtered set.
+- **Single-table atomicity.** The embedding living on the `memories` row means supersede+insert, the duplicate
+  counter bump, and hard delete are all **one table's** transaction. A `vec0` table is a *separate* table that
+  must be kept in `rowid`-sync through every one of those mutations (the `rowid = id` contract, a `SAVEPOINT`
+  around row+vector writes, and a soft-/hard-delete asymmetry are exactly the complications this avoids). This
+  directly serves the OLTP-correctness thesis above.
+
+This was decided after surveying seven embedded sqlite-vec/SQLite memory projects and the official `sqlite-vec`
+and SQLite docs; the closest mutable-memory analogs (the two `engram` projects) independently use the same
+`BLOB` + scalar-cosine + external-content-FTS + RRF(k=60) shape. The choice rests on fit for our shape, not on
+which option is more common (the field is split ~3:2 toward `vec0`).
 
 ## Why (correctness + convenience — not "what others do")
 
@@ -82,7 +110,7 @@ Migration cost and prior investment are **not** weighed: the project is new and 
 
 - **Contained to the adapter.** Domain, use cases, MCP/CLI, and the parametrized store-contract tests do not
   change — the port pays off. Only the store adapter (`LanceDb…` → `SqliteVec…`), the hybrid step (→ RRF in
-  SQL), and dependencies change.
+  the adapter over two SQL queries), and dependencies change.
 - **`links` becomes a native table** — the typed-edges work (roadmap 1.9) folds into this re-platform instead
   of being built on LanceDB.
 - **Concurrency is out of scope here.** The write-concurrency model depends on the *target architecture*
