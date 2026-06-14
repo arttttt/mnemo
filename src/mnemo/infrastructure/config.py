@@ -13,6 +13,8 @@ class Config:
     store: str
     store_path: str
     sqlite_path: str = ""
+    host: str = "127.0.0.1"   # the shared service binds localhost-only
+    port: int = 8765
 
     @staticmethod
     def from_env() -> "Config":
@@ -28,4 +30,6 @@ class Config:
             sqlite_path=os.environ.get(
                 "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
             ),
+            host=os.environ.get("MNEMO_HOST", "127.0.0.1"),
+            port=int(os.environ.get("MNEMO_PORT", "8765")),
         )

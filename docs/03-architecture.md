@@ -14,7 +14,8 @@ separately and only runs in the background.
 └──────┬──────┘  └──────┬──────┘         └──────┬──────┘
        │ MCP            │ MCP                   │ MCP
    ┌───▼────┐       ┌───▼────┐              ┌───▼────┐
-   │ shim   │       │ shim   │     ...      │ shim   │   ← tiny stdio proxies (~0 RAM)
+   │mnemo-  │       │mnemo-  │     ...      │mnemo-  │   ← thin stdio proxies (~40 MB each,
+   │ mcp    │       │ mcp    │              │ mcp    │      no embedder/store)
    └───┬────┘       └───┬────┘              └───┬────┘
        └────────────────┼───────────────────────┘
                         │ HTTP/streamable‑http (localhost)
@@ -45,12 +46,15 @@ separately and only runs in the background.
 
 ## Components
 
-### 1. Shim (thin MCP proxy)
-- What goes into each agent's config (`command: mnemo-shim`).
-- A **stdio** process that simply proxies MCP calls to the shared service over HTTP.
-- Loads nothing heavy (a few MB). Having 10+ of them is fine.
-- Handles **ref‑counting**: on start it brings up the service (if not running); on exit it reports "one less client".
-- Alternative to the shim — direct MCP HTTP transport + socket activation (see below and [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md)).
+### 1. Connector (`mnemo-mcp`, thin MCP proxy)
+- What goes into each agent's config (`command: mnemo-mcp`) — the agent‑facing command is unchanged; only its
+  internals became a proxy.
+- A **stdio** process that proxies MCP calls to the shared service over streamable‑http. No embedder/store —
+  ~40 MB (Python + the MCP SDK), one per agent, living in the agent's own process tree.
+- **Starts the service** on launch if it is not up (single‑spawn lock + readiness poll — see
+  [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md)); the service ref‑counts connectors and idle‑exits on grace.
+- **Owns the run's session id** (one per connector run) and sends it to the service as request metadata, so the
+  service stamps provenance without inventing it.
 
 ### 2. mnemo service (core, one process)
 - **MCP router** (FastMCP): exposes the tools from [05-mcp-api.md](05-mcp-api.md).

@@ -1,6 +1,6 @@
 [project]
 name = "mnemo"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local, on-demand memory for AI coding agents (MCP)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,8 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 mnemo = "mnemo.adapters.cli.app:main"
-mnemo-mcp = "mnemo.adapters.mcp.server:main"
+mnemo-mcp = "mnemo.adapters.mcp.proxy:main"
+mnemo-service = "mnemo.adapters.mcp.service:main"
 
 [build-system]
 requires = ["hatchling"]

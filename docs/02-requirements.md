@@ -65,7 +65,11 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **NFR‑6 (MUST).** Grace shutdown: after the last agent disconnects, the service exits after a configurable
   timeout (default ~5 min); if a new agent connects within it, the service stays up.
 - **NFR‑7 (MUST).** No permanently running Docker daemon. Storage is embedded (in‑process).
-- **NFR‑8 (MUST).** RAM while active ≤ ~1.5 GB (without the generator); ~0 when idle.
+- **NFR‑8 (MUST).** Minimal‑necessary footprint, not a fixed budget. The heavy parts (embedder + store) load
+  **once** in the shared service — total `S + c·N` for N agents, not `S·N` (the connectors are thin). The shared
+  service leaves ~0 resident when **no** agent is connected; while an agent works, its connector (tens of MB, in
+  the agent's own process tree) lives with it. No hard ceiling — once local LLMs run they dominate the machine;
+  mnemo's job is to add the minimum, not to hit a number.
 - **NFR‑9 (MUST).** The heavy generative model is loaded only for the consolidation window, then unloaded.
 - **NFR‑10 (MUST).** Correct on a 16 GB machine, including when the coding agent itself runs alongside.
 

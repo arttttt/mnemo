@@ -61,6 +61,18 @@ cmd_mcp() {
   echo "  claude mcp add --scope user mnemo -- uv run --directory \"$(pwd)\" mnemo-mcp"
 }
 
+cmd_stop() {
+  # Stop the on-demand service. Temporary until idle-exit lands; the connector
+  # spawns the service, which has no self-shutdown yet, so it lingers.
+  pid_file="$DATA_DIR/run/service.pid"
+  if [ -f "$pid_file" ] && kill "$(cat "$pid_file")" 2>/dev/null; then
+    echo "Stopped mnemo-service (pid $(cat "$pid_file"))."
+    rm -f "$pid_file"
+  else
+    echo "No running mnemo-service."
+  fi
+}
+
 cmd_clean() {
   rm -rf "$VENV" build dist .pytest_cache ./*.egg-info src/*.egg-info
   find . -type d -name __pycache__ -prune -exec rm -rf {} +
@@ -86,8 +98,9 @@ print_menu() {
   4) test (heavy)   real-embedder tests (downloads model)
   5) demo           quick offline CLI demo
   6) mcp            print the Claude Code MCP add command
-  7) clean          remove .venv, caches, build artifacts
-  8) purge-data     delete memory data ($DATA_DIR)  [destructive]
+  7) stop           stop the running mnemo-service (until idle-exit lands)
+  8) clean          remove .venv, caches, build artifacts
+  9) purge-data     delete memory data ($DATA_DIR)  [destructive]
   0) quit
 EOF
 }
@@ -100,8 +113,9 @@ dispatch() {
     4 | test-heavy) cmd_test_heavy ;;
     5 | demo) cmd_demo ;;
     6 | mcp) cmd_mcp ;;
-    7 | clean) cmd_clean ;;
-    8 | purge-data | purge_data) cmd_purge_data ;;
+    7 | stop) cmd_stop ;;
+    8 | clean) cmd_clean ;;
+    9 | purge-data | purge_data) cmd_purge_data ;;
     *) echo "invalid choice: $1" >&2; return 1 ;;
   esac
 }

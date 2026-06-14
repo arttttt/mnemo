@@ -8,23 +8,23 @@ and its vector live together for single-table atomicity). FTS5 over ``content``
 (external-content, trigger-synced) provides lexical search; hybrid retrieval is
 reciprocal-rank fusion of the two ranked lists, computed in the adapter.
 
-Rationale and the alternatives weighed are in docs/adr/0001-storage-engine.md.
-The schema is created lazily on the first write, once the vector dimension is
-known.
+Concurrency is handled by SqliteConnections: writes go through one serialized
+writer, reads through per-thread connections (WAL → concurrent). Rationale and
+the alternatives weighed are in docs/adr/0001-storage-engine.md. The schema is
+created lazily on the first write, once the vector dimension is known.
 """
 from __future__ import annotations
 
 import json
 import re
 import sqlite3
-from pathlib import Path
 
-import sqlite_vec
 from sqlite_vec import serialize_float32
 
 from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
+from mnemo.adapters.store.sqlite_connections import SqliteConnections
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
@@ -45,62 +45,53 @@ _CANDIDATE_MULTIPLIER = 5
 
 class SqliteVecMemoryRepository:
     def __init__(self, path: str) -> None:
-        Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.enable_load_extension(True)
-        sqlite_vec.load(self._conn)
-        self._conn.enable_load_extension(False)
-        for pragma in (
-            "journal_mode=WAL",
-            "synchronous=NORMAL",
-            "busy_timeout=5000",
-            "foreign_keys=ON",
-        ):
-            self._conn.execute(f"PRAGMA {pragma}")
-        self._ready = (
-            self._conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'"
-            ).fetchone()
-            is not None
-        )
+        self._conns = SqliteConnections(path)
         # The links table is dimension-independent, so it exists from the start
         # (an edge can be written before, or independently of, any memory row).
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS links ("
-            " source_id TEXT NOT NULL, target_id TEXT NOT NULL, type TEXT NOT NULL,"
-            " provenance TEXT NOT NULL, created_at TEXT NOT NULL,"
-            " PRIMARY KEY (source_id, target_id, type))"
-        )
-        self._conn.execute("CREATE INDEX IF NOT EXISTS links_target ON links(target_id)")
-        self._conn.commit()
+        with self._conns.writer() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS links ("
+                " source_id TEXT NOT NULL, target_id TEXT NOT NULL, type TEXT NOT NULL,"
+                " provenance TEXT NOT NULL, created_at TEXT NOT NULL,"
+                " PRIMARY KEY (source_id, target_id, type))"
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS links_target ON links(target_id)")
+            conn.commit()
+            self._ready = (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'"
+                ).fetchone()
+                is not None
+            )
 
     def add(self, memory: Memory, vector: Vector) -> None:
-        if not self._ready:
-            self._create_schema(len(vector))
-        self._conn.execute(
-            "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
-            " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
-            " updated_at, last_seen_at, duplicate_count) VALUES (:id, :content, :embedding,"
-            " :type, :scope, :project, :tags, :related_files, :topic_key, :session_id,"
-            " :status, :supersedes, :hash, :created_at, :updated_at, :last_seen_at,"
-            " :duplicate_count)",
-            self._row(memory, vector),
-        )
-        self._conn.commit()
+        with self._conns.writer() as conn:
+            if not self._ready:
+                self._create_schema(conn, len(vector))
+            conn.execute(
+                "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
+                " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
+                " updated_at, last_seen_at, duplicate_count) VALUES (:id, :content, :embedding,"
+                " :type, :scope, :project, :tags, :related_files, :topic_key, :session_id,"
+                " :status, :supersedes, :hash, :created_at, :updated_at, :last_seen_at,"
+                " :duplicate_count)",
+                self._row(memory, vector),
+            )
+            conn.commit()
 
     def find_by_hash(self, content_hash: str) -> Memory | None:
-        return self._first("hash = ?", (content_hash,))
+        return self._read_one(self._conns.reader(), "hash = ?", (content_hash,))
 
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None
     ) -> Memory | None:
+        reader = self._conns.reader()
         if project is None:
-            return self._first(
-                "topic_key = ? AND status = 'active' AND project IS NULL", (topic_key,)
+            return self._read_one(
+                reader, "topic_key = ? AND status = 'active' AND project IS NULL", (topic_key,)
             )
-        return self._first(
-            "topic_key = ? AND status = 'active' AND project = ?", (topic_key, project)
+        return self._read_one(
+            reader, "topic_key = ? AND status = 'active' AND project = ?", (topic_key, project)
         )
 
     def search(
@@ -110,8 +101,9 @@ class SqliteVecMemoryRepository:
             return []
         where, params = self._where(criteria)
         candidate = limit * _CANDIDATE_MULTIPLIER
+        reader = self._conns.reader()
 
-        dense = self._conn.execute(
+        dense = reader.execute(
             f"SELECT {_PAYLOAD}, vec_distance_cosine(m.embedding, ?) AS _distance"
             f" FROM memories m WHERE {where} ORDER BY _distance ASC LIMIT ?",
             (serialize_float32(list(vector)), *params, candidate),
@@ -120,7 +112,7 @@ class SqliteVecMemoryRepository:
         lexical: list[sqlite3.Row] = []
         match = _match_query(query)
         if match is not None:
-            lexical = self._conn.execute(
+            lexical = reader.execute(
                 f"SELECT {_PAYLOAD}, bm25(memories_fts) AS _rank FROM memories_fts"
                 f" JOIN memories m ON m.rowid = memories_fts.rowid"
                 f" WHERE memories_fts MATCH ? AND {where} ORDER BY _rank ASC LIMIT ?",
@@ -141,84 +133,91 @@ class SqliteVecMemoryRepository:
         ]
 
     def register_duplicate(self, memory_id: str) -> None:
-        memory = self._by_id(memory_id)
-        if memory is None:
-            return
-        memory.register_duplicate()
-        self._conn.execute(
-            "UPDATE memories SET duplicate_count = ?, last_seen_at = ? WHERE id = ?",
-            (memory.duplicate_count, memory.last_seen_at, memory_id),
-        )
-        self._conn.commit()
+        with self._conns.writer() as conn:
+            memory = self._read_one(conn, "id = ?", (memory_id,))
+            if memory is None:
+                return
+            memory.register_duplicate()
+            conn.execute(
+                "UPDATE memories SET duplicate_count = ?, last_seen_at = ? WHERE id = ?",
+                (memory.duplicate_count, memory.last_seen_at, memory_id),
+            )
+            conn.commit()
 
     def mark_superseded(self, memory_id: str) -> None:
-        memory = self._by_id(memory_id)
-        if memory is None:
-            return
-        memory.mark_superseded()
-        self._conn.execute(
-            "UPDATE memories SET status = ?, updated_at = ? WHERE id = ?",
-            (memory.status, memory.updated_at, memory_id),
-        )
-        self._conn.commit()
+        with self._conns.writer() as conn:
+            memory = self._read_one(conn, "id = ?", (memory_id,))
+            if memory is None:
+                return
+            memory.mark_superseded()
+            conn.execute(
+                "UPDATE memories SET status = ?, updated_at = ? WHERE id = ?",
+                (memory.status, memory.updated_at, memory_id),
+            )
+            conn.commit()
 
     def delete(self, ids: list[str]) -> int:
         if not self._ready or not ids:
             return 0
         placeholders = ", ".join("?" for _ in ids)
-        self._conn.execute(
-            f"DELETE FROM links WHERE source_id IN ({placeholders})"
-            f" OR target_id IN ({placeholders})",
-            (*ids, *ids),
-        )
-        cursor = self._conn.execute(
-            f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
-        )
-        self._conn.commit()
-        return cursor.rowcount
+        with self._conns.writer() as conn:
+            conn.execute(
+                f"DELETE FROM links WHERE source_id IN ({placeholders})"
+                f" OR target_id IN ({placeholders})",
+                (*ids, *ids),
+            )
+            cursor = conn.execute(
+                f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
+            )
+            conn.commit()
+            return cursor.rowcount
 
     def delete_by_project(self, project: str) -> int:
         if not self._ready:
             return 0
-        self._conn.execute(
-            "DELETE FROM links WHERE source_id IN"
-            " (SELECT id FROM memories WHERE project = ?) OR target_id IN"
-            " (SELECT id FROM memories WHERE project = ?)",
-            (project, project),
-        )
-        cursor = self._conn.execute(
-            "DELETE FROM memories WHERE project = ?", (project,)
-        )
-        self._conn.commit()
-        return cursor.rowcount
+        with self._conns.writer() as conn:
+            conn.execute(
+                "DELETE FROM links WHERE source_id IN"
+                " (SELECT id FROM memories WHERE project = ?) OR target_id IN"
+                " (SELECT id FROM memories WHERE project = ?)",
+                (project, project),
+            )
+            cursor = conn.execute(
+                "DELETE FROM memories WHERE project = ?", (project,)
+            )
+            conn.commit()
+            return cursor.rowcount
 
     def delete_all(self) -> int:
-        self._conn.execute("DELETE FROM links")
-        if not self._ready:
-            self._conn.commit()
-            return 0
-        (removed,) = self._conn.execute("SELECT count(*) FROM memories").fetchone()
-        self._conn.execute("DELETE FROM memories")
-        self._conn.commit()
-        return removed
+        with self._conns.writer() as conn:
+            conn.execute("DELETE FROM links")
+            if not self._ready:
+                conn.commit()
+                return 0
+            (removed,) = conn.execute("SELECT count(*) FROM memories").fetchone()
+            conn.execute("DELETE FROM memories")
+            conn.commit()
+            return removed
 
     def list_all(self) -> list[Memory]:
         if not self._ready:
             return []
-        rows = self._conn.execute(f"SELECT {_PAYLOAD} FROM memories m").fetchall()
+        rows = self._conns.reader().execute(
+            f"SELECT {_PAYLOAD} FROM memories m"
+        ).fetchall()
         return [self._to_memory(row) for row in rows]
 
     def add_link(self, link: Link) -> None:
-        data = link_to_dict(link)
-        self._conn.execute(
-            "INSERT OR REPLACE INTO links (source_id, target_id, type, provenance,"
-            " created_at) VALUES (:source_id, :target_id, :type, :provenance, :created_at)",
-            data,
-        )
-        self._conn.commit()
+        with self._conns.writer() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO links (source_id, target_id, type, provenance,"
+                " created_at) VALUES (:source_id, :target_id, :type, :provenance, :created_at)",
+                link_to_dict(link),
+            )
+            conn.commit()
 
     def links_for(self, memory_id: str) -> list[Link]:
-        rows = self._conn.execute(
+        rows = self._conns.reader().execute(
             "SELECT source_id, target_id, type, provenance, created_at FROM links"
             " WHERE source_id = ? OR target_id = ?",
             (memory_id, memory_id),
@@ -257,19 +256,18 @@ class SqliteVecMemoryRepository:
             params.append(criteria.created_after)
         return " AND ".join(clauses), params
 
-    def _first(self, predicate: str, params: tuple) -> Memory | None:
+    def _read_one(
+        self, conn: sqlite3.Connection, predicate: str, params: tuple
+    ) -> Memory | None:
         if not self._ready:
             return None
-        row = self._conn.execute(
+        row = conn.execute(
             f"SELECT {_PAYLOAD} FROM memories m WHERE {predicate} LIMIT 1", params
         ).fetchone()
         return self._to_memory(row) if row else None
 
-    def _by_id(self, memory_id: str) -> Memory | None:
-        return self._first("id = ?", (memory_id,))
-
-    def _create_schema(self, dim: int) -> None:
-        self._conn.executescript(
+    def _create_schema(self, conn: sqlite3.Connection, dim: int) -> None:
+        conn.executescript(
             f"""
             CREATE TABLE memories (
                 id              TEXT PRIMARY KEY,
@@ -311,7 +309,7 @@ class SqliteVecMemoryRepository:
             END;
             """
         )
-        self._conn.commit()
+        conn.commit()
         self._ready = True
 
     def _row(self, memory: Memory, vector: Vector) -> dict:
