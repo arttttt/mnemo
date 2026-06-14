@@ -93,3 +93,53 @@ def test_each_proxy_run_stamps_its_own_session_id(service, tmp_path):
     assert session_id["a1 via proxy one"] == session_id["a2 via proxy one"]  # one run = one id
     assert session_id["b1 via proxy two"] != session_id["a1 via proxy one"]  # other agent = other id
     assert all(session_id.values())  # the service stamped the proxy-supplied id (not null)
+
+
+def test_proxy_spawns_the_service_when_down(free_tcp_port, tmp_path):
+    """No service is running: the proxy must bring one up and then serve calls."""
+    import signal
+
+    import anyio
+
+    host, port = "127.0.0.1", free_tcp_port
+    data_dir = tmp_path / "data"
+    pidfile = data_dir.parent / "run" / "service.pid"  # ~/.mnemo/run mirror
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(_SRC),
+        "MNEMO_STORE": "memory",  # propagates to the service the proxy spawns
+        "MNEMO_EMBEDDER": "hash",
+        "MNEMO_DATA_DIR": str(data_dir),
+        "MNEMO_HOST": host,
+        "MNEMO_PORT": str(port),
+    }
+
+    async def flow():
+        from mcp.client.session import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-c", "from mnemo.adapters.mcp.proxy import main; main()"],
+            env=env,
+        )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                stored = await session.call_tool(
+                    "remember", {"content": "spawned by the proxy", "project": "api"}
+                )
+                assert not stored.isError, _text(stored)
+                hits = await session.call_tool("search", {"query": "spawned", "scope": "all"})
+                assert "spawned by the proxy" in _text(hits)
+
+    try:
+        anyio.run(flow)
+    finally:
+        # The spawned service is detached (no idle-exit yet), so stop it explicitly.
+        if pidfile.exists():
+            try:
+                os.kill(int(pidfile.read_text()), signal.SIGTERM)
+            except (ProcessLookupError, ValueError):
+                pass

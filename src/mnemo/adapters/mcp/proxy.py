@@ -7,6 +7,7 @@ that one process regardless of how many agents are connected.
 """
 from __future__ import annotations
 
+from mnemo.adapters.mcp.launcher import ensure_service_running
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.session.meta_session_provider import SESSION_META_KEY
 from mnemo.infrastructure.config import Config
@@ -49,4 +50,5 @@ def main() -> None:
     import anyio
 
     config = Config.from_env()
+    ensure_service_running(config)  # start the shared service if it is not up yet
     anyio.run(_serve, f"http://{config.host}:{config.port}/mcp")

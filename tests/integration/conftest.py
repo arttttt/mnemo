@@ -17,6 +17,11 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
+@pytest.fixture
+def free_tcp_port() -> int:
+    return free_port()
+
+
 def _wait_until_listening(proc, host: str, port: int, timeout: float = 20.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
