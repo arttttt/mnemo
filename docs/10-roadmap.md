@@ -16,7 +16,7 @@ A step is sized to ship and review on its own. No implementation/file details he
 |---|---|---|
 | 0 — Walking skeleton ✅ | store + search locally via MCP | [roadmap/phase-0-skeleton.md](roadmap/phase-0-skeleton.md) |
 | 1 — Memory layer ✅ | typed, scoped, persistent memory; hybrid search; sessions; deletion; supersede | [roadmap/phase-1-memory-layer.md](roadmap/phase-1-memory-layer.md) |
-| 1b — Store re‑platform | LanceDB → **SQLite + `sqlite-vec` + FTS5**; typed links table folds in | [roadmap/sqlite-migration.md](roadmap/sqlite-migration.md) |
+| 1b — Store re‑platform ✅ | LanceDB → **SQLite + `sqlite-vec` + FTS5**; typed links table folds in | [roadmap/sqlite-migration.md](roadmap/sqlite-migration.md) |
 | 2 — On‑demand lifecycle + concurrency | one shared service, spins up/down, ~0 idle RAM; the 10+‑agent write model | [roadmap/phase-2-lifecycle.md](roadmap/phase-2-lifecycle.md) |
 | 3 — Background consolidation | small model improves memory off the hot path, concurrent from the start | [roadmap/phase-3-consolidation.md](roadmap/phase-3-consolidation.md) |
 | 4 — Polish & optional upgrades | reranker/NER, export/import, packaging, air‑gapped | [roadmap/phase-4-polish.md](roadmap/phase-4-polish.md) |

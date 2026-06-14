@@ -93,15 +93,10 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 | Variable | Default | Meaning |
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
-| `MNEMO_STORE` | `sqlite` | `sqlite` (default — SQLite + `sqlite-vec` + FTS5), `memory` (in‑memory/JSON; offline/tests), or `lancedb` (legacy) |
+| `MNEMO_STORE` | `sqlite` | `sqlite` (default — SQLite + `sqlite-vec` + FTS5) or `memory` (in‑memory/JSON; offline/tests) |
 | `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (the default backend) |
 | `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend |
-| `MNEMO_LANCEDB_URI` | `<data>/memory` | legacy LanceDB store directory (migration source only) |
 | `MNEMO_EMBEDDER` | `fastembed` | `fastembed` (real, local) or `hash` (offline) |
-
-> **Re‑platforming a legacy LanceDB store to SQLite:** run `mnemo migrate` (or the `migrate` item in `dev.sh`).
-> It copies every record from the LanceDB store into SQLite (re‑embedding with the configured embedder), is safe
-> to re‑run (idempotent), and leaves the LanceDB directory untouched as a fallback.
 
 ## 5. Use it — MCP (Claude Code / Cursor)
 

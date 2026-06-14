@@ -1,10 +1,8 @@
 """One contract, run against every MemoryRepositoryPort backend.
 
-The in-memory and SQLite (`sqlite-vec` + FTS5) backends run always — both are
-offline and light (`sqlite-vec` is a small extension, skipped gracefully if
-absent). The LanceDB backend is marked `heavy` so it is skipped by the default
-offline run and exercised only with `-m heavy` (it needs the optional `lancedb`
-dependency).
+The in-memory and SQLite (`sqlite-vec` + FTS5) backends both run always — they
+are offline and light (`sqlite-vec` is a small extension, skipped gracefully if
+absent).
 """
 import pytest
 
@@ -28,18 +26,10 @@ def _sqlite(tmp_path):
     return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
 
 
-def _lancedb(tmp_path):
-    pytest.importorskip("lancedb")
-    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
-
-    return LanceDbMemoryRepository(uri=str(tmp_path / "lancedb"))
-
-
 @pytest.fixture(
     params=[
         pytest.param(_in_memory, id="in_memory"),
         pytest.param(_sqlite, id="sqlite"),
-        pytest.param(_lancedb, id="lancedb", marks=pytest.mark.heavy),
     ]
 )
 def open_repo(request, tmp_path):
@@ -141,24 +131,6 @@ def test_sqlite_hybrid_finds_exact_token(tmp_path):
 
     # FTS5 is created with the schema, so an exact token ranks first via the
     # lexical (BM25) half of the hybrid, even though it is a rare term.
-    hits = repo.search(
-        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
-    )
-    assert hits and hits[0].memory.id == target.id
-
-
-@pytest.mark.heavy
-def test_lancedb_hybrid_finds_exact_token(tmp_path):
-    pytest.importorskip("lancedb")
-    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
-
-    embedder = HashEmbedder()
-    repo = LanceDbMemoryRepository(uri=str(tmp_path / "memory"))
-    target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
-    _store(repo, embedder, "unrelated postgres migration notes", project="api")
-
-    # The full-text index is created with the table, so an exact token ranks
-    # first via the lexical half of the hybrid.
     hits = repo.search(
         "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
     )

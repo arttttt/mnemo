@@ -41,27 +41,3 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     assert json.loads(runner.invoke(app, ["clear", "api"]).stdout)["deleted"] == 1
     assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 1
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
-
-
-@pytest.mark.heavy
-def test_cli_migrate_lancedb_store_into_sqlite(tmp_path, monkeypatch):
-    pytest.importorskip("lancedb")
-    pytest.importorskip("sqlite_vec")
-    monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
-    monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MNEMO_LANCEDB_URI", str(tmp_path / "memory"))
-    monkeypatch.setenv("MNEMO_SQLITE_PATH", str(tmp_path / "memory.db"))
-    from mnemo.adapters.cli.app import app
-
-    runner = testing.CliRunner()
-
-    monkeypatch.setenv("MNEMO_STORE", "lancedb")  # seed the legacy LanceDB store
-    runner.invoke(app, ["store", "jwt rotation", "--type", "decision", "--project", "api"])
-
-    migrated = json.loads(runner.invoke(app, ["migrate"]).stdout)
-    assert migrated["source_total"] == 1 and migrated["added"] == 1
-
-    monkeypatch.setenv("MNEMO_STORE", "sqlite")  # read it back from SQLite
-    found = runner.invoke(app, ["search", "jwt rotation", "--project", "api"])
-    assert found.exit_code == 0, found.output
-    assert "jwt rotation" in found.stdout
