@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -56,3 +57,31 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["delete"] == ["ids"]
     assert required["clear"] == ["project"]
     assert required["purge"] == []
+
+
+def _call(mcp, name, args):
+    outcome = asyncio.run(mcp.call_tool(name, args))
+    blocks = outcome[0] if isinstance(outcome, tuple) else outcome
+    return [block.text for block in blocks]
+
+
+def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    stored = json.loads(
+        _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
+    )
+
+    found = _call(mcp, "search", {"query": "jwt rotation", "project": "api"})
+    assert any(stored["id"] in hit for hit in found)
+
+    assert json.loads(_call(mcp, "delete", {"ids": [stored["id"]]})[0])["deleted"] == 1
+    assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
+
+
+def test_mcp_clear_and_purge(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "remember", {"content": "alpha", "project": "api"})
+    _call(mcp, "remember", {"content": "beta", "project": "other"})
+
+    assert json.loads(_call(mcp, "clear", {"project": "api"})[0])["deleted"] == 1
+    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 1
