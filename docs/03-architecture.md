@@ -26,9 +26,9 @@ separately and only runs in the background.
               │  └──────┬─────────┘  └───────┬────────┘  │
               │  ┌──────▼─────────┐  ┌───────▼────────┐  │
               │  │  Embedder      │  │  Store         │  │
-              │  │  (ONNX, CPU)   │  │ LanceDB        │  │
-              │  │  loaded while  │  │ (embedded,     │  │
-              │  │  service alive │  │ on disk)       │  │
+              │  │  (ONNX, CPU)   │  │ SQLite + vec   │  │
+              │  │  loaded while  │  │ + FTS5         │  │
+              │  │  service alive │  │ (on disk)      │  │
               │  └────────────────┘  └───────┬────────┘  │
               └──────────────────────────────┼───────────┘
                                              │ read/write
@@ -58,7 +58,7 @@ separately and only runs in the background.
   Writes are serialized through an internal queue/lock to avoid races.
 - **Read path**: `search` → query embedding → ANN/hybrid + payload filter → (optional) rerank.
 - **Embedder**: a small ONNX model loaded into the process while the service is alive. CPU, no GPU.
-- **Store**: an embedded vector DB (LanceDB). Files in `~/.mnemo/data/`. No separate daemon/Docker.
+- **Store**: an embedded SQLite database (`sqlite-vec` for vectors + FTS5 for lexical). One file in `~/.mnemo/data/`. No separate daemon/Docker. See [adr/0001-storage-engine.md](adr/0001-storage-engine.md).
 
 ### 3. Consolidation worker (background)
 - Triggered by N new records / idle / schedule.
@@ -98,17 +98,25 @@ search(project, "<question>")      → relevant decisions / notes
 
 ## Concurrency (10+ agents)
 
-- All agents hit **one process** → no "many processes, one file" problem (the main failure mode of SQLite‑based approaches like engram).
+This is an **architecture‑level** concern, not a store one — it is decided and validated *here*, against the
+target topology (one shared process + thin shims), not in the memory layer. (Today's transitional setup is the
+opposite: one `mnemo-mcp` process per agent; the model below describes the target, and the concurrency work
+waits until that target is built.)
+
+- All agents hit **one process** → no "many processes, one file" problem (the failure mode of process‑per‑agent
+  setups on a shared file) — independent of the store engine.
 - Inside the process: reads run in parallel; writes go through a **single queue/lock** (short, ms‑scale operations).
 - Writes are cheap (embed + insert), so even a burst from 10+ agents drains the queue quickly.
-- The generator is **not** in the hot path → there is no need for "vLLM continuous batching for 10+ concurrent" here:
+- The generator is **not** in the hot path → no need for "vLLM continuous batching for 10+ concurrent" here:
   background consolidation is a single batch job that llama.cpp on‑demand handles fine.
+- **Done when:** a stress test with ≥10 concurrent agents shows zero lost writes and no lock errors, with reads
+  running alongside. (Validates the architecture; this was formerly tracked as a memory‑layer step.)
 
 ## Key decisions (and why)
 
 | Decision | Why |
 |---|---|
-| Embedded store (LanceDB), not a Qdrant daemon | on‑demand + no always‑on Docker; one process ⇒ the single‑writer lock is not a problem |
+| Embedded store (SQLite + `sqlite-vec` + FTS5), not a Qdrant daemon | on‑demand + no always‑on Docker; one process ⇒ the single‑writer lock is not a problem; SQLite fits the mutable typed core (see [adr/0001-storage-engine.md](adr/0001-storage-engine.md)) |
 | One shared service + shims, not N stdio servers | otherwise N copies of the embedder in RAM and N writers on one file |
 | LLM in the background only, transiently | cheap concurrent writes; no RAM "hog"; a small model is enough |
 | llama.cpp on‑demand, not a resident vLLM | RAM ~0 when idle; the generator is off the hot path ⇒ vLLM batching is unnecessary |

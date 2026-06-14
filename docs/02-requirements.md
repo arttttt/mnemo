@@ -92,7 +92,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
   - **adapters** — store / embedder / MCP / CLI implementations of the ports;
   - **infrastructure / composition root** — config, wiring (DI), entrypoints.
 - **NFR‑21 (MUST).** Dependency rule: dependencies point **inward** (Dependency Inversion). Domain and use cases
-  must NOT import MCP, LanceDB, fastembed, llama.cpp or any framework — those live behind ports.
+  must NOT import MCP, the store engine (SQLite / `sqlite-vec`), fastembed, llama.cpp or any framework — those live behind ports.
 - **NFR‑22 (SHOULD).** One reason to change per component (SRP); new stores/embedders/models are added as new
   adapters (OCP) without touching the core. Layout in [09-tech-stack.md](09-tech-stack.md).
 
@@ -102,7 +102,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **NFR‑24 (MUST).** **Integration tests**, in separate suites, cover each adapter against its real boundary:
   store persistence (round‑trip), embedder, MCP controller, CLI, and the composition root.
 - **NFR‑25 (SHOULD).** Tests run **offline and fast by default** (hash embedder + in‑memory/JSON store). Heavy or
-  networked backends (fastembed, lancedb) sit behind an opt‑in marker. Strategy in [12-testing.md](12-testing.md).
+  heavy backends (e.g. fastembed) sit behind an opt‑in marker. Strategy in [12-testing.md](12-testing.md).
 
 ### Version control
 - **NFR‑26 (MUST).** Commit messages and pull/merge‑request titles & descriptions describe a change by its

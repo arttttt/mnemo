@@ -146,7 +146,7 @@ Superseding is separate: it keeps history via `status: superseded`; deletion phy
 
 ## Storage
 
-- Embedded: **LanceDB** (file tables, dense + full‑text/hybrid, real ANN). One backend only — no mixing stores.
-- **One collection/table for all projects** (cross‑project search is cheap); `project`/`scope` are payload fields.
-- Data directory: `~/.mnemo/data/`. One directory = the whole state (backup/move = copy the folder).
-- Engine choice and rationale — in [09-tech-stack.md](09-tech-stack.md).
+- Embedded: **SQLite** (`sqlite-vec` for dense vectors + FTS5 for lexical, fused by RRF; relational core for metadata/edges/transactions). One backend only — no mixing stores.
+- **One set of tables for all projects** (cross‑project search is cheap); `project`/`scope` are columns.
+- Data directory: `~/.mnemo/data/` — one SQLite file = the whole state (backup/move = copy the file).
+- Engine choice and rationale — in [09-tech-stack.md](09-tech-stack.md) and [adr/0001-storage-engine.md](adr/0001-storage-engine.md).

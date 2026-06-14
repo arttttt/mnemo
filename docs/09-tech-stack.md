@@ -5,7 +5,7 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 ## Language / runtime: **Python**
 
 - **Why:** the richest "batteries‑included" path for this stack — MCP SDK (FastMCP), ONNX/`fastembed`,
-  `lancedb`, `llama-cpp-python`, model tooling.
+  `sqlite-vec`, `llama-cpp-python`, model tooling.
 - **Alternative:** TypeScript/Node (good MCP SDK, single‑binary‑ish via Bun). Viable, but the local‑ML
   ecosystem (embedders, llama.cpp bindings, GBNF) is smoother in Python. Pick TS only if the team is TS‑first.
 
@@ -14,17 +14,24 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 - Exposes the tools from [05-mcp-api.md](05-mcp-api.md).
 - Transport: **streamable‑http** for the shared service + a thin **stdio shim** for client compatibility.
 
-## Vector store (embedded): **LanceDB**
+## Store (embedded): **SQLite + `sqlite-vec` + FTS5**
 
-Embedded (no server/Docker): dense + full‑text **hybrid** search with reranking, real ANN (IVF/HNSW),
-columnar with mmap reads (low RAM at scale), concurrent reads. Data is a directory under `~/.mnemo/data/`.
-**One backend only — we don't mix stores.**
+mnemo's core is a **mutable, evolving typed store** (in‑place updates, atomic supersede, point lookups, edges)
+that also needs vector search — an **OLTP** shape, not an append‑only vector warehouse. So the engine is a
+relational one *with* a vector index, not a vector DB with bolted‑on relational features. One embedded file
+under `~/.mnemo/data/`, no server, ~0 idle RAM. **One backend only — we don't mix stores.**
 
-- **Rejected: Qdrant/Chroma in server/Docker mode** — they are excellent concurrent servers, but require an
-  always‑on daemon, which contradicts NFR‑5/NFR‑7 (on‑demand, no Docker). With a single shared service process,
-  the multi‑process single‑writer problem disappears, so an embedded store is the right call.
-- **Rejected: Qdrant embedded (`local path`)** — a simplified client‑side impl with an exclusive file lock; fine
-  for one process but feature‑limited and not worth it vs LanceDB.
+- **Relational core, edges, transactions, point lookups, in‑place updates:** native SQLite.
+- **Vector search:** `sqlite-vec` (`vec0` virtual table), brute‑force KNN — well under ~100 ms at our scale
+  (single user; thousands–low‑hundred‑thousands of records); ANN is unnecessary.
+- **Lexical search:** FTS5 (BM25), built into SQLite.
+- **Hybrid:** dense + lexical fused by reciprocal‑rank fusion in one SQL query.
+
+Full rationale and the alternatives weighed (LanceDB, a two‑store split, DuckDB, Postgres+pgvector, libSQL) are
+in [adr/0001-storage-engine.md](adr/0001-storage-engine.md). In short: LanceDB (the earlier choice) is an
+append‑optimized analytical vector store — strong on vector ANN but structurally awkward for a mutable
+relational core (no multi‑row transaction, no joins/edges, costly in‑place updates). **libSQL/Turso** (a SQLite
+fork with native DiskANN ANN) is the upgrade path if we ever outgrow brute‑force.
 
 ## Embeddings: **ONNX Runtime** via `fastembed` (or `onnxruntime` directly)
 
@@ -52,7 +59,7 @@ columnar with mmap reads (low RAM at scale), concurrent reads. Data is a directo
 
 ```
 mcp                      # FastMCP server + stdio shim
-lancedb                  # embedded vector store (Phase 1)
+sqlite-vec               # vector search inside SQLite (FTS5 is built in)
 fastembed      OR  onnxruntime + tokenizers
 llama-cpp-python         # generator (optional at runtime)
 pydantic                 # schemas / config
@@ -71,7 +78,7 @@ src/mnemo/
 │   ├── ports.py         EmbedderPort, MemoryRepositoryPort
 │   └── use_cases.py     RememberMemory, SearchMemory
 ├── adapters/          # implement ports / handle I/O
-│   ├── store/           InMemoryMemoryRepository (Phase 0), LanceMemoryRepository (Phase 1+)
+│   ├── store/           InMemoryMemoryRepository (offline/tests), SqliteVecMemoryRepository
 │   ├── embedding/       HashEmbedder (offline/tests), FastEmbedEmbedder
 │   ├── mcp/             FastMCP controller exposing remember/search/delete
 │   └── cli/             Typer controller
@@ -81,14 +88,15 @@ src/mnemo/
 ```
 
 - **Ports live in `application`**; concrete adapters implement them (Dependency Inversion).
-- Domain and use cases import **nothing** from `mcp`, `lancedb`, `fastembed`, `llama.cpp`.
+- Domain and use cases import **nothing** from `mcp`, `sqlite`, `fastembed`, `llama.cpp`.
 - Adding a backend = a new adapter; the core stays untouched (Open/Closed). Adapters are swappable (Liskov).
 
 ## What we deliberately do NOT build
 
-- A vector store / ANN index (use LanceDB).
+- A vector store / ANN index (use `sqlite-vec`).
 - An embedding model or inference engine (use ONNX / llama.cpp).
-- A knowledge graph DB (out of scope; payload + hybrid search covers the need).
+- A knowledge graph DB (out of scope — a deterministic typed‑edge table covers the need; we do **not** build an
+  inferred knowledge graph; see [adr/0001-storage-engine.md](adr/0001-storage-engine.md)).
 
 ## Reuse as a starting skeleton (don't start from zero)
 

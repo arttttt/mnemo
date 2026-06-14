@@ -1,20 +1,28 @@
 # Phase 1 — Memory layer (the core)
 
 **Goal:** typed, scoped, persistent memory with hybrid search, session tracking, deletion, and the
-deterministic part of evolution — correct under 10+ concurrent agents.
+deterministic part of evolution. (Concurrency under 10+ agents is an *architecture* concern — see below.)
 
 Each step is **Why** (the requirement and the reasoning behind it) · **What** (exactly what to build, including
 what *not* to do) · **Done when** (verifiable) · **Depends on**.
 
-> **Status.** Done: 1.1 (LanceDB), 1.2 (hybrid + filters), 1.3 (no `importance`), 1.4 (dedup / `topic_key`
-> upsert), 1.6 (deletion) — 1.3 / 1.4 / 1.6 landed with the Phase‑0 skeleton. Remaining: 1.7 (session
-> tracking), 1.9 (links + provenance), 1.10 (concurrency). **1.5** (over‑window) moved to the embedder
-> boundary — see [06-models.md](../06-models.md). **1.8** (`recall`) deferred to [post‑MVP](post-mvp.md).
-> Step numbers are kept stable to avoid churn.
+> **Status.** The memory layer is built (1.1–1.7): typed store, hybrid search + filters, dedup / `topic_key`
+> upsert, deletion, session tracking. **The store is now being re‑platformed from LanceDB to SQLite +
+> `sqlite-vec` + FTS5** — a sub‑phase before the architecture work; see
+> [adr/0001-storage-engine.md](../adr/0001-storage-engine.md). **1.9** (typed links + provenance) folds into
+> that re‑platform — on SQLite, links are a native table, not denormalized. **1.5** (over‑window) moved to the
+> embedder boundary ([06-models.md](../06-models.md)); **1.8** (`recall`) is [post‑MVP](post-mvp.md);
+> **1.10** (concurrency) moved to the architecture section ([03-architecture.md](../03-architecture.md)) — it
+> depends on the target topology. Step bodies below describe what was built on the LanceDB skeleton; the engine
+> is superseded by the ADR.
 
 ---
 
-### 1.1 LanceDB store backend
+### 1.1 Embedded store backend
+
+> **Re‑platformed.** The engine is now **SQLite + `sqlite-vec` + FTS5** — see
+> [adr/0001-storage-engine.md](../adr/0001-storage-engine.md). The LanceDB text below is the historical record of
+> the first implementation; the port (`MemoryRepositoryPort`) made the swap an adapter change only.
 
 **Why.** Phase 0 ships an in‑memory + JSON store on purpose — a placeholder so the core could be built and tested
 with zero heavy dependencies. The real product needs two things the JSON store can't give: genuine semantic search
@@ -213,22 +221,13 @@ normal actions. And, taking the one genuinely useful idea from code‑graph tool
 
 ---
 
-### 1.10 Concurrency — one shared process, 10+ agents
+### 1.10 Concurrency — moved to the architecture section
 
-**Why.** The defining constraint of the project: a single shared process must serve **10+ agents** without losing
-writes or throwing "database is locked" — the failure mode of the multi‑process‑on‑one‑file tools we surveyed.
-Because writes are cheap (embed + insert, no LLM), serializing them inside one process is enough; we don't need a
-heavyweight server.
-
-**What.** Make the single service safe under concurrency: serialize writes internally (a queue or lock) so
-concurrent writers never corrupt or lose data, while reads run in parallel.
-
-**Done when.**
-- A stress test with **≥10 parallel writers** shows zero lost writes and no lock errors.
-- Reads run concurrently with writes.
-
-**Depends on:** 1.1–1.6.
+The 10+‑agent write‑concurrency model depends on the **target topology** (one shared on‑demand process + thin
+shims), not on the memory layer, so it now lives in [03-architecture.md](../03-architecture.md) → *Concurrency*.
+It is deliberately not worked on until that architecture is built — today's process‑per‑agent setup would make us
+solve the wrong problem.
 
 ---
 
-**Phase done when:** the MVP FRs hold (FR‑11 `recall` is post‑MVP); the 10‑agent concurrency test passes; LanceDB is the backend.
+**Phase done when:** the MVP FRs hold (FR‑11 `recall` is post‑MVP); the store is SQLite + `sqlite-vec` + FTS5. (Concurrency validation is an architecture milestone — see [03-architecture.md](../03-architecture.md).)
