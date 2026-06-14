@@ -17,6 +17,7 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 mnemo = "mnemo.adapters.cli.app:main"
 mnemo-mcp = "mnemo.adapters.mcp.server:main"
+mnemo-service = "mnemo.adapters.mcp.service:main"
 
 [build-system]
 requires = ["hatchling"]

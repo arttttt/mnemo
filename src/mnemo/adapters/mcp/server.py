@@ -28,12 +28,13 @@ StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
 
 
-def build_mcp(container: Optional[Container] = None):
+def build_mcp(container: Optional[Container] = None, **settings):
     from mcp.server.fastmcp import FastMCP  # lazy, optional dependency
     from pydantic import Field  # provided by mcp; lazy to keep imports light
 
     container = container or build_container()
-    mcp = FastMCP("mnemo")
+    # `settings` (e.g. host/port) configure the transport; stdio ignores them.
+    mcp = FastMCP("mnemo", **settings)
 
     @mcp.tool()
     def remember(
