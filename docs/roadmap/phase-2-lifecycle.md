@@ -1,8 +1,16 @@
 # Phase 2 — On‑demand lifecycle
 
-**Goal:** nothing resident — one shared service spins up under load and exits on idle; ~0 RAM when unused, no Docker.
+**Goal:** nothing resident — one shared service spins up under load and exits on idle; ~0 RAM when **no agent is
+connected**, no Docker.
 
 Each step is **Why** (the requirement and reasoning) · **What** (exactly what to build) · **Done when** · **Depends on**.
+
+> **Status (v0.1.1).** **2.1 is built**: one shared `mnemo-service` over streamable-http owning a single embedder
+> + thread-safe store; a thin `mnemo-mcp` connector that proxies into it, **spawns it on demand** (no socket
+> activation — see 2.3), and **owns the run's session id** (sent to the service as request metadata, so the
+> service never invents one). The embedder is shared, so the footprint is `S + c·N`, not `S·N` — validated on
+> real hardware (~170 MB service + ~40 MB per connector). Remaining: 2.2 (idle-exit), 2.4 (setup), 2.5 (footprint
+> check), and the 10+-agent concurrency stress.
 
 ---
 
@@ -43,21 +51,13 @@ persist state and exit; a client that connects within the window cancels the shu
 
 ---
 
-### 2.3 On‑demand start without a resident daemon
+### 2.3 On‑demand start — DROPPED (folded into the connector)
 
-**Why.** We need start‑on‑demand and idle‑exit but explicitly **without a daemon that runs forever** and **without
-Docker** — that resident‑process "RAM hog" is precisely what we disliked in other tools. The OS can hold a listening
-socket for ~0 RAM and start the service only on the first connection; this is the idiomatic way to get the exact
-behavior we want.
-
-**What.** OS‑level socket activation on macOS and Linux: the OS listens; the first connection starts the service;
-on idle the service exits; the OS keeps (re‑)listening.
-
-**Done when.**
-- The first connection starts the service, idle exits it, the OS re‑listens — verified on macOS and Linux.
-- Only the listening socket is resident (not the service).
-
-**Depends on:** 2.2.
+Socket activation is **dropped**. It keeps a standing OS unit + listening socket registered even when nothing
+runs — apparatus we don't want, and "idiomatic" is not our criterion. Instead the **connector starts the service
+itself** when it is not up (a single‑spawn file lock so a burst of connectors spawns exactly one; it then polls
+until ready) — built as part of 2.1. So when no agent runs, **nothing** is registered, not even a socket, and the
+launchd‑vs‑systemd portability cost disappears. Idle‑**exit** stays the service's own job (2.2).
 
 ---
 
@@ -73,18 +73,21 @@ on idle the service exits; the OS keeps (re‑)listening.
 
 ---
 
-### 2.5 RAM budget verification
+### 2.5 Footprint check — minimal necessary
 
-**Why.** The whole lifecycle exists to fit a 16 GB machine — ~0 idle and ~1 GB active — even next to the developer's
-IDE and agents.
+**Why.** The lifecycle exists to add the **minimum** to the machine, not to hit a fixed budget (once local LLMs
+run they dominate RAM anyway). The thing to verify is the *shape*, not a number.
 
-**What.** Measure idle and active RAM of the running system.
+**What.** Confirm the footprint is `S + c·N` — one shared embedder regardless of agent count, thin connectors —
+that the shared service leaves ~0 resident when no agent is connected, and that the generator is transient.
 
-**Done when.** ~0 RAM idle and ~1 GB active measured on a 16 GB machine.
+**Done when.** The embedder is loaded once for N agents (not N times); the service is gone when no agent is
+connected; a connector alone is tens of MB. (Already observed live: one ~170 MB service + ~40 MB per connector.)
 
-**Depends on:** 2.1–2.3.
+**Depends on:** 2.1, 2.2.
 
 ---
 
-**Phase done when:** on‑demand start + idle exit verified on macOS and Linux; nothing resident; no Docker; the RAM
-budget is met.
+**Phase done when:** the connector starts the service on demand and the service idle‑exits after grace; nothing
+resident when no agent is connected; no Docker; the footprint is minimal (`S + c·N`, one shared embedder); the
+10+‑agent concurrency stress passes.

@@ -12,7 +12,7 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 ## MCP layer: **FastMCP** (official `mcp` Python SDK)
 
 - Exposes the tools from [05-mcp-api.md](05-mcp-api.md).
-- Transport: **streamable‑http** for the shared service + a thin **stdio shim** for client compatibility.
+- Transport: **streamable‑http** for the shared service + a thin **stdio connector** (`mnemo-mcp`) per agent.
 
 ## Store (embedded): **SQLite + `sqlite-vec` + FTS5**
 
@@ -49,14 +49,16 @@ fork with native DiskANN ANN) is the upgrade path if we ever outgrow brute‑for
 - **Rejected for the core: vLLM** — built for sustained concurrent serving; our generator is a single background
   batch job, and a resident vLLM violates the on‑demand/RAM goals.
 
-## On‑demand lifecycle: **socket activation** (launchd/systemd) + ref‑counting shim
+## On‑demand lifecycle: **connector‑spawned service** + grace idle‑exit
 
-- See [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md). Default A (socket activation), fallback B (userland supervisor).
+- The `mnemo-mcp` connector starts the shared service on demand (single‑spawn file lock + readiness poll); the
+  service ref‑counts connectors and idle‑exits on a grace timer when the last one disconnects. No socket
+  activation (dropped — it keeps a standing OS unit), no resident daemon. See [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md).
 
 ## Packaging / install
 
 - Distribute via **`uvx` / `pipx`** (Python) — run without a manual venv.
-- `mnemo init <client>` writes the MCP config for Claude Code / Cursor / etc. and sets up socket activation.
+- `mnemo init <client>` writes the MCP config (pointing each client at `mnemo-mcp`) for Claude Code / Cursor / etc.
 - Single data dir `~/.mnemo/` (data + run/ + logs).
 
 ## Dependency shortlist (Python)

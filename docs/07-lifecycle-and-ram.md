@@ -14,56 +14,50 @@ last agent disconnects           → a grace timer starts (default 5 min)
 background consolidation         → separately loads the generator and unloads it
 ```
 
-## Two ways to implement on‑demand
+## How on‑demand works
 
-### Option A — socket activation (recommended)
-The OS (launchd on macOS / systemd on Linux) holds **only a listening socket** (≈0 RAM).
-- First connection → the OS launches `mnemo service`.
-- `IdleTimeout` (launchd) / `RuntimeMaxSec`+idle logic (systemd) → the process exits on idle; the OS listens on the socket again.
+Socket activation (a standing launchd/systemd unit holding a listening socket) was considered and **dropped**:
+even at ≈0 RAM it keeps OS apparatus registered when nothing runs, and it splits across launchd vs systemd. The
+start is folded into the connector instead:
 
-> This is **NOT** a resident service. Unlike a "service that runs forever" (the very downside you disliked),
-> here the process lives only under load. This is the idiomatic way to get exactly the desired scheme.
+- **Start — the connector's job.** Each agent's `mnemo-mcp` connector, on launch, checks whether the service is
+  up; if not, it spawns it under a **single‑spawn file lock** in `~/.mnemo/run/` (so a burst of connectors spawns
+  exactly one), then polls until it accepts connections. A pidfile records the process; the service is detached
+  (`start_new_session`), so it outlives the connector.
+- **Exit — the service's job.** It ref‑counts connected connectors; when the last disconnects it starts a grace
+  timer (default ~5 min) and exits if no one reconnects (step 2.2).
 
-launchd (plist fragment):
-```xml
-<key>Sockets</key>   <!-- activating socket -->
-<key>TimeOut</key><integer>300</integer>   <!-- idle → exit -->
-```
-systemd: `mnemo.socket` (Accept=no) + `mnemo.service` with idle‑exit on a timer.
+So when no agent runs, **nothing** is registered — not even a socket. While agents run, each carries a thin
+connector **in its own process tree** (not a daemon — it dies with the agent's MCP client); the one shared service
+stays up until the last connector leaves.
 
-### Option B — userland supervisor (no systemd/launchd)
-If you don't want OS units:
-- Each agent's shim takes a **lock + ref‑count** in `~/.mnemo/run/` at start.
-- The first shim spawns `mnemo service` (background) and writes the PID.
-- Each shim decrements the counter on exit; when it reaches 0 — a grace timer is armed.
-- Timer elapsed and the counter is still 0 → the service receives a signal and exits.
-- Races are resolved with a file lock + an atomic counter.
+## MCP transport and connectors
 
-**Default:** A (more robust, less runtime code). B — a fallback / cross‑platform option.
+- The agent config points at the **thin stdio connector** `mnemo-mcp`, which proxies to the shared service
+  (`http://127.0.0.1:<port>/mcp`) and starts it on first use. The agent‑facing command is unchanged; only its
+  internals became a proxy.
+- A client that speaks streamable‑http directly can be given the URL instead — but then nothing starts the
+  service for it, so it must already be running.
 
-## MCP transport and shims
+## RAM — minimal necessary, not a budget
 
-- Not all MCP clients can do socket‑activated HTTP. So the agent config points at a **thin stdio shim**
-  (`command: mnemo-shim`) that proxies to the shared service (`http://127.0.0.1:<port>/mcp`) and starts it on first use.
-- Clients that speak streamable‑http directly can be given the URL and rely on socket activation without the shim.
-
-## RAM budget (target — 16 GB)
+The goal is to add the **minimum**, not to hit a number. The footprint is `S + c·N` for N connected agents —
+the heavy parts load **once** in the shared service, with thin connectors — never `S·N`.
 
 | State | What's in memory | RAM |
 |---|---|---|
-| **Idle** (after grace) | only the socket/shim (or nothing) | **~0** |
-| **Active, no generator** | service (runtime) + embedded store + HNSW index (~50–100k records) + embedder | **~0.5–1 GB** |
-| **Consolidation window** | + the Qwen3‑4B Q4 generator, transient | **+~3–4 GB** (then freed) |
-| **Economy mode** | generator = Qwen3‑1.7B Q4 or disabled | **+~1.2 GB / +0** |
+| **No agent connected** (after grace) | nothing — the service has exited | **~0** |
+| **N agents, no generator** | one shared service `S` + one thin connector `c` per agent | **`S + c·N`** |
+| **Consolidation window** | + the generator, transient | **+ GBs** (then freed) |
 
-Rough breakdown of the active state:
-- service runtime (Python/Node): ~100–250 MB;
-- embedded store + index for ~50–100k memories: ~150–400 MB;
-- embedder (a small ONNX model, e.g. Qwen3‑Embedding‑0.6B or bge‑m3, Q8 — not chosen yet): ~150–500 MB.
+Measured on real hardware (single‑user, real bge‑small embedder): **service `S` ≈ 170 MB** (Python runtime +
+embedded SQLite store + the loaded embedder), **connector `c` ≈ 40 MB** (Python + the MCP SDK, no embedder/store).
+The store is **brute‑force `sqlite-vec` + FTS5** — no ANN/HNSW index. So 10 agents ≈ `170 + 40·10 = 570 MB`, vs
+`170·10 = 1.7 GB` if each agent ran its own server — the shared embedder is the decisive saving; the `c·N` tail
+is cheap.
 
-Conclusion: ~1 GB while active, ~0 when idle, a brief on‑demand spike for consolidation.
-Comfortable on 16 GB even next to an IDE and agents. If a **local model for the coding agent itself**
-also runs on the machine — it is the main consumer; the mnemo part stays cheap, and we schedule
+The number is a guide, not a ceiling: once a **local model for the coding agent itself** runs, it is the main
+consumer and the machine is in the GBs regardless — mnemo's job is just to stay the minimum, and we schedule
 consolidation for machine‑idle.
 
 ## Settings (env / config)
