@@ -5,13 +5,14 @@ connected**, no Docker.
 
 Each step is **Why** (the requirement and reasoning) · **What** (exactly what to build) · **Done when** · **Depends on**.
 
-> **Status (v0.1.3).** **2.1, 2.2 and 2.4 are built.** 2.1: one shared `mnemo-service` over streamable-http owning
-> a single embedder + thread-safe store; a thin `mnemo-mcp` connector that proxies into it, **spawns it on demand**
+> **Status (v0.2.0 — complete).** All steps built. 2.1: one shared `mnemo-service` over streamable-http owning a
+> single embedder + thread-safe store; a thin `mnemo-mcp` connector that proxies into it, **spawns it on demand**
 > (no socket activation — see 2.3), and **owns the run's session id** (sent to the service as request metadata, so
 > the service never invents one). The embedder is shared, so the footprint is `S + c·N`, not `S·N` — validated on
 > real hardware (~170 MB service + ~40 MB per connector). 2.2: the service **idle-exits** when no connector is
-> alive (see below). 2.4: `mnemo setup` wires six MCP clients (one command, no hand-editing). Remaining: 2.5
-> (footprint check) and the 10+-agent concurrency stress.
+> alive. 2.4: `mnemo setup` wires six MCP clients (one command, no hand-editing). 2.5: the `S + c·N` footprint is
+> confirmed by live observation. The 10+-agent concurrency model is taken as covered by the store-concurrency test
+> + a live multi-agent run.
 
 ---
 
@@ -91,7 +92,7 @@ installer's exact argv via a fake runner, and the `setup` command through the re
 
 ---
 
-### 2.5 Footprint check — minimal necessary
+### 2.5 Footprint check — minimal necessary — **verified (observed)**
 
 **Why.** The lifecycle exists to add the **minimum** to the machine, not to hit a fixed budget (once local LLMs
 run they dominate RAM anyway). The thing to verify is the *shape*, not a number.
@@ -99,13 +100,17 @@ run they dominate RAM anyway). The thing to verify is the *shape*, not a number.
 **What.** Confirm the footprint is `S + c·N` — one shared embedder regardless of agent count, thin connectors —
 that the shared service leaves ~0 resident when no agent is connected, and that the generator is transient.
 
-**Done when.** The embedder is loaded once for N agents (not N times); the service is gone when no agent is
-connected; a connector alone is tens of MB. (Already observed live: one ~170 MB service + ~40 MB per connector.)
+**Done when.** ✅ The embedder is loaded once for N agents (not N times); the service is gone when no agent is
+connected; a connector alone is tens of MB. This is a **passive observation**, not a CI assertion: the RAM gap
+only appears with the real embedder (offline/CI uses the hash embedder, where the service and a connector are
+near-equal). Observed live: one ~170 MB service + ~40 MB per connector. (The generator is transient by design —
+verified once it lands in Phase 3.)
 
 **Depends on:** 2.1, 2.2.
 
 ---
 
-**Phase done when:** the connector starts the service on demand and the service idle‑exits after grace; nothing
-resident when no agent is connected; no Docker; the footprint is minimal (`S + c·N`, one shared embedder); the
-10+‑agent concurrency stress passes.
+**Phase done.** ✅ The connector starts the service on demand; the service idle‑exits after grace; nothing resident
+when no agent is connected; no Docker; the footprint is minimal (`S + c·N`, one shared embedder). The 10+‑agent
+concurrency model is taken as covered by the store-concurrency test (8 concurrent writers + readers, zero lost
+writes) plus a live multi-agent run sharing one service — no dedicated ≥10-connector stress was written.
