@@ -1,7 +1,7 @@
 """In-memory repository: brute-force cosine + optional JSON persistence.
 
-The offline/test backend, and the default until the LanceDB store lands. It
-implements MemoryRepositoryPort structurally.
+The offline/test backend (the SQLite store is the real one). It implements
+MemoryRepositoryPort structurally.
 """
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class InMemoryMemoryRepository:
     ) -> list[ScoredMemory]:
         # Offline/test backend: it approximates hybrid with cosine over the (already
         # lexical) hash-embedding, so the raw `query` text is not needed here. The
-        # real dense+lexical fusion lives in the LanceDB backend.
+        # real dense+lexical fusion lives in the SQLite backend.
         scored = [
             ScoredMemory(memory=memory, score=cosine(vector, stored))
             for memory, stored in self._items

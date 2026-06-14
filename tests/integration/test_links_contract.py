@@ -1,8 +1,6 @@
 """Typed-links contract, run against every links-capable backend.
 
-In-memory and SQLite both implement the `links` table. The legacy LanceDB
-backend deliberately does not (it is migration-source only), so it is excluded
-here.
+Both the in-memory and SQLite backends implement the `links` table.
 """
 import pytest
 

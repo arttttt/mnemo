@@ -10,7 +10,7 @@ reciprocal-rank fusion of the two ranked lists, computed in the adapter.
 
 Rationale and the alternatives weighed are in docs/adr/0001-storage-engine.md.
 The schema is created lazily on the first write, once the vector dimension is
-known (mirroring the LanceDB adapter it replaces).
+known.
 """
 from __future__ import annotations
 

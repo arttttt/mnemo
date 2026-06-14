@@ -5,8 +5,6 @@ from mnemo.adapters.session.in_process_session_provider import InProcessSessionP
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.use_cases.delete_memory import DeleteMemory
-from mnemo.application.use_cases.interfaces.migrate_memories import MigrateMemoriesUseCase
-from mnemo.application.use_cases.migrate_memories import MigrateMemories
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
 from mnemo.infrastructure.config import Config
@@ -26,17 +24,6 @@ def build_container(config: Config | None = None) -> Container:
         search=SearchMemory(repository, embedder),
         delete=DeleteMemory(repository),
     )
-
-
-def build_migration(config: Config | None = None) -> MigrateMemoriesUseCase:
-    """Wire the one-off re-platform migration: legacy LanceDB store -> SQLite."""
-    config = config or Config.from_env()
-    from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
-
-    source = LanceDbMemoryRepository(uri=config.lancedb_uri)
-    target = SqliteVecMemoryRepository(path=config.sqlite_path)
-    return MigrateMemories(source, target, _build_embedder(config.embedder))
 
 
 def _build_embedder(name: str) -> EmbedderPort:
@@ -60,8 +47,4 @@ def _build_repository(config: Config) -> MemoryRepositoryPort:
         from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
         return SqliteVecMemoryRepository(path=config.sqlite_path)
-    if config.store == "lancedb":
-        from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
-
-        return LanceDbMemoryRepository(uri=config.lancedb_uri)
     raise ValueError(f"unknown store: {config.store!r}")

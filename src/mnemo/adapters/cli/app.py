@@ -9,7 +9,7 @@ from typing import Optional
 import typer
 
 from mnemo.domain.memory_type import MemoryType
-from mnemo.infrastructure.composition import build_container, build_migration
+from mnemo.infrastructure.composition import build_container
 
 _TYPES = ", ".join(member.value for member in MemoryType)
 
@@ -108,13 +108,6 @@ def stats() -> None:
     memories = container.repository.list_all()
     by_type = Counter(memory.type.value for memory in memories)
     typer.echo(json.dumps({"total": len(memories), "by_type": dict(by_type)}, indent=2))
-
-
-@app.command()
-def migrate() -> None:
-    """Copy memories from the JSON store into the LanceDB store. Idempotent."""
-    result = build_migration().execute()
-    typer.echo(json.dumps(asdict(result), indent=2))
 
 
 @app.command()

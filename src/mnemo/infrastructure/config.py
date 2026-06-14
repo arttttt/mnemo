@@ -13,7 +13,6 @@ class Config:
     store: str
     store_path: str
     sqlite_path: str = ""
-    lancedb_uri: str = ""
 
     @staticmethod
     def from_env() -> "Config":
@@ -28,8 +27,5 @@ class Config:
             ),
             sqlite_path=os.environ.get(
                 "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
-            ),
-            lancedb_uri=os.environ.get(
-                "MNEMO_LANCEDB_URI", os.path.join(data_dir, "memory")
             ),
         )

@@ -12,7 +12,6 @@ dependencies = [
 
 [project.optional-dependencies]
 embed = ["fastembed>=0.4.0"]   # local ONNX embeddings (heavy)
-store = ["lancedb>=0.13.0"]    # legacy backend — only for the one-time migration to SQLite
 dev = ["pytest>=8.0"]
 
 [project.scripts]
@@ -31,5 +30,5 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-m 'not heavy'"
 markers = [
-    "heavy: requires heavy/networked backends (fastembed, lancedb)",
+    "heavy: requires the heavy/networked fastembed backend (downloads a model)",
 ]
