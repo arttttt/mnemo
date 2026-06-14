@@ -14,10 +14,12 @@ cases, MCP/CLI, and the parametrized store‑contract tests do **not** change.
 ### S.1 SQLite store adapter behind the port
 
 **Why.** The whole point of the port: replace the engine without touching the core.
-**What.** A `sqlite-vec`‑backed repository: a `vec0` virtual table for the embedding; a relational `memories`
-table for the payload (type, scope, project, tags, related_files, hash, status, topic_key, session_id,
-timestamps, counters); FTS5 over `content`. Exact lookups by hash / topic_key use indexed columns; `UPDATE` for
-supersede/duplicate‑counter; the in‑memory store stays the offline/test backend.
+**What.** A `sqlite-vec`‑backed repository: a single relational `memories` table carrying the payload (type,
+scope, project, tags, related_files, hash, status, topic_key, session_id, timestamps, counters) **and** the
+embedding as a `BLOB` column on the same row (`CHECK(vec_length(...))` dimension guard) — ranked by the
+`vec_distance_cosine` scalar, not a `vec0` virtual table (see [the ADR](../adr/0001-storage-engine.md#why-a-blob-column--scalar-distance-not-a-vec0-virtual-table)); FTS5 over `content` as an external‑content table
+synced by triggers. Exact lookups by hash / topic_key use indexed columns; `UPDATE` for supersede/duplicate‑counter;
+the in‑memory store stays the offline/test backend.
 **Done when.** The SQLite store passes the **same store‑contract tests** as in‑memory (both backends remain
 parametrized); selecting it is one config switch.
 
@@ -25,8 +27,11 @@ parametrized); selecting it is one config switch.
 
 **Why.** Dense + lexical retrieval, the same behaviour as before — just expressed in SQL instead of LanceDB's
 built‑in hybrid.
-**What.** One query fusing `vec0` KNN and FTS5 BM25 by reciprocal‑rank fusion (rank‑based, `FULL OUTER JOIN` on
-id), with the structured filters (scope / type / tags / related_files / recency) pushed down as `WHERE`.
+**What.** Two queries — dense (`vec_distance_cosine` over the `WHERE`‑filtered scan) and lexical (FTS5 BM25) —
+fused by reciprocal‑rank fusion (k=60) **in the adapter** (a pure function over the two ranked id lists). The
+structured filters (scope / type / tags / related_files / recency) are pushed down as `WHERE` into both legs;
+list filters (`tags`, `related_files`) use `json_each`. (Every analog surveyed fuses in code, not in one SQL
+statement — it's simpler and trivially unit‑testable.)
 **Done when.** A paraphrase and an exact token both return the right memory; every filter narrows correctly;
 the store‑contract search tests pass on SQLite.
 

@@ -15,6 +15,13 @@ def _in_memory_target(tmp_path):
     return InMemoryMemoryRepository(path=str(tmp_path / "target.json"))
 
 
+def _sqlite_target(tmp_path):
+    pytest.importorskip("sqlite_vec")
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+    return SqliteVecMemoryRepository(path=str(tmp_path / "target.db"))
+
+
 def _lancedb_target(tmp_path):
     pytest.importorskip("lancedb")
     from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
@@ -25,6 +32,7 @@ def _lancedb_target(tmp_path):
 @pytest.fixture(
     params=[
         pytest.param(_in_memory_target, id="to_in_memory"),
+        pytest.param(_sqlite_target, id="to_sqlite"),
         pytest.param(_lancedb_target, id="to_lancedb", marks=pytest.mark.heavy),
     ]
 )

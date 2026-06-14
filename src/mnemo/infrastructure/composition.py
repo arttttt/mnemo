@@ -29,13 +29,13 @@ def build_container(config: Config | None = None) -> Container:
 
 
 def build_migration(config: Config | None = None) -> MigrateMemoriesUseCase:
-    """Wire the one-off migration from the JSON store into the LanceDB store."""
+    """Wire the one-off re-platform migration: legacy LanceDB store -> SQLite."""
     config = config or Config.from_env()
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
     from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
-    source = InMemoryMemoryRepository(path=config.store_path)
-    target = LanceDbMemoryRepository(uri=config.lancedb_uri)
+    source = LanceDbMemoryRepository(uri=config.lancedb_uri)
+    target = SqliteVecMemoryRepository(path=config.sqlite_path)
     return MigrateMemories(source, target, _build_embedder(config.embedder))
 
 
@@ -56,6 +56,10 @@ def _build_repository(config: Config) -> MemoryRepositoryPort:
         from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 
         return InMemoryMemoryRepository(path=config.store_path)
+    if config.store == "sqlite":
+        from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+        return SqliteVecMemoryRepository(path=config.sqlite_path)
     if config.store == "lancedb":
         from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
 

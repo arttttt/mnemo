@@ -54,6 +54,25 @@ def test_topic_key_upsert_supersedes_prior():
     assert second.id in ids and first.id not in ids
 
 
+def test_topic_key_upsert_writes_a_supersedes_link():
+    from mnemo.domain.link_type import LinkType
+
+    repo, remember, _, _ = _wiring()
+    first = remember.execute(content="Auth model v1", project="api", topic_key="auth/model")
+    second = remember.execute(content="Auth model v2", project="api", topic_key="auth/model")
+
+    links = repo.links_for(second.id)
+    assert len(links) == 1
+    link = links[0]
+    assert link.type is LinkType.SUPERSEDES
+    assert (link.source_id, link.target_id) == (second.id, first.id)
+    assert link.provenance == "auth/model"  # the topic_key that drove the upsert
+
+    # A first-time write (no prior topic_key) creates no edge.
+    solo = remember.execute(content="standalone note", project="api")
+    assert repo.links_for(solo.id) == []
+
+
 def test_near_similar_memories_coexist():
     repo, remember, _, _ = _wiring()
     a = remember.execute(content="postgres connection pool", type="decision", project="api")

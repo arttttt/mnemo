@@ -12,6 +12,7 @@ class Config:
     embedder: str
     store: str
     store_path: str
+    sqlite_path: str = ""
     lancedb_uri: str = ""
 
     @staticmethod
@@ -21,9 +22,12 @@ class Config:
         return Config(
             data_dir=data_dir,
             embedder=os.environ.get("MNEMO_EMBEDDER", "fastembed"),
-            store=os.environ.get("MNEMO_STORE", "lancedb"),
+            store=os.environ.get("MNEMO_STORE", "sqlite"),
             store_path=os.environ.get(
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
+            ),
+            sqlite_path=os.environ.get(
+                "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
             ),
             lancedb_uri=os.environ.get(
                 "MNEMO_LANCEDB_URI", os.path.join(data_dir, "memory")
