@@ -118,7 +118,7 @@ def test_search_recency_excludes_old(open_repo, embedder):
 
 
 @pytest.mark.heavy
-def test_lancedb_hybrid_builds_fts_index_and_finds_exact_token(tmp_path):
+def test_lancedb_hybrid_finds_exact_token(tmp_path):
     pytest.importorskip("lancedb")
     from mnemo.adapters.store.lancedb_repository import LanceDbMemoryRepository
 
@@ -127,9 +127,8 @@ def test_lancedb_hybrid_builds_fts_index_and_finds_exact_token(tmp_path):
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 
-    # The table has rows but no FTS index yet; the first search must build it
-    # (the upgrade path for a table written before hybrid) and the exact token
-    # must rank first via the lexical half of the hybrid.
+    # The full-text index is created with the table, so an exact token ranks
+    # first via the lexical half of the hybrid.
     hits = repo.search(
         "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
     )

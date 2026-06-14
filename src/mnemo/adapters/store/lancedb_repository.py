@@ -20,7 +20,6 @@ class LanceDbMemoryRepository:
         import lancedb  # heavy, optional dependency — import lazily
 
         self._db = lancedb.connect(uri)
-        self._fts_ready = False
         try:
             self._table = self._db.open_table(_TABLE)
         except ValueError:
@@ -52,7 +51,6 @@ class LanceDbMemoryRepository:
     ) -> list[ScoredMemory]:
         if self._table is None:
             return []
-        self._ensure_fts_index()
         rows = (
             self._table.search(query_type="hybrid")
             .vector(list(vector))
@@ -66,23 +64,6 @@ class LanceDbMemoryRepository:
             ScoredMemory(memory=from_dict(row), score=row["_relevance_score"])
             for row in rows
         ]
-
-    def _ensure_fts_index(self) -> None:
-        # The full-text index backs the lexical half of hybrid search. Create it
-        # once if absent — this also upgrades a table written before FTS existed
-        # (additive: an index, never a table rebuild). In LanceDB OSS creation is
-        # synchronous; new rows are searchable immediately, and a periodic
-        # optimize() folds them into the index for speed at scale.
-        if self._fts_ready:
-            return
-        for index in self._table.list_indices():
-            if "content" in getattr(index, "columns", []) and "FTS" in str(
-                getattr(index, "index_type", "")
-            ).upper():
-                self._fts_ready = True
-                return
-        self._table.create_fts_index("content")
-        self._fts_ready = True
 
     def _where(self, criteria: SearchCriteria) -> str:
         clauses = ["status = 'active'"]
@@ -159,6 +140,10 @@ class LanceDbMemoryRepository:
     def _ensure_table(self, dim: int):
         if self._table is None:
             self._table = self._db.create_table(_TABLE, schema=self._schema(dim))
+            # Build the full-text index up front so hybrid search works from the
+            # first query — a new store is born hybrid-ready. (A store created
+            # before hybrid is upgraded once via the dev-script reindex step.)
+            self._table.create_fts_index("content")
         return self._table
 
     def _first(self, predicate: str) -> Memory | None:
