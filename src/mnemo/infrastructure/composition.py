@@ -4,6 +4,7 @@ from __future__ import annotations
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.use_cases.delete_memory import DeleteMemory
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
@@ -11,11 +12,14 @@ from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
 
 
-def build_container(config: Config | None = None) -> Container:
+def build_container(
+    config: Config | None = None,
+    session_provider: SessionProviderPort | None = None,
+) -> Container:
     config = config or Config.from_env()
     embedder = _build_embedder(config.embedder)
     repository = _build_repository(config)
-    session_provider = InProcessSessionProvider()
+    session_provider = session_provider or InProcessSessionProvider()
     return Container(
         config=config,
         embedder=embedder,

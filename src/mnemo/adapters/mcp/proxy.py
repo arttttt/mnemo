@@ -7,6 +7,8 @@ that one process regardless of how many agents are connected.
 """
 from __future__ import annotations
 
+from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from mnemo.adapters.session.meta_session_provider import SESSION_META_KEY
 from mnemo.infrastructure.config import Config
 
 
@@ -15,6 +17,10 @@ async def _serve(url: str) -> None:
     from mcp.client.streamable_http import streamable_http_client
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
+
+    # This connector is one process per agent, so it owns the run's session id;
+    # it travels to the service as request metadata (the service never invents it).
+    session = InProcessSessionProvider()
 
     async with streamable_http_client(url) as (http_read, http_write, _):
         async with ClientSession(http_read, http_write) as upstream:
@@ -27,8 +33,11 @@ async def _serve(url: str) -> None:
 
             @server.call_tool(validate_input=False)
             async def call_tool(name, arguments):
-                # Forward the upstream result verbatim (content + structured + isError).
-                return await upstream.call_tool(name, arguments)
+                # Forward the upstream result verbatim (content + structured + isError),
+                # tagging the request with this connection's session id.
+                return await upstream.call_tool(
+                    name, arguments, meta={SESSION_META_KEY: session.current_session_id()}
+                )
 
             async with stdio_server() as (stdio_read, stdio_write):
                 await server.run(
