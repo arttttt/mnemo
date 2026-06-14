@@ -156,7 +156,3 @@ def build_mcp(container: Optional[Container] = None, **settings):
         return asdict(container.delete.purge())
 
     return mcp
-
-
-def main() -> None:
-    build_mcp().run()
