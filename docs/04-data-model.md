@@ -56,7 +56,7 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
     "type": "decision",                 // one of the types above; default "working-notes"
     "scope": "project",                // project | global   (session scope deferred, not v1)
     "project": "checkout-api",          // kebab-case; ignored when scope=global
-    "session_id": "2026-06-13T...",     // which run created this (session tracking)
+    "session_id": "5f3e9c…",             // which run created this (session tracking)
     "related_files": ["src/auth/jwt.ts"],
     "tags": ["authentication", "jwt"],   // optional keyword list; a property (not a type), searchable
     "hash": "sha256(normalized_content)",// for exact dedup

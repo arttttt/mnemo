@@ -158,15 +158,18 @@ grouping ("what this session did"), and a coherent working set for the backgroun
 one project there is no single "last session". ("Where did I leave off" is meanwhile an on‑demand `search` for
 `type=progress`; an aggregated `recall` is post‑MVP.)
 
-**What.** Give each working run a session identity and stamp every memory it writes with that `session_id`. In the
-target architecture the natural identity is the **MCP connection** (each agent has its own stdio shim → concurrent
-sessions are distinct without guessing). Record a lightweight session row (`id, project, started_at, ended_at`).
-No LLM, no stored summary, no recap.
+**What.** A small **session provider** behind a port yields the run's id: lazily generated once and returned for
+every write of the run (a read‑only run generates nothing). `remember` stamps each stored memory with it; the agent
+never sets it. **No session entity/table** — which projects a run touched and when are derivable from the memories
+(each carries `project` + `session_id` + `created_at`), so a separate session record would be a redundant
+denormalization with no current consumer (deferred until one needs it, e.g. consolidation). One process = one run
+today; a shared‑process deployment swaps the provider for a per‑connection one behind the same port. Done now
+because provenance is **write‑time‑only** — it can't be reconstructed for memories written before stamping.
 
 **Done when.**
-- Memories written in a run carry that run's `session_id`.
-- Concurrent runs in one project get distinct sessions.
-- A session's memories are queryable as a group.
+- Every memory written in a run carries that run's `session_id` (one id per run).
+- Distinct runs get distinct session ids.
+- The agent never sets `session_id`; the provider supplies it.
 - Tests.
 
 **Depends on:** 1.1.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.domain.constants import DEFAULT_TYPE
 from mnemo.domain.memory import Memory
@@ -12,10 +13,14 @@ from mnemo.domain.scope import Scope
 
 class RememberMemory:
     def __init__(
-        self, repository: MemoryRepositoryPort, embedder: EmbedderPort
+        self,
+        repository: MemoryRepositoryPort,
+        embedder: EmbedderPort,
+        session_provider: SessionProviderPort,
     ) -> None:
         self._repository = repository
         self._embedder = embedder
+        self._session_provider = session_provider
 
     def execute(
         self,
@@ -27,7 +32,6 @@ class RememberMemory:
         related_files: list[str] | None = None,
         tags: list[str] | None = None,
         topic_key: str | None = None,
-        session_id: str | None = None,
     ) -> RememberResult:
         memory = Memory.create(
             content=content,
@@ -37,7 +41,6 @@ class RememberMemory:
             related_files=related_files,
             tags=tags,
             topic_key=topic_key,
-            session_id=session_id,
         )
 
         # Exact duplicate: identical normalized content already stored — don't spawn a row.
@@ -56,6 +59,10 @@ class RememberMemory:
                 self._repository.mark_superseded(prior.id)
                 memory.supersedes = prior.id
                 superseded_id = prior.id
+
+        # Provenance: stamp the current run's session id. Only stored memories get one,
+        # so a read-only run generates nothing. The agent never sets it.
+        memory.session_id = self._session_provider.current_session_id()
 
         # Near-similar memories are NOT suppressed here — they coexist; the background
         # worker may merge/flag genuine duplicates later (docs/04-data-model.md).
