@@ -1,6 +1,7 @@
 """Builds the Container by wiring concrete adapters from config (DI)."""
 from __future__ import annotations
 
+from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.use_cases.delete_memory import DeleteMemory
@@ -16,11 +17,12 @@ def build_container(config: Config | None = None) -> Container:
     config = config or Config.from_env()
     embedder = _build_embedder(config.embedder)
     repository = _build_repository(config)
+    session_provider = InProcessSessionProvider()
     return Container(
         config=config,
         embedder=embedder,
         repository=repository,
-        remember=RememberMemory(repository, embedder),
+        remember=RememberMemory(repository, embedder, session_provider),
         search=SearchMemory(repository, embedder),
         delete=DeleteMemory(repository),
     )

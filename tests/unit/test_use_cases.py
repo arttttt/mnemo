@@ -1,4 +1,5 @@
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 from mnemo.application.use_cases.delete_memory import DeleteMemory
 from mnemo.application.use_cases.remember_memory import RememberMemory
@@ -10,7 +11,7 @@ def _wiring():
     embedder = HashEmbedder()
     return (
         repo,
-        RememberMemory(repo, embedder),
+        RememberMemory(repo, embedder, InProcessSessionProvider()),
         SearchMemory(repo, embedder),
         DeleteMemory(repo),
     )
@@ -94,6 +95,27 @@ def test_search_recency_days_keeps_fresh():
     fresh = remember.execute(content="fresh decision today", project="api")
     hits = search.execute(query="fresh decision today", project="api", recency_days=7)
     assert any(hit.id == fresh.id for hit in hits)
+
+
+def test_remember_stamps_one_session_id_per_run():
+    repo, remember, _, _ = _wiring()
+    first = remember.execute(content="one", project="api")
+    second = remember.execute(content="two", project="api")
+
+    session_by_id = {memory.id: memory.session_id for memory in repo.list_all()}
+    assert session_by_id[first.id] is not None
+    assert session_by_id[first.id] == session_by_id[second.id]  # same run → same session
+
+
+def test_distinct_runs_get_distinct_session_ids():
+    repo_a, remember_a, _, _ = _wiring()
+    repo_b, remember_b, _, _ = _wiring()
+    a = remember_a.execute(content="note", project="api")
+    b = remember_b.execute(content="note", project="api")
+
+    session_a = {m.id: m.session_id for m in repo_a.list_all()}[a.id]
+    session_b = {m.id: m.session_id for m in repo_b.list_all()}[b.id]
+    assert session_a != session_b
 
 
 def test_delete_clear_purge():

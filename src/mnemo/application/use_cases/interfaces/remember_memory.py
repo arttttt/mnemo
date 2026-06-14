@@ -20,5 +20,4 @@ class RememberMemoryUseCase(Protocol):
         related_files: list[str] | None = None,
         tags: list[str] | None = None,
         topic_key: str | None = None,
-        session_id: str | None = None,
     ) -> RememberResult: ...
