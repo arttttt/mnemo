@@ -7,21 +7,19 @@ that one process regardless of how many agents are connected.
 """
 from __future__ import annotations
 
+from mnemo.adapters.mcp.connector_presence import ConnectorPresence
 from mnemo.adapters.mcp.launcher import ensure_service_running
+from mnemo.adapters.mcp.run_paths import connectors_dir
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.session.meta_session_provider import SESSION_META_KEY
 from mnemo.infrastructure.config import Config
 
 
-async def _serve(url: str) -> None:
+async def _serve(url: str, session: InProcessSessionProvider) -> None:
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
-
-    # This connector is one process per agent, so it owns the run's session id;
-    # it travels to the service as request metadata (the service never invents it).
-    session = InProcessSessionProvider()
 
     async with streamable_http_client(url) as (http_read, http_write, _):
         async with ClientSession(http_read, http_write) as upstream:
@@ -50,5 +48,13 @@ def main() -> None:
     import anyio
 
     config = Config.from_env()
+    # This connector is one process per agent, so it owns the run's session id;
+    # it travels to the service as request metadata (the service never invents it).
+    session = InProcessSessionProvider()
+    # Mark this connector alive: hold a flock the kernel frees when we die, so the
+    # service can count live connectors and idle-exit once none remain. Held for
+    # the whole run (the reference lives until anyio.run returns, i.e. process end).
+    presence = ConnectorPresence(connectors_dir(config))
+    presence.acquire(session.current_session_id())
     ensure_service_running(config)  # start the shared service if it is not up yet
-    anyio.run(_serve, f"http://{config.host}:{config.port}/mcp")
+    anyio.run(_serve, f"http://{config.host}:{config.port}/mcp", session)

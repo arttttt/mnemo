@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 
+from mnemo.adapters.mcp.run_paths import run_dir as _run_dir
 from mnemo.infrastructure.config import Config
 
 _READY_TIMEOUT = 30.0
@@ -25,7 +26,7 @@ _READY_TIMEOUT = 30.0
 def ensure_service_running(config: Config) -> None:
     if _is_listening(config.host, config.port):
         return
-    run_dir = Path(config.data_dir).expanduser().parent / "run"
+    run_dir = _run_dir(config)
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "service.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

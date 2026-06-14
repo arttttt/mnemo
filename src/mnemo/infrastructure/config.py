@@ -15,6 +15,8 @@ class Config:
     sqlite_path: str = ""
     host: str = "127.0.0.1"   # the shared service binds localhost-only
     port: int = 8765
+    idle_grace_seconds: float = 300.0         # exit this long after the last connector leaves
+    idle_check_interval_seconds: float = 5.0  # how often the service sweeps for live connectors
 
     @staticmethod
     def from_env() -> "Config":
@@ -32,4 +34,8 @@ class Config:
             ),
             host=os.environ.get("MNEMO_HOST", "127.0.0.1"),
             port=int(os.environ.get("MNEMO_PORT", "8765")),
+            idle_grace_seconds=float(os.environ.get("MNEMO_IDLE_GRACE_SECONDS", "300")),
+            idle_check_interval_seconds=float(
+                os.environ.get("MNEMO_IDLE_CHECK_INTERVAL_SECONDS", "5")
+            ),
         )

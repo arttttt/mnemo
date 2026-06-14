@@ -52,7 +52,8 @@ separately and only runs in the background.
 - A **stdio** process that proxies MCP calls to the shared service over streamable‑http. No embedder/store —
   ~40 MB (Python + the MCP SDK), one per agent, living in the agent's own process tree.
 - **Starts the service** on launch if it is not up (single‑spawn lock + readiness poll — see
-  [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md)); the service ref‑counts connectors and idle‑exits on grace.
+  [07-lifecycle-and-ram.md](07-lifecycle-and-ram.md)); the service counts live connectors (per‑run `flock` markers
+  the kernel frees on death) and idle‑exits on grace.
 - **Owns the run's session id** (one per connector run) and sends it to the service as request metadata, so the
   service stamps provenance without inventing it.
 

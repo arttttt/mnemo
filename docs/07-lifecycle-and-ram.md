@@ -24,8 +24,14 @@ start is folded into the connector instead:
   up; if not, it spawns it under a **single‑spawn file lock** in `~/.mnemo/run/` (so a burst of connectors spawns
   exactly one), then polls until it accepts connections. A pidfile records the process; the service is detached
   (`start_new_session`), so it outlives the connector.
-- **Exit — the service's job.** It ref‑counts connected connectors; when the last disconnects it starts a grace
-  timer (default ~5 min) and exits if no one reconnects (step 2.2).
+- **Exit — the service's job.** Each connector holds an exclusive `flock` on a per‑run marker in
+  `~/.mnemo/run/connectors/` for its whole life; the **kernel frees the lock when the connector dies — for any
+  reason, clean exit or crash/SIGKILL** — so the service counts live connectors by which markers are still locked
+  (no PID tracking, immune to PID reuse). A background sweep checks every few seconds and is the **sole cleaner**
+  of dead markers. When none are live it starts a grace timer (default 5 min, `MNEMO_IDLE_GRACE_SECONDS`); a
+  connector that appears within it cancels the shutdown, otherwise the service exits (committed data is already
+  durable in the SQLite WAL). Boot counts as "the last one just left", so an orphan spawn no connector ever uses
+  also exits.
 
 So when no agent runs, **nothing** is registered — not even a socket. While agents run, each carries a thin
 connector **in its own process tree** (not a daemon — it dies with the agent's MCP client); the one shared service
@@ -64,7 +70,8 @@ consolidation for machine‑idle.
 ```
 MNEMO_PORT=8765
 MNEMO_DATA_DIR=~/.mnemo/data
-MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown
+MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown after the last connector leaves
+MNEMO_IDLE_CHECK_INTERVAL_SECONDS=5 # how often the service sweeps for live connectors
 MNEMO_EMBEDDER=<tbd>                 # production model not chosen yet — see 06-models.md
 MNEMO_GENERATOR=qwen3-4b-instruct-2507-q4   # or "off"
 MNEMO_GENERATOR_ENGINE=llama.cpp            # llama.cpp | ollama
