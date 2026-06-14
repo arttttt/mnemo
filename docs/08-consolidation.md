@@ -12,7 +12,7 @@ there is no RAM "hog").
 3. **Insight extraction.** Recurring patterns/gotchas → a `learning` record (cross‑project ones → `__global__`).
 4. **Contradiction flags.** *Flags* likely contradictions for human/agent review — it does **not** auto‑mark
    anything stale (currency changes only on an explicit signal; see [04-data-model.md](04-data-model.md)).
-5. **(MAY) Update the session summary** for `session_recap`.
+5. **(post‑MVP) Precompute a `recall` digest** off the hot path, once the deferred `recall` lands.
 6. **(post‑MVP) Importance scoring.** Once `importance` returns (post‑MVP), the worker can score it consistently
    (heuristic and/or the small model).
 

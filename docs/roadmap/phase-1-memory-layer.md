@@ -1,10 +1,16 @@
 # Phase 1 — Memory layer (the core)
 
-**Goal:** typed, scoped, persistent memory with hybrid search, `recall`, sessions, deletion, and the
+**Goal:** typed, scoped, persistent memory with hybrid search, session tracking, deletion, and the
 deterministic part of evolution — correct under 10+ concurrent agents.
 
 Each step is **Why** (the requirement and the reasoning behind it) · **What** (exactly what to build, including
 what *not* to do) · **Done when** (verifiable) · **Depends on**.
+
+> **Status.** Done: 1.1 (LanceDB), 1.2 (hybrid + filters), 1.3 (no `importance`), 1.4 (dedup / `topic_key`
+> upsert), 1.6 (deletion) — 1.3 / 1.4 / 1.6 landed with the Phase‑0 skeleton. Remaining: 1.7 (session
+> tracking), 1.9 (links + provenance), 1.10 (concurrency). **1.5** (over‑window) moved to the embedder
+> boundary — see [06-models.md](../06-models.md). **1.8** (`recall`) deferred to [post‑MVP](post-mvp.md).
+> Step numbers are kept stable to avoid churn.
 
 ---
 
@@ -112,27 +118,13 @@ near‑duplication, if it accumulates, is cleaned up later by the background wor
 
 ---
 
-### 1.5 Reject over‑window content (explicit overflow error)
+### 1.5 Reject over‑window content — moved to the embedder boundary
 
-**Why.** A memory becomes exactly **one embedding vector**, so its length is bounded by the embedder's context
-window. When content exceeds that window there are only three options, and two are unacceptable: silently
-**truncate** (loses information invisibly — rejected), **auto‑split/summarize** (a judgement call that needs an
-LLM — not allowed on the write path), or **refuse with a clear error**. We refuse. The caller is already an LLM and
-is the right party to compress or split and re‑submit, which keeps the write path LLM‑free and never loses data.
-
-**What.** On write, **before embedding**, check the content size against the active embedder's window. If it fits,
-proceed. If it exceeds, do **not** store and do **not** truncate — return an explicit, actionable error stating the
-limit and the actual size so the agent can compress or split and retry. (Automatically splitting a large document
-into linked atoms is a separate background/ingestion capability — post‑MVP.)
-
-**Done when.**
-- Content within the window stores normally.
-- Over‑window content is rejected with a clear error naming the limit and the actual size; nothing is stored and
-  nothing is truncated.
-- The error surfaces through both the MCP tool and the CLI.
-- Tests cover the boundary (just under / just over).
-
-**Depends on:** 1.1, 1.3.
+The over‑window guard is an **embedder concern**, not a memory‑layer step: the limit *is* the chosen embedder's
+context window, so the embedder owns it (its `encode()` raises an explicit "too large" error with the limit and
+the actual size; the write use case surfaces it; never truncate, never auto‑split). Concrete enforcement lands
+**with the embedder choice** (still TBD). The contract is in [06-models.md](../06-models.md); the "never truncate"
+policy is in [04-data-model.md](../04-data-model.md).
 
 ---
 
@@ -158,42 +150,35 @@ mechanism that keeps history; deletion physically removes.
 
 ---
 
-### 1.7 Sessions + session‑tracking
+### 1.7 Session tracking
 
-**Why.** Two things need to know "what belongs to this working session": `session_recap` (telling the agent where
-it left off) and the background worker (which benefits from a coherent working set to reason over). We decided
-session‑tracking is valuable **on its own**, decoupled from the session‑based auto‑linking idea, which we did **not**
-adopt (it risked noisy, low‑precision links).
+**Why.** Knowing which run produced a memory is useful on its own: provenance ("which session wrote this"),
+grouping ("what this session did"), and a coherent working set for the background consolidation worker. We do
+**not** build a "resume last session" experience — there is no agent‑start hook, and with 10+ parallel agents in
+one project there is no single "last session". ("Where did I leave off" is meanwhile an on‑demand `search` for
+`type=progress`; an aggregated `recall` is post‑MVP.)
 
-**What.** Record a session — id, project, start, end, and a short summary — and stamp every memory written during it
-with its `session_id`. (A `session` *scope* for filtering retrieval is separate and post‑MVP; this step is only
-about tracking provenance and enabling recap.)
+**What.** Give each working run a session identity and stamp every memory it writes with that `session_id`. In the
+target architecture the natural identity is the **MCP connection** (each agent has its own stdio shim → concurrent
+sessions are distinct without guessing). Record a lightweight session row (`id, project, started_at, ended_at`).
+No LLM, no stored summary, no recap.
 
 **Done when.**
-- Starting work creates or continues a session; ending it records the end/summary.
-- New memories carry the `session_id`.
-- The session is queryable (for recap).
+- Memories written in a run carry that run's `session_id`.
+- Concurrent runs in one project get distinct sessions.
+- A session's memories are queryable as a group.
 - Tests.
 
 **Depends on:** 1.1.
 
 ---
 
-### 1.8 `recall(project)`
+### 1.8 `recall(project)` — deferred to post‑MVP
 
-**Why.** This is the product's headline behavior — the "magic word". One call at the start of a session loads enough
-context that the agent stops re‑asking the developer to re‑explain the setup. The agent's API stays tiny because
-`recall` aggregates, instead of forcing the agent to make several queries itself.
-
-**What.** A `recall` tool that returns, for a project: active **rules** (project + global), **recent activity**, and
-a **session_recap** of where the last session left off. (Pending tasks are included only if the optional tasks
-feature is enabled.)
-
-**Done when.**
-- `recall("p")` returns rules + recent activity + session_recap.
-- Exposed as an MCP tool and tested end‑to‑end.
-
-**Depends on:** 1.7.
+A single aggregated context call was the original "magic word", but a *useful* recall (concise, not a context
+dump) needs **LLM synthesis**, which we keep off the read path. So `recall` is **post‑MVP** (see
+[post-mvp.md](post-mvp.md)). In the MVP the agent retrieves on demand with `search` — `type=rule` for rules,
+`type=progress` for where it left off.
 
 ---
 
@@ -243,4 +228,4 @@ concurrent writers never corrupt or lose data, while reads run in parallel.
 
 ---
 
-**Phase done when:** FR‑1..FR‑13 hold; the 10‑agent concurrency test passes; LanceDB is the backend.
+**Phase done when:** the MVP FRs hold (FR‑11 `recall` is post‑MVP); the 10‑agent concurrency test passes; LanceDB is the backend.

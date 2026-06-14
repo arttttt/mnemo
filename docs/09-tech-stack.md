@@ -73,7 +73,7 @@ src/mnemo/
 ├── adapters/          # implement ports / handle I/O
 │   ├── store/           InMemoryMemoryRepository (Phase 0), LanceMemoryRepository (Phase 1+)
 │   ├── embedding/       HashEmbedder (offline/tests), FastEmbedEmbedder
-│   ├── mcp/             FastMCP controller exposing recall/remember/search
+│   ├── mcp/             FastMCP controller exposing remember/search/delete
 │   └── cli/             Typer controller
 └── infrastructure/    # composition root: config, wiring (DI), entrypoints
     ├── config.py

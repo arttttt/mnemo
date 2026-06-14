@@ -45,9 +45,9 @@ A solo developer or a small team who:
 ## What it looks like in practice
 
 ```
-Agent (session start):  mcp call recall(project="checkout-api")
+Agent (needs context):  mcp call search(query="how do we handle auth errors", project="checkout-api")
 mnemo:                  → spins up if not running
-                        → returns: project rules, recent decisions, pending tasks, session_recap
+                        → returns: matching memories (rules, decisions, notes), ranked
 
 Agent (after work):     mcp call remember(content="JWT with refresh rotation; httpOnly cookies; ...",
                             type="decision", project="checkout-api",

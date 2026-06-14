@@ -103,7 +103,7 @@ without it (and without ever needing a big model).
 **What.** A "generator off" mode where consolidation is skipped cleanly.
 
 **Done when.**
-- Store / search / recall / delete all work with the generator off.
+- Store / search / delete all work with the generator off.
 - Consolidation is skipped without error.
 - Tested.
 

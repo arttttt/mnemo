@@ -23,4 +23,4 @@ A step is sized to ship and review on its own. No implementation/file details he
 
 ## Definition of done for the MVP
 Phases 0–4 complete; runs on a 16 GB machine with 10+ agents, strictly offline, on‑demand (no resident
-daemon, no Docker), on LanceDB; an agent works through `recall` / `remember` / `search` / `delete`.
+daemon, no Docker), on LanceDB; an agent works through `remember` / `search` / `delete` (`recall` is post‑MVP).

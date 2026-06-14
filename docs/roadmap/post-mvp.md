@@ -25,6 +25,14 @@ with point‑in‑time queries. Done **in full** (no half‑measures); the schem
 **Why:** some context is only relevant within a session.
 **What:** a `session` scope value + the matching search filter.
 
+### `recall(project)` — aggregated session context
+**Why:** one call that returns a concise "here's where you are" (rules + what matters now) instead of forcing
+several searches.
+**What:** an aggregated context bundle. Deferred because a *useful* recall — concise, not a context dump —
+needs **LLM synthesis**, and the read path stays LLM‑free in the MVP. A post‑MVP design can precompute a
+digest in the background worker (off the hot path) and have `recall` just read it. In the MVP, the agent
+retrieves on demand with `search` (`type=rule` for rules, `type=progress` for where it left off).
+
 ### Deferred indefinitely
 **Why:** out of the local, single‑user, lightweight scope mnemo targets.
 **What (not doing unless the scope changes):** knowledge graph / multi‑hop traversal; web dashboard; document/PDF
