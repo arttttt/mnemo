@@ -78,6 +78,28 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
+def test_mcp_remember_rejects_over_window_content(tmp_path):
+    """An over-window memory surfaces an explicit, actionable tool error — not a
+    silent truncation — so the calling agent can split and retry."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+    from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+    from mnemo.application.use_cases.remember_memory import RememberMemory
+
+    container = _container(tmp_path)
+    container.remember = RememberMemory(
+        container.repository, HashEmbedder(max_input=3), InProcessSessionProvider()
+    )
+    mcp = build_mcp(container)
+
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {"content": "one two three four five", "project": "api"})
+    message = str(exc.value)
+    assert "window" in message and "split" in message  # actionable
+    assert container.repository.list_all() == []  # nothing stored on reject
+
+
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
