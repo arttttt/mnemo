@@ -19,10 +19,11 @@ Type is a **parameter** of a single write tool — not a separate tool per type 
 | `design` | Architecture diagrams, system design |
 | `working-notes` | Scratch pad, temporary context (default if `type` omitted) |
 
-## Scopes (local / global / session) — soft, not hard isolation
+## Scopes (local / global / session) — project isolation + global, cross‑project on request
 
 A memory has a **scope** that controls where it lives and how it surfaces in search.
-**Cross‑project search is a first‑class capability** — projects are an organizing dimension, **not a wall**.
+Reads **isolate by project** (plus always‑visible global), and **cross‑project search is a first‑class
+opt‑in** via `scope="all"` — projects are an organizing dimension you can cross deliberately, not an automatic blend.
 
 | Scope | Meaning | Default in reads |
 |---|---|---|
@@ -31,13 +32,15 @@ A memory has a **scope** that controls where it lives and how it surfaces in sea
 | `all` (search‑only) | Not a storage scope — a **search mode** spanning every project. | on request (`scope="all"`) |
 | ~~`session`~~ (deferred) | Ephemeral working context keyed by `session_id`. **Not in v1.** | — |
 
-**Soft isolation rules:**
-- Default `search` covers **current project + global**, so cross‑cutting rules/lessons always surface.
-- `scope="all"` searches **across all projects** (the must‑have cross‑project capability).
-- Even in the default scope, strongly‑relevant hits from other projects MAY be included, ranked lower and
-  labeled with their `project` (a soft boost, not a hard partition). This is "no hard isolation by search".
-- Implementation consequence: **one collection + a `project` payload field** (a soft filter/boost), **not**
-  a collection‑per‑project — because a per‑project partition would make cross‑project search expensive.
+**Scope rules (as implemented):**
+- Default `search` (`scope="project"`) covers **current project + global** only — other projects are a hard
+  WHERE filter `(m.project = ? OR m.scope = 'global')`, excluded from the candidate set, so cross‑cutting
+  rules/lessons (global) always surface but unrelated projects never leak in.
+- `scope="all"` drops the project filter and searches **across all projects** (the cross‑project capability).
+- `scope="global"` returns only global memories. Note: passing `project` together with `scope in {all, global}`
+  has no effect — `scope` is authoritative there.
+- Implementation: **one collection + a `project` column used as a hard filter** (not a soft boost, not a
+  per‑project partition) — so cross‑project search is just dropping that filter, never expensive.
 
 > **`session` scope is deferred (not in v1).** For transient context, use `working-notes` for now. Adding a
 > `session` scope later is cheap (one scope value + a filter), so we leave it out until there's a clear need.
