@@ -5,13 +5,19 @@ background model. Specialist models (NER, reranker) are optional upgrades, not f
 
 > Licenses don't matter to us; where convenient we prefer Apache‑2.0. All options are local, no cloud.
 
-## 1. Embedder (mandatory; hot path)
+## 1. Embedder (mandatory)
 
 Needed while the service is alive. It is not an "LLM" but part of semantic search — small and fast.
-It serves two jobs: semantic **recall** and **near-duplicate** detection (for supersede). One embedder
-is mandatory and shared by the whole service; different embedders give incompatible vector spaces, so
-exactly one is chosen and switching it later forces a full reindex. A trivial hash embedder is used for
-offline tests; it is not a real option.
+It serves two jobs: **retrieval** (semantic search — "recall" here means *retrieval quality*, not the `recall(project)`
+digest tool, which is the generator's job) and **near-duplicate** detection (for supersede). One embedder is
+mandatory and shared by the whole service; different embedders give incompatible vector spaces, so exactly one is
+chosen and switching it later forces a full reindex. A trivial hash embedder is used for offline tests; it is not a
+real option.
+
+> **Not strictly "hot path".** Retrieval (`search`) needs the embedder synchronously, but the **write** embed is
+> **deferred off the hot path** (the chosen pplx is ~0.4 s/memory, not ms) — see
+> [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation). So a slow embedder is fine
+> for writes; it only bounds `search` latency (~200 ms, acceptable for on-demand recall).
 
 **Default: `pplx-embed-v1-0.6b`, int8 ONNX, on CPU.** Chosen 2026-06 after a full benchmark — see
 [research/embedder-benchmark.md](research/embedder-benchmark.md) for the evidence. (q4 is the
