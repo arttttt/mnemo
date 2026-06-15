@@ -1,3 +1,5 @@
+import pytest
+
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
@@ -135,6 +137,24 @@ def test_distinct_runs_get_distinct_session_ids():
     session_a = {m.id: m.session_id for m in repo_a.list_all()}[a.id]
     session_b = {m.id: m.session_id for m in repo_b.list_all()}[b.id]
     assert session_a != session_b
+
+
+def test_over_window_content_is_rejected_not_truncated():
+    repo = InMemoryMemoryRepository()
+    embedder = HashEmbedder(max_input=5)  # window of 5 tokens
+    remember = RememberMemory(repo, embedder, InProcessSessionProvider())
+    with pytest.raises(ValueError):
+        remember.execute(content="one two three four five six seven", project="api")
+    assert repo.list_all() == []  # nothing stored on reject
+
+
+def test_within_window_content_is_stored():
+    repo = InMemoryMemoryRepository()
+    embedder = HashEmbedder(max_input=5)
+    remember = RememberMemory(repo, embedder, InProcessSessionProvider())
+    stored = remember.execute(content="one two three", project="api")
+    assert stored.id
+    assert len(repo.list_all()) == 1
 
 
 def test_delete_clear_purge():
