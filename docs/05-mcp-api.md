@@ -6,11 +6,18 @@ real task needs it. An agent should learn the surface in seconds.
 
 ## Agent‑facing MCP tools
 
-### `recall(project)` — **post‑MVP** (not an MVP tool)
-A single aggregated context bundle was the original "magic word", but a *useful* one (concise, not a context
-dump) needs LLM synthesis, which we keep off the read path — so `recall` is **deferred to post‑MVP**
-(see [roadmap/post-mvp.md](roadmap/post-mvp.md)). In the MVP the agent retrieves **on demand** with `search`:
-`search("...", type="rule")` for rules, `search("...", type="progress")` for where it left off.
+> **Terminology — two senses of "recall".** (1) **Retrieval** = finding relevant memories by meaning; this is what
+> `search` does and what the **embedder** powers (measured as recall@k). (2) **`recall(project)` digest** = an
+> aggregated session/project *summary*; this is text synthesis, the **generator's** job. They are different tools
+> and different models. Below, `recall` always means sense (2).
+
+### `recall(project)` — **post‑MVP** (the digest tool, not retrieval)
+A single aggregated context bundle (a session/project **summary**) was the original "magic word", but a *useful* one
+(concise, not a context dump) needs **LLM synthesis** (the generator) — which we keep off the read path — so the
+`recall` digest is **deferred to post‑MVP** (see [roadmap/post-mvp.md](roadmap/post-mvp.md)). It would *select*
+memories (by `session_id`/date, or by meaning via the embedder) and *synthesize* a summary (the generator). In the
+MVP the agent instead **retrieves on demand** with `search`: `search("...", type="rule")` for rules,
+`search("...", type="progress")` for where it left off.
 
 ### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, dedup}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)
@@ -24,8 +31,10 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
          topic_key="auth/model")                                             # evolves the same record
 ```
 - `type` default `working-notes`; `scope` default `project` (or `global` if no project).
-- Behavior: normalize → **exact‑dup** check (hash) → **`topic_key` upsert** if matched (supersede) → embed → insert.
-  Near‑similar memories are **not** suppressed here (see [04-data-model.md](04-data-model.md)).
+- Behavior: normalize → **exact‑dup** check (hash) → **`topic_key` upsert** if matched (supersede) → **insert +
+  lexical index → enqueue embed** (the vector is computed off the hot path — see
+  [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation)). Near‑similar memories are
+  **not** suppressed here (see [04-data-model.md](04-data-model.md)).
 - Returns `{id, dedup}`: `dedup` is `null` (new), or `"exact"` (identical existing record).
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
@@ -43,7 +52,7 @@ search("recent changes", recency_days=7)                # only memories from the
 - `scope`: `project` (default = current project + global) | `global` | `all` (every project). (`session` is post‑MVP.)
 - Filters (all optional): `type` (one type), `tags` (memory must carry **all** of them), `related_files`
   (references **any** of them), `recency_days` (created within the last N days).
-- Cross‑project hits may also surface in the default scope, ranked lower and labeled with their `project` (soft isolation).
+- Project scope is a **hard filter** (current project + `global`); other projects are excluded from the default scope. Cross‑project search is the explicit `scope="all"` (see [04-data-model.md](04-data-model.md)).
 - `MemoryHit = {id, score, type, scope, project, content, related_files, created_at}`.
 
 ### Deletion — `delete` / `clear` / `purge`
