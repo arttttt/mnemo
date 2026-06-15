@@ -43,12 +43,24 @@ def store(
     topic_key: Optional[str] = typer.Option(
         None, "--topic-key", "-k", help="Stable key to evolve one memory instead of duplicating."
     ),
+    tags: Optional[list[str]] = typer.Option(
+        None, "--tag", help="Tag for later filtering (repeatable)."
+    ),
+    related_files: Optional[list[str]] = typer.Option(
+        None, "--file", help="File path this memory concerns (repeatable)."
+    ),
 ) -> None:
     """Store a memory. No LLM runs on write; prints {id, dedup, superseded}."""
     container = build_container()
     try:
         result = container.remember.execute(
-            content=content, type=type, project=project, scope=scope, topic_key=topic_key
+            content=content,
+            type=type,
+            project=project,
+            scope=scope,
+            topic_key=topic_key,
+            tags=tags,
+            related_files=related_files,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))

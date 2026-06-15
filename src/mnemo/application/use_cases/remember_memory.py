@@ -44,6 +44,17 @@ class RememberMemory:
             topic_key=topic_key,
         )
 
+        # Over-window guard: a memory is one vector, so it must fit the embedder's
+        # token window. Reject with an explicit error (never truncate, never auto-split)
+        # so the caller — already an LLM — can split it deliberately. The limit is the
+        # embedder's, measured in its own tokens (docs/06-models.md, docs/04-data-model.md).
+        tokens = self._embedder.count_tokens(memory.content)
+        if tokens > self._embedder.max_input:
+            raise ValueError(
+                f"content is {tokens} tokens, over the embedder's window of "
+                f"{self._embedder.max_input}; split it into smaller, focused memories"
+            )
+
         # Exact duplicate: identical normalized content already stored — don't spawn a row.
         exact = self._repository.find_by_hash(memory.hash)
         if exact is not None:

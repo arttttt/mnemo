@@ -29,6 +29,30 @@ def test_cli_store_then_search(tmp_path, monkeypatch):
     assert memory_id in found.stdout
 
 
+def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+
+    stored = runner.invoke(
+        app,
+        ["store", "jwt rotation", "--project", "api",
+         "--tag", "auth", "--file", "src/auth.py"],
+    )
+    assert stored.exit_code == 0, stored.output
+    memory_id = json.loads(stored.stdout)["id"]
+
+    # The metadata was actually set: search filters on tag/file find it...
+    by_tag = runner.invoke(app, ["search", "jwt rotation", "--project", "api", "--tag", "auth"])
+    assert memory_id in by_tag.stdout
+    by_file = runner.invoke(
+        app, ["search", "jwt rotation", "--project", "api", "--file", "src/auth.py"]
+    )
+    assert memory_id in by_file.stdout
+
+    # ...and a non-matching tag filter excludes it (proves it wasn't silently dropped).
+    miss = runner.invoke(app, ["search", "jwt rotation", "--project", "api", "--tag", "cache"])
+    assert memory_id not in miss.stdout
+
+
 def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 

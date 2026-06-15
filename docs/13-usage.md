@@ -27,8 +27,10 @@ The sections below explain the same steps manually (and the `pip` alternative).
 
 ## Prerequisites
 
-- **Python 3.10+** (tested on 3.14).
-- **[uv](https://docs.astral.sh/uv/)** (recommended) — or `pip` + `venv`.
+- **Python 3.10+** (tested on 3.14). Note: a fresh macOS ships `/usr/bin/python3` at **3.9**, which is too
+  old — a plain `pip install -e .` against the system interpreter fails before mnemo runs.
+- **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provisions a
+  new‑enough interpreter automatically. With plain `pip`/`venv` you must first install Python 3.10+ yourself.
 - Optional **`embed`** extra for real local semantic search (fastembed downloads a small ONNX model once).
   Without it, use the offline `hash` embedder (lexical only — good for testing).
 
@@ -112,8 +114,8 @@ mnemo setup --dry-run       # show what it would do, write nothing
 ```
 
 Supported clients: **claude-code**, **codex**, **kimi-code** (via each one's official `mcp add`), and
-**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has two tools:
-**`remember`** and **`search`**.
+**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has five tools:
+**`remember`**, **`search`**, **`delete`**, **`clear`**, and **`purge`**.
 
 Prefer to wire it by hand? Point the client's MCP config (stdio transport) at `mnemo-mcp`, e.g. for
 Claude Code:

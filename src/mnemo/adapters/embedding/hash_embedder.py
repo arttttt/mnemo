@@ -14,12 +14,22 @@ class HashEmbedder:
     Lexical only: it captures token overlap, not meaning.
     """
 
-    def __init__(self, dim: int = 256) -> None:
+    def __init__(self, dim: int = 256, max_input: int = 1_000_000) -> None:
         self._dim = dim
+        # The offline hash embedder has no meaningful window; default is effectively
+        # unlimited. Tests pass a small value to exercise the over-window reject.
+        self._max_input = max_input
 
     @property
     def dim(self) -> int:
         return self._dim
+
+    @property
+    def max_input(self) -> int:
+        return self._max_input
+
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
 
     def encode(self, text: str) -> Vector:
         vector = [0.0] * self._dim
