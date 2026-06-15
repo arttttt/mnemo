@@ -37,9 +37,12 @@ append‑optimized analytical vector store — strong on vector ANN but structur
 relational core (no multi‑row transaction, no joins/edges, costly in‑place updates). **libSQL/Turso** (a SQLite
 fork with native DiskANN ANN) is the upgrade path if we ever outgrow brute‑force.
 
-## Embeddings: **ONNX Runtime** via `fastembed` (or `onnxruntime` directly)
+## Embeddings: **ONNX Runtime** (`onnxruntime`, CPU EP)
 
-- Local, CPU, no API key. The specific model is **not chosen yet** — it is selected against the requirements in [06-models.md](06-models.md).
+- Local, CPU, no API key. Default model = **`pplx-embed-v1-0.6b` int8 ONNX** (chosen 2026-06; see
+  [06-models.md](06-models.md) and [research/embedder-benchmark.md](research/embedder-benchmark.md);
+  q4 is the fast profile if latency-bound). Loaded via `onnxruntime` directly (`trust_remote_code` +
+  pinned revision; its custom arch isn't a stock `fastembed` model). dim 1024.
 - One‑time weights download at install; afterwards fully offline.
 
 ## Generator inference: **llama.cpp** via `llama-cpp-python`
