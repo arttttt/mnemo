@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from mnemo.application.ports.embedder import EmbedderPort
+from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.use_cases.interfaces.delete_memory import DeleteMemoryUseCase
 from mnemo.application.use_cases.interfaces.remember_memory import RememberMemoryUseCase
@@ -16,6 +17,7 @@ class Container:
     config: Config
     embedder: EmbedderPort
     repository: MemoryRepositoryPort
+    scheduler: EmbeddingSchedulerPort
     remember: RememberMemoryUseCase
     search: SearchMemoryUseCase
     delete: DeleteMemoryUseCase

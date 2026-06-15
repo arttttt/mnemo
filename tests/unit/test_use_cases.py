@@ -1,6 +1,7 @@
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 from mnemo.application.use_cases.delete_memory import DeleteMemory
@@ -13,7 +14,7 @@ def _wiring():
     embedder = HashEmbedder()
     return (
         repo,
-        RememberMemory(repo, embedder, InProcessSessionProvider()),
+        RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider()),
         SearchMemory(repo, embedder),
         DeleteMemory(repo),
     )
@@ -27,6 +28,15 @@ def test_remember_then_search_finds_it():
     assert stored.dedup is None
     hits = search.execute(query="jwt refresh rotation", project="api")
     assert any(hit.id == stored.id for hit in hits)
+
+
+def test_sync_remember_embeds_immediately():
+    # With the sync scheduler, a write ends fully embedded (no pending vector) —
+    # same observable result as before deferred embedding.
+    repo, remember, _, _ = _wiring()
+    stored = remember.execute(content="embed me now", project="api")
+    assert repo.has_vector(stored.id) is True
+    assert repo.pending_count() == 0
 
 
 def test_exact_duplicate_is_not_stored_twice():
@@ -142,7 +152,7 @@ def test_distinct_runs_get_distinct_session_ids():
 def test_over_window_content_is_rejected_not_truncated():
     repo = InMemoryMemoryRepository()
     embedder = HashEmbedder(max_input=5)  # window of 5 tokens
-    remember = RememberMemory(repo, embedder, InProcessSessionProvider())
+    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider())
     with pytest.raises(ValueError):
         remember.execute(content="one two three four five six seven", project="api")
     assert repo.list_all() == []  # nothing stored on reject
@@ -151,7 +161,7 @@ def test_over_window_content_is_rejected_not_truncated():
 def test_within_window_content_is_stored():
     repo = InMemoryMemoryRepository()
     embedder = HashEmbedder(max_input=5)
-    remember = RememberMemory(repo, embedder, InProcessSessionProvider())
+    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider())
     stored = remember.execute(content="one two three", project="api")
     assert stored.id
     assert len(repo.list_all()) == 1

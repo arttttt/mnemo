@@ -1,6 +1,7 @@
 """Builds the Container by wiring concrete adapters from config (DI)."""
 from __future__ import annotations
 
+from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
@@ -20,11 +21,15 @@ def build_container(
     embedder = _build_embedder(config.embedder, config.embed_model)
     repository = _build_repository(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
+    # Embedding is computed inline by default (CLI / offline). The service swaps in the
+    # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
+    scheduler = SyncEmbeddingScheduler(embedder, repository)
     return Container(
         config=config,
         embedder=embedder,
         repository=repository,
-        remember=RememberMemory(repository, embedder, session_provider),
+        scheduler=scheduler,
+        remember=RememberMemory(repository, scheduler, session_provider),
         search=SearchMemory(repository, embedder),
         delete=DeleteMemory(repository),
     )

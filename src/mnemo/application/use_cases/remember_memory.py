@@ -1,7 +1,12 @@
-"""Store a memory. No LLM on this path: exact-dup + topic_key upsert + insert."""
+"""Store a memory. No LLM on this path: exact-dup + topic_key upsert + insert.
+
+The embedding is NOT computed here — the memory is inserted pending and handed to
+the embedding scheduler (sync inline, or deferred to a background worker). See
+docs/03-architecture.md (deferred embedding).
+"""
 from __future__ import annotations
 
-from mnemo.application.ports.embedder import EmbedderPort
+from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.results.remember_result import RememberResult
@@ -16,11 +21,11 @@ class RememberMemory:
     def __init__(
         self,
         repository: MemoryRepositoryPort,
-        embedder: EmbedderPort,
+        scheduler: EmbeddingSchedulerPort,
         session_provider: SessionProviderPort,
     ) -> None:
         self._repository = repository
-        self._embedder = embedder
+        self._scheduler = scheduler
         self._session_provider = session_provider
 
     def execute(
@@ -46,13 +51,13 @@ class RememberMemory:
 
         # Over-window guard: a memory is one vector, so it must fit the embedder's
         # token window. Reject with an explicit error (never truncate, never auto-split)
-        # so the caller — already an LLM — can split it deliberately. The limit is the
-        # embedder's, measured in its own tokens (docs/06-models.md, docs/04-data-model.md).
-        tokens = self._embedder.count_tokens(memory.content)
-        if tokens > self._embedder.max_input:
+        # so the caller — already an LLM — can split it deliberately. The token count is
+        # cheap and stays on the hot path; only the encode is deferred.
+        tokens = self._scheduler.count_tokens(memory.content)
+        if tokens > self._scheduler.max_input:
             raise ValueError(
                 f"content is {tokens} tokens, over the embedder's window of "
-                f"{self._embedder.max_input}; split it into smaller, focused memories"
+                f"{self._scheduler.max_input}; split it into smaller, focused memories"
             )
 
         # Exact duplicate: identical normalized content already stored — don't spawn a row.
@@ -76,10 +81,12 @@ class RememberMemory:
         # so a read-only run generates nothing. The agent never sets it.
         memory.session_id = self._session_provider.current_session_id()
 
+        # Insert PENDING (no vector) so the write stays cheap and the row is lexically
+        # searchable at once; hand the embedding off to the scheduler (inline or deferred).
         # Near-similar memories are NOT suppressed here — they coexist; the background
         # worker may merge/flag genuine duplicates later (docs/04-data-model.md).
-        vector = self._embedder.encode(memory.content)
-        self._repository.add(memory, vector)
+        self._repository.add(memory)
+        self._scheduler.schedule(memory.id)
 
         # Deterministic typed edge: record the supersede as a link with provenance
         # (the topic_key that triggered it). Built FOR the agent, never inferred.
