@@ -89,26 +89,60 @@ The embedding is **deferred** — see [Deferred embedding](#deferred-embedding-a
 is lexically searchable (FTS5) immediately; it joins dense/hybrid search once its vector lands.
 
 ### Deferred embedding (async vector computation)
-The embedder is no longer "ms": the chosen pplx int8 is ~0.4 s for a typical memory and up to seconds for a large
-one (see [06-models.md](06-models.md)). Embedding synchronously on the write path would break the cheap‑write
-axiom, so it runs **off the hot path**:
-- A single **embed worker** in the service drains a queue: `encode(content) → store.set_vector(id)`. The embedder is
-  already resident (shared, on‑demand); reads and writes are not blocked while it runs.
-- **Immediately lexical, eventually semantic.** FTS5 indexes the text on insert, so a just‑written memory is findable
-  by token at once; it enters dense/hybrid search a few seconds later when its vector is stored. A memory is never
-  "lost" in the gap — it degrades to lexical‑only, then upgrades.
-- **It cannot clog — bounded queue + backpressure.** The queue is bounded; if it fills (bulk seed / a runaway
-  writer), new writes **degrade to a synchronous embed**. The worst case is "writes as slow as one sync embed",
-  never an unbounded backlog — writes always succeed. In normal use the worker (~2–3 short embeds/s) far outpaces
-  the *deliberate* write rate (a few memories/min across agents), so the queue stays near‑empty.
-- **Worker hygiene.** Batch short pending memories (amortize); embed long ones singly (a big batch of long inputs
-  balloons activation RAM). **Coalesce**: skip a record already superseded by a later `topic_key` write. **Drain
-  before idle‑exit**: the on‑demand service does not exit while the queue is non‑empty. Expose **queue depth**
-  (`mnemo doctor`) so backlog is observable.
-- **MVP note.** Embedding may start **synchronous** (a typical ~0.4 s memory is acceptable, and the rare slow one is
-  over the size guideline anyway). Deferred‑with‑backpressure is the designed upgrade, added when write latency is
-  measured to matter — backpressure makes that upgrade safe by construction. The store must therefore allow a record
-  to exist before its vector (a "pending vector" state), which the FTS5 row already provides for retrieval.
+The embedder is no longer "ms": pplx int8 is ~0.4 s for a typical memory (seconds for a large one), so embedding on
+the write path would break the cheap‑write axiom. It is **deferred off the hot path**, and the whole design follows
+one insight: **the database is the durable queue** — a memory with no vector *is* a pending job, so there is **no
+separate queue store** and recovery is free.
+
+**Write does only the cheap part.** `remember` (the use case) inserts the record + FTS5 index with a **pending (null)
+vector**, then asks the scheduler to embed it, and returns in ms. The record is **lexically searchable immediately**;
+it joins dense/hybrid search once its vector lands — never "lost", degrades to lexical‑only then upgrades.
+
+**Embedding scheduler — a port, called by the use case.** Signalling lives in the **application layer, not the
+repository** (the repo stays pure persistence). The use case owns "store, then schedule".
+- `SyncEmbeddingScheduler` — embeds inline (`content_for(id) → encode → set_vector`). Used by the **CLI** (one‑shot
+  process) and offline tests.
+- `AsyncEmbeddingScheduler` — used by the **service**: `schedule(id)` just **notifies** (the row is already pending
+  in the DB); a pool of worker threads drains the pending rows.
+
+**Worker loop — event‑driven, no polling.**
+```
+loop:
+  while (ids := repo.next_unembedded(limit)):       # drain to empty
+    for id in ids:
+      if repo.has_vector(id): continue              # idempotent skip
+      repo.set_vector(id, embedder.encode(repo.content_for(id)))   # upsert
+  with cond:
+    while repo.pending_count() == 0 and not stopping:  # predicate under the lock
+      cond.wait()
+```
+- **No poll‑fallback.** Every source of work is a known trigger that notifies (`remember`, a migration). The worker
+  drains to empty before sleeping (work arriving mid‑batch is picked up next iteration) and checks the predicate
+  **under the lock** before waiting, so a lost wakeup is impossible. Ordering is strict: **commit the insert, then
+  notify.**
+- **Recovery is free.** The worker's first pass drains any pre‑existing pending rows (left by a crash or a
+  migration) — no special re‑enqueue.
+
+**Properties & config.**
+- **Cannot clog — backpressure.** Bounded by pending count: when `pending_count() >= MNEMO_EMBED_QUEUE_MAX`,
+  `schedule` **embeds synchronously** instead of deferring. Worst case is "as slow as one sync embed", never an
+  unbounded backlog; writes always succeed. In normal use the worker far outpaces the *deliberate* write rate, so
+  the backlog stays near‑empty.
+- **RAM bound = concurrency.** `MNEMO_EMBED_WORKERS` (default **1**) = how many encodes run at once. At 1, RAM = one
+  encode (onnxruntime already uses all cores for it). Higher drains faster but multiplies activation RAM (a set of
+  long inputs in flight is the balloon trap), so raise it deliberately. No batching.
+- **Failure → retry, capped.** A failed encode is retried up to `MNEMO_EMBED_MAX_RETRIES` (default 3); after that the
+  memory is marked embed‑failed (stays lexical‑only) and logged. A memory deleted before processing is skipped.
+- **Superseded jobs still run.** A memory superseded after scheduling keeps its embed job — it is kept as history and
+  can be retrieved, so its vector is still computed (no coalescing).
+- **Idle‑exit drain.** The on‑demand service does not idle‑exit while work remains: it waits for
+  `pending_count() == 0 and in_flight == 0` (a job is "in flight" once a worker has taken it). Observable via
+  `mnemo doctor`.
+- **MVP.** Embedding may start synchronous (a typical ~0.4 s memory is acceptable); the async path above is the
+  upgrade, safe by construction (backpressure + DB‑as‑queue).
+
+Store support this needs: `add(memory, vector=None)` (pending), `set_vector(id, v)` (upsert), `has_vector(id)`,
+`content_for(id)`, `next_unembedded(limit)`, `pending_count()`.
 
 ### Read
 ```
