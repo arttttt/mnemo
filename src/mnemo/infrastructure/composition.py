@@ -18,7 +18,7 @@ def build_container(
 ) -> Container:
     config = config or Config.from_env()
     embedder = _build_embedder(config.embedder, config.embed_model)
-    repository = _build_repository(config)
+    repository = _build_repository(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
     return Container(
         config=config,
@@ -45,7 +45,7 @@ def _build_embedder(name: str, model: str | None = None) -> EmbedderPort:
     raise ValueError(f"unknown embedder: {name!r}")
 
 
-def _build_repository(config: Config) -> MemoryRepositoryPort:
+def _build_repository(config: Config, dim: int) -> MemoryRepositoryPort:
     if config.store == "memory":
         from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 
@@ -53,5 +53,6 @@ def _build_repository(config: Config) -> MemoryRepositoryPort:
     if config.store == "sqlite":
         from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
-        return SqliteVecMemoryRepository(path=config.sqlite_path)
+        # dim up front lets a pending (vector-less) first write create the schema.
+        return SqliteVecMemoryRepository(path=config.sqlite_path, dim=dim)
     raise ValueError(f"unknown store: {config.store!r}")

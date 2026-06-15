@@ -23,7 +23,8 @@ def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+    # dim up front so a pending (vector-less) write can create the schema.
+    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(
@@ -118,6 +119,63 @@ def test_search_recency_excludes_old(open_repo, embedder):
 
     future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
     assert repo.search("fresh note", embedder.encode("fresh note"), future_cutoff, limit=5) == []
+
+
+def test_pending_vector_lifecycle(open_repo, embedder):
+    """Deferred embedding: a memory can be stored without a vector (pending), then
+    have it attached later — it only enters dense search once set_vector lands."""
+    repo = open_repo()
+    pending = Memory.create("a pending memory about redis", type="decision", project="api")
+    repo.add(pending)  # no vector → pending
+
+    assert repo.pending_count() == 1
+    assert repo.next_unembedded(10) == [pending.id]
+    assert repo.has_vector(pending.id) is False
+    assert repo.content_for(pending.id) == "a pending memory about redis"
+    # stored and addressable even without a vector
+    assert repo.find_by_hash(pending.hash) is not None
+    assert pending.id in {m.id for m in repo.list_all()}
+
+    repo.set_vector(pending.id, embedder.encode(pending.content))
+
+    assert repo.has_vector(pending.id) is True
+    assert repo.pending_count() == 0
+    assert repo.next_unembedded(10) == []
+    hits = repo.search("redis", embedder.encode("redis"), _ALL, limit=5)
+    assert any(hit.memory.id == pending.id for hit in hits)  # now in dense search
+
+
+def test_missing_id_methods_are_safe(open_repo, embedder):
+    repo = open_repo()
+    assert repo.has_vector("nope") is False
+    assert repo.content_for("nope") is None
+    repo.set_vector("nope", embedder.encode("x"))  # no-op, no raise
+
+
+def test_sqlite_pending_is_lexically_searchable(tmp_path):
+    """A pending memory (no vector) must still be findable via the FTS5 lexical leg."""
+    pytest.importorskip("sqlite_vec")
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+    embedder = HashEmbedder()
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    pending = Memory.create("handleAuthCallback pending fix", project="api")
+    repo.add(pending)  # no vector
+
+    hits = repo.search(
+        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=5
+    )
+    assert any(hit.memory.id == pending.id for hit in hits)
+
+
+def test_sqlite_pending_first_write_without_dim_errors(tmp_path):
+    """Without a known dimension a vector-less first write cannot create the schema."""
+    pytest.importorskip("sqlite_vec")
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))  # no dim
+    with pytest.raises(ValueError):
+        repo.add(Memory.create("pending with no dim", project="api"))
 
 
 def test_sqlite_hybrid_finds_exact_token(tmp_path):
