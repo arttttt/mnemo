@@ -17,7 +17,7 @@ def build_container(
     session_provider: SessionProviderPort | None = None,
 ) -> Container:
     config = config or Config.from_env()
-    embedder = _build_embedder(config.embedder)
+    embedder = _build_embedder(config.embedder, config.embed_model)
     repository = _build_repository(config)
     session_provider = session_provider or InProcessSessionProvider()
     return Container(
@@ -30,7 +30,7 @@ def build_container(
     )
 
 
-def _build_embedder(name: str) -> EmbedderPort:
+def _build_embedder(name: str, model: str | None = None) -> EmbedderPort:
     if name == "hash":
         from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 
@@ -38,7 +38,10 @@ def _build_embedder(name: str) -> EmbedderPort:
     if name in ("fastembed", "bge-small", "bge-small-en-v1.5"):
         from mnemo.adapters.embedding.fastembed_embedder import FastEmbedEmbedder
 
-        return FastEmbedEmbedder()
+        # MNEMO_EMBED_MODEL picks the concrete fastembed model (e.g. a multilingual one);
+        # omit to keep the adapter default. Switching models changes the vector dimension,
+        # which is fixed at first write — a different model needs a fresh store.
+        return FastEmbedEmbedder(model) if model else FastEmbedEmbedder()
     raise ValueError(f"unknown embedder: {name!r}")
 
 

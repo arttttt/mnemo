@@ -17,6 +17,34 @@ def test_from_env_defaults_to_sqlite(monkeypatch, tmp_path):
     assert config.store_path == str(tmp_path / "memory.json")
 
 
+def test_from_env_reads_embed_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MNEMO_EMBED_MODEL", "BAAI/bge-m3")
+    assert Config.from_env().embed_model == "BAAI/bge-m3"
+    monkeypatch.delenv("MNEMO_EMBED_MODEL")
+    assert Config.from_env().embed_model is None
+
+
+def test_build_embedder_forwards_configured_model(monkeypatch):
+    """MNEMO_EMBED_MODEL must reach FastEmbedEmbedder(model_name=...), without loading it."""
+    import mnemo.adapters.embedding.fastembed_embedder as fe
+    from mnemo.infrastructure.composition import _build_embedder
+
+    captured = {}
+
+    class StubFastEmbed:
+        def __init__(self, model_name=fe.DEFAULT_MODEL):
+            captured["model_name"] = model_name
+
+    monkeypatch.setattr(fe, "FastEmbedEmbedder", StubFastEmbed)
+
+    _build_embedder("fastembed", "BAAI/bge-m3")
+    assert captured["model_name"] == "BAAI/bge-m3"
+
+    _build_embedder("fastembed", None)  # omitted -> adapter default
+    assert captured["model_name"] == fe.DEFAULT_MODEL
+
+
 def test_build_container_wires_the_sqlite_backend(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository

@@ -12,6 +12,7 @@ class Config:
     embedder: str
     store: str
     store_path: str
+    embed_model: str | None = None  # concrete fastembed model; None => adapter default
     sqlite_path: str = ""
     host: str = "127.0.0.1"   # the shared service binds localhost-only
     port: int = 8765
@@ -25,6 +26,7 @@ class Config:
         return Config(
             data_dir=data_dir,
             embedder=os.environ.get("MNEMO_EMBEDDER", "fastembed"),
+            embed_model=os.environ.get("MNEMO_EMBED_MODEL") or None,
             store=os.environ.get("MNEMO_STORE", "sqlite"),
             store_path=os.environ.get(
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
