@@ -129,9 +129,9 @@ near‑duplication, if it accumulates, is cleaned up later by the background wor
 
 The over‑window guard is an **embedder concern**, not a memory‑layer step: the limit *is* the chosen embedder's
 context window, so the embedder owns it (its `encode()` raises an explicit "too large" error with the limit and
-the actual size; the write use case surfaces it; never truncate, never auto‑split). Concrete enforcement lands
-**with the embedder choice** (still TBD). The contract is in [06-models.md](../06-models.md); the "never truncate"
-policy is in [04-data-model.md](../04-data-model.md).
+the actual size; the write use case surfaces it; never truncate, never auto‑split). With the embedder chosen
+(`pplx-embed-v1-0.6b`), the concrete limit is **32K tokens**. The contract is in [06-models.md](../06-models.md);
+the "never truncate" policy is in [04-data-model.md](../04-data-model.md).
 
 ---
 
