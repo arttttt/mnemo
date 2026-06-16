@@ -33,12 +33,15 @@ opt‑in** via `scope="all"` — projects are an organizing dimension you can cr
 | ~~`session`~~ (deferred) | Ephemeral working context keyed by `session_id`. **Not in v1.** | — |
 
 **Scope rules (as implemented):**
-- Default `search` (`scope="project"`) covers **current project + global** only — other projects are a hard
+- Default `search` (`scope="project"`) covers **the named project + global** only — other projects are a hard
   WHERE filter `(m.project = ? OR m.scope = 'global')`, excluded from the candidate set, so cross‑cutting
-  rules/lessons (global) always surface but unrelated projects never leak in.
+  rules/lessons (global) always surface but unrelated projects never leak in. The project must be named
+  explicitly — there is no inferred "current project" — so `scope="project"` without a `project` is **rejected**.
+  A search for a project with no memories returns an empty result (no error — "nothing remembered yet").
 - `scope="all"` drops the project filter and searches **across all projects** (the cross‑project capability).
-- `scope="global"` returns only global memories. Note: passing `project` together with `scope in {all, global}`
-  has no effect — `scope` is authoritative there.
+- `scope="global"` returns only global memories. Passing `project` together with `scope in {all, global}` is
+  **rejected** (those scopes ignore `project` — `scope` is authoritative — so accepting it would silently drop
+  the filter and return a wrong‑scoped result; the API refuses the contradiction instead).
 - Implementation: **one collection + a `project` column used as a hard filter** (not a soft boost, not a
   per‑project partition) — so cross‑project search is just dropping that filter, never expensive.
 

@@ -95,7 +95,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
         ] = "project",
         project: Annotated[
             str,
-            Field(description="Project slug to scope to. Required when scope='project' (the default)."),
+            Field(description="Project slug to scope to. Required when scope='project' (the default), and must be omitted for scope='global'/'all'."),
         ] = None,
         type: Annotated[
             MemoryTypeName,
