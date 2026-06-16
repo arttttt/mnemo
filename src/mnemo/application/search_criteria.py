@@ -33,6 +33,14 @@ class SearchCriteria:
                 "pass the project slug, or use scope='global' (only global memories) "
                 "or scope='all' (search across every project)"
             )
+        # The mirror case: 'all'/'global' ignore project entirely (scope is
+        # authoritative). Accepting a project here would silently drop the filter and
+        # return a wrong-scoped result, so reject the contradiction loudly instead.
+        if self.scope in ("global", "all") and self.project is not None:
+            raise ValueError(
+                f"project has no effect with scope='{self.scope}'; drop the project "
+                f"param, or use scope='project' to scope the search to it"
+            )
 
     def matches(self, memory: Memory) -> bool:
         if memory.status != "active":

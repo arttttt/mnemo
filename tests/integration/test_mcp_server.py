@@ -116,6 +116,18 @@ def test_mcp_search_requires_a_project_in_project_scope(tmp_path):
     assert "scope='project'" in message and "project" in message  # actionable
 
 
+def test_mcp_search_rejects_project_with_all_or_global_scope(tmp_path):
+    """scope='all'/'global' ignore project; passing one is a loud error, not a
+    silently wrong-scoped result."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    for scope in ("all", "global"):
+        with pytest.raises(ToolError) as exc:
+            _call(mcp, "search", {"query": "x", "scope": scope, "project": "api"})
+        assert f"scope='{scope}'" in str(exc.value)
+
+
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
