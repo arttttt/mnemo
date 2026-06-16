@@ -77,7 +77,7 @@ def search(
         help="'project' (the given project + global; requires --project), 'global', or 'all' (cross-project).",
     ),
     project: Optional[str] = typer.Option(
-        None, "--project", "-p", help="Project slug to scope to. Required with --scope project (the default)."
+        None, "--project", "-p", help="Project slug to scope to. Required with --scope project (the default), omitted for global/all."
     ),
     type: Optional[str] = typer.Option(
         None, "--type", "-t", help=f"Restrict to one type: {_TYPES}."

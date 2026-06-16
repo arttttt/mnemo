@@ -20,3 +20,13 @@ def test_project_scope_with_a_project_is_valid():
 def test_global_and_all_scopes_need_no_project():
     assert SearchCriteria(scope="global").project is None
     assert SearchCriteria(scope="all").project is None
+
+
+@pytest.mark.parametrize("scope", ["global", "all"])
+def test_project_is_rejected_with_global_or_all_scope(scope):
+    # scope is authoritative for these — a project would be silently dropped, so the
+    # contradiction is rejected rather than ignored.
+    with pytest.raises(ValueError) as exc:
+        SearchCriteria(scope=scope, project="api")
+    message = str(exc.value)
+    assert f"scope='{scope}'" in message and "project" in message
