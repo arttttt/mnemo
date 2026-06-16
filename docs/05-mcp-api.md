@@ -68,6 +68,7 @@ Superseding (evolution) is separate and keeps history; deletion physically remov
 Kept off the agent surface:
 ```
 mnemo stats [--project P]            # counts by type, projects, size
+mnemo reindex [--dry-run]            # re-embed all memories with the current embedder
 mnemo consolidate [--project P]      # run background consolidation now (Phase 3)
 mnemo doctor                         # health: store/embedder/disk/warnings
 mnemo export / import                # portability (Phase 4)

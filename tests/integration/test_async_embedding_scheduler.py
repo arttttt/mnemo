@@ -1,4 +1,5 @@
 """Async embed worker pool, exercised against the real (thread-safe) SQLite store."""
+import logging
 import time
 
 import pytest
@@ -62,6 +63,39 @@ def test_backpressure_embeds_inline_at_cap(tmp_path):
     memory = _pending(repo, "embed me inline")
     scheduler.schedule(memory.id)  # no workers started — must embed here
     assert repo.has_vector(memory.id) is True
+
+
+def test_inline_backpressure_logs_a_warning(tmp_path, caplog):
+    # The only synchronous (write-blocking) path is the backpressure fallback, so it must
+    # be loud: it means a write paid for an encode. queue_max=0 forces it with no workers.
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(HashEmbedder(), repo, queue_max=0)
+    memory = _pending(repo, "inline under backpressure")
+    with caplog.at_level(logging.WARNING, logger="mnemo.embed"):
+        scheduler.schedule(memory.id)  # embeds on this (caller) thread
+    assert any(
+        record.levelno == logging.WARNING and "backpressure" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_worker_logs_embed_timing_off_the_caller_thread(tmp_path, caplog):
+    # The normal path logs the encode at INFO from the worker thread, so the deferred work
+    # (and its latency) is observable — and provably NOT on the write/caller thread.
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(HashEmbedder(), repo)
+    scheduler.start()
+    try:
+        with caplog.at_level(logging.INFO, logger="mnemo.embed"):
+            memory = _pending(repo, "log my timing")
+            scheduler.schedule(memory.id)
+            assert _wait(
+                lambda: any("embedded" in r.getMessage() for r in list(caplog.records))
+            )
+        record = next(r for r in caplog.records if "embedded" in r.getMessage())
+        assert record.threadName.startswith("mnemo-embed-")  # a worker, not the caller
+    finally:
+        scheduler.stop()
 
 
 def test_drain_waits_for_all_pending(tmp_path):

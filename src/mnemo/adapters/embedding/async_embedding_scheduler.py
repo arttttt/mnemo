@@ -80,9 +80,15 @@ class AsyncEmbeddingScheduler:
     def schedule(self, memory_id: str) -> None:
         # Backpressure: keep the pending backlog bounded. At the cap, embed inline so a
         # write can never grow an unbounded queue — worst case it is as slow as one encode.
-        if self._repository.pending_count() >= self._queue_max:
+        pending = self._repository.pending_count()
+        if pending >= self._queue_max:
+            _log.warning(
+                "backpressure: %d pending at cap %d — embedding %s inline (this blocks the write)",
+                pending, self._queue_max, memory_id,
+            )
             self._embed_one(memory_id)
             return
+        _log.debug("queued %s (pending=%d); waking a worker", memory_id, pending)
         with self._cond:
             self._cond.notify()
 
@@ -128,6 +134,7 @@ class AsyncEmbeddingScheduler:
         content = self._repository.content_for(memory_id)
         if content is None:
             return  # deleted before embedding — nothing to do
+        start = time.monotonic()
         try:
             vector = self._embedder.encode(content)
         except Exception:  # noqa: BLE001 — any encode failure is retried, never fatal
@@ -135,6 +142,10 @@ class AsyncEmbeddingScheduler:
             return
         self._repository.set_vector(memory_id, vector)
         self._retries.pop(memory_id, None)
+        _log.info(
+            "embedded %s in %d ms (%d chars)",
+            memory_id, int((time.monotonic() - start) * 1000), len(content),
+        )
 
     def _record_failure(self, memory_id: str) -> None:
         attempts = self._retries.get(memory_id, 0) + 1

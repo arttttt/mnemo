@@ -72,7 +72,10 @@ MNEMO_PORT=8765
 MNEMO_DATA_DIR=~/.mnemo/data
 MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown after the last connector leaves
 MNEMO_IDLE_CHECK_INTERVAL_SECONDS=5 # how often the service sweeps for live connectors
-MNEMO_EMBEDDER=pplx-embed-v1-0.6b-int8-onnx # default; q4 = fast profile. see 06-models.md
+MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: fastembed | hash
+MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
+MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
+MNEMO_EMBED_WORKERS=1                # deferred-embed worker threads (= the RAM bound)
 MNEMO_GENERATOR=qwen3-4b-instruct-2507-q4   # or "off"
 MNEMO_GENERATOR_ENGINE=llama.cpp            # llama.cpp | ollama
 MNEMO_CONSOLIDATE_EVERY=50          # new records before a trigger

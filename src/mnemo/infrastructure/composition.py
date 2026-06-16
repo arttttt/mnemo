@@ -18,7 +18,7 @@ def build_container(
     session_provider: SessionProviderPort | None = None,
 ) -> Container:
     config = config or Config.from_env()
-    embedder = _build_embedder(config.embedder, config.embed_model)
+    embedder = _build_embedder(config)
     repository = _build_repository(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
     # Embedding is computed inline by default (CLI / offline). The service swaps in the
@@ -35,18 +35,23 @@ def build_container(
     )
 
 
-def _build_embedder(name: str, model: str | None = None) -> EmbedderPort:
+def _build_embedder(config: Config) -> EmbedderPort:
+    name = config.embedder
     if name == "hash":
         from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 
         return HashEmbedder()
+    if name == "pplx":  # the default — pplx-embed-v1-0.6b int8 ONNX (CPU)
+        from mnemo.adapters.embedding.pplx_embedder import PplxEmbedder
+
+        return PplxEmbedder(max_input=config.embed_max_tokens, models_dir=config.models_dir)
     if name in ("fastembed", "bge-small", "bge-small-en-v1.5"):
         from mnemo.adapters.embedding.fastembed_embedder import FastEmbedEmbedder
 
         # MNEMO_EMBED_MODEL picks the concrete fastembed model (e.g. a multilingual one);
         # omit to keep the adapter default. Switching models changes the vector dimension,
-        # which is fixed at first write — a different model needs a fresh store.
-        return FastEmbedEmbedder(model) if model else FastEmbedEmbedder()
+        # which is fixed at first write — a different model needs a reindex.
+        return FastEmbedEmbedder(config.embed_model) if config.embed_model else FastEmbedEmbedder()
     raise ValueError(f"unknown embedder: {name!r}")
 
 

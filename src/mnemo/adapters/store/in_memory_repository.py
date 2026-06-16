@@ -56,6 +56,13 @@ class InMemoryMemoryRepository:
     def pending_count(self) -> int:
         return sum(1 for _, vec in self._items if vec is None)
 
+    def set_dimension(self, new_dim: int) -> None:
+        current = next((len(vec) for _, vec in self._items if vec is not None), None)
+        if current is None or current == new_dim:
+            return  # empty or already at this dimension — nothing to migrate
+        self._items = [(memory, None) for memory, _ in self._items]  # drop all to pending
+        self._persist()
+
     def find_by_hash(self, content_hash: str) -> Memory | None:
         index = self._index_by_hash.get(content_hash)
         return self._items[index][0] if index is not None else None

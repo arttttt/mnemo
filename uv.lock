@@ -728,7 +728,7 @@ wheels = [
 
 [[package]]
 name = "mnemo"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
@@ -743,16 +743,28 @@ dev = [
 embed = [
     { name = "fastembed" },
 ]
+pplx = [
+    { name = "huggingface-hub" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "onnxruntime", version = "1.23.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "onnxruntime", version = "1.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tokenizers" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "fastembed", marker = "extra == 'embed'", specifier = ">=0.4.0" },
+    { name = "huggingface-hub", marker = "extra == 'pplx'", specifier = ">=0.20" },
     { name = "mcp", specifier = ">=1.2.0" },
+    { name = "numpy", marker = "extra == 'pplx'", specifier = ">=1.24" },
+    { name = "onnxruntime", marker = "extra == 'pplx'", specifier = ">=1.16" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
+    { name = "tokenizers", marker = "extra == 'pplx'", specifier = ">=0.15" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["embed", "dev"]
+provides-extras = ["pplx", "embed", "dev"]
 
 [[package]]
 name = "mpmath"

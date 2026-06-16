@@ -10,6 +10,7 @@ is resident when no agent is connected.
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 
@@ -22,9 +23,13 @@ from mnemo.adapters.session.meta_session_provider import MetaSessionProvider
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
+from mnemo.infrastructure.logging_config import configure_logging
+
+_log = logging.getLogger("mnemo.service")
 
 
 def main() -> None:
+    configure_logging()
     config = Config.from_env()
     # The session id is owned by each agent's connector and arrives as request
     # metadata; the service just reads it (see MetaSessionProvider).
@@ -43,6 +48,10 @@ def main() -> None:
     container.scheduler = scheduler
     container.remember = RememberMemory(container.repository, scheduler, session_provider)
     scheduler.start()
+    _log.info(
+        "service up: embedder=%s dim=%d workers=%d on %s:%d (encode runs on the embed worker, off the write path)",
+        config.embedder, container.embedder.dim, config.embed_workers, config.host, config.port,
+    )
     mcp = build_mcp(container, host=config.host, port=config.port)
     _start_idle_monitor(config, scheduler)
     mcp.run(transport="streamable-http")

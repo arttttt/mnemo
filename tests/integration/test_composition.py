@@ -12,7 +12,7 @@ def test_from_env_defaults_to_sqlite(monkeypatch, tmp_path):
 
     config = Config.from_env()
     assert config.store == "sqlite"
-    assert config.embedder == "fastembed"
+    assert config.embedder == "pplx"  # the default embedder
     assert config.sqlite_path == str(tmp_path / "memory.db")
     assert config.store_path == str(tmp_path / "memory.json")
 
@@ -38,10 +38,16 @@ def test_build_embedder_forwards_configured_model(monkeypatch):
 
     monkeypatch.setattr(fe, "FastEmbedEmbedder", StubFastEmbed)
 
-    _build_embedder("fastembed", "BAAI/bge-m3")
+    def _config(embed_model):
+        return Config(
+            data_dir="/tmp", embedder="fastembed", store="memory",
+            store_path="/tmp/m.json", embed_model=embed_model,
+        )
+
+    _build_embedder(_config("BAAI/bge-m3"))
     assert captured["model_name"] == "BAAI/bge-m3"
 
-    _build_embedder("fastembed", None)  # omitted -> adapter default
+    _build_embedder(_config(None))  # omitted -> adapter default
     assert captured["model_name"] == fe.DEFAULT_MODEL
 
 
