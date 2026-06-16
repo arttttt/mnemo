@@ -97,4 +97,6 @@ def test_cli_reindex(tmp_path, monkeypatch):
 
     run = runner.invoke(app, ["reindex"])
     assert run.exit_code == 0
-    assert "dim" in json.loads(run.stdout)
+    result = json.loads(run.stdout)
+    assert "dim" in result
+    assert result["service_restarted"] is False  # no shared service runs in the isolated env
