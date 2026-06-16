@@ -22,6 +22,18 @@ class SearchCriteria:
     related_files: tuple[str, ...] = ()     # memory must reference ANY of these
     created_after: str | None = None        # ISO timestamp; keep created_at >= this
 
+    def __post_init__(self) -> None:
+        # A project-scoped search must name the project to scope to. There is no
+        # "current project" to infer here — without a project the search would
+        # silently match only project-less + global rows (almost always nothing),
+        # so reject it with an explicit, actionable error instead.
+        if self.scope == "project" and self.project is None:
+            raise ValueError(
+                "scope='project' needs a project to scope to, but none was given; "
+                "pass the project slug, or use scope='global' (only global memories) "
+                "or scope='all' (search across every project)"
+            )
+
     def matches(self, memory: Memory) -> bool:
         if memory.status != "active":
             return False

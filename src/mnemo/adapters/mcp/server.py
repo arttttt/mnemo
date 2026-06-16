@@ -91,11 +91,11 @@ def build_mcp(container: Optional[Container] = None, **settings):
         ],
         scope: Annotated[
             SearchScope,
-            Field(description="'project' (default) = current project + global; 'global' = only global; 'all' = every project (cross-project)."),
+            Field(description="'project' (default) = the given project + global, and REQUIRES the project param; 'global' = only global; 'all' = every project (cross-project)."),
         ] = "project",
         project: Annotated[
             str,
-            Field(description="Project slug to scope to when scope='project'."),
+            Field(description="Project slug to scope to. Required when scope='project' (the default)."),
         ] = None,
         type: Annotated[
             MemoryTypeName,

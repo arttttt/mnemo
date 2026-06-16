@@ -30,6 +30,14 @@ def test_remember_then_search_finds_it():
     assert any(hit.id == stored.id for hit in hits)
 
 
+def test_project_scoped_search_without_a_project_errors():
+    # scope defaults to 'project'; with no project there is nothing to scope to,
+    # so the search fails fast instead of silently returning nothing.
+    _, _, search, _ = _wiring()
+    with pytest.raises(ValueError):
+        search.execute(query="anything")
+
+
 def test_sync_remember_embeds_immediately():
     # With the sync scheduler, a write ends fully embedded (no pending vector) —
     # same observable result as before deferred embedding.

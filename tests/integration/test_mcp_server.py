@@ -104,6 +104,18 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     assert container.repository.list_all() == []  # nothing stored on reject
 
 
+def test_mcp_search_requires_a_project_in_project_scope(tmp_path):
+    """A project-scoped search with no project surfaces an explicit, actionable
+    tool error — not a silent empty result — so the calling agent can fix the call."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "search", {"query": "anything"})  # scope defaults to 'project'
+    message = str(exc.value)
+    assert "scope='project'" in message and "project" in message  # actionable
+
+
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
