@@ -131,11 +131,15 @@ def reindex(
     """Re-embed every memory with the current embedder (run after switching embedders).
 
     Rebuilds the store at the new dimension if it changed; content, metadata and links
-    are preserved. A no-op when the embedder/dimension is unchanged.
+    are preserved. A no-op when the embedder/dimension is unchanged. Stops the shared
+    service so it respawns on demand with the new dimension instead of the stale one.
     """
+    from mnemo.adapters.mcp.service_control import stop_service
     from mnemo.application.use_cases.reindex_memories import ReindexMemories
+    from mnemo.infrastructure.config import Config
 
-    container = build_container()
+    config = Config.from_env()
+    container = build_container(config)
     target_dim = container.embedder.dim
     if dry_run:
         typer.echo(json.dumps(
@@ -143,10 +147,18 @@ def reindex(
              "target_dim": target_dim, "dry_run": True}
         ))
         return
+    # A running shared service holds the old store/dimension in memory: stop it before the
+    # rebuild (so its open connection can't obstruct the table swap) and again after (in
+    # case a live connector respawned it mid-run). It respawns on demand with the new state.
+    stopped_before = stop_service(config)
     count = ReindexMemories(
         container.repository, container.embedder, container.scheduler
     ).execute()
-    typer.echo(json.dumps({"reindexed": count, "dim": target_dim}))
+    stopped_after = stop_service(config)
+    typer.echo(json.dumps(
+        {"reindexed": count, "dim": target_dim,
+         "service_restarted": stopped_before or stopped_after}
+    ))
 
 
 @app.command()

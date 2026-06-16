@@ -23,9 +23,11 @@ cmd_install() {
 }
 
 cmd_update() {
-  # Re-sync the environment to the current checkout (you manage git/branches yourself).
+  # Re-sync the environment to the current checkout (you manage git/branches yourself),
+  # then stop the shared service so it respawns on demand with the new code.
   require_uv
   uv pip install -e ".[dev,embed]"
+  cmd_stop
 }
 
 cmd_test() {
@@ -93,7 +95,7 @@ print_menu() {
   mnemo dev helper
   ----------------
   1) install        create .venv + editable install (dev + embed)
-  2) update         reinstall deps (no git, no tests)
+  2) update         reinstall deps + stop service (no git, no tests)
   3) test           run the test suite (offline)
   4) test (heavy)   real-embedder tests (downloads model)
   5) demo           quick offline CLI demo
