@@ -13,6 +13,8 @@ class Config:
     store: str
     store_path: str
     embed_model: str | None = None  # concrete fastembed model; None => adapter default
+    models_dir: str = ""            # where local models are cached (default ~/.mnemo/models)
+    embed_max_tokens: int = 2048    # the embedder's operational window cap (pplx)
     sqlite_path: str = ""
     host: str = "127.0.0.1"   # the shared service binds localhost-only
     port: int = 8765
@@ -30,8 +32,12 @@ class Config:
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         return Config(
             data_dir=data_dir,
-            embedder=os.environ.get("MNEMO_EMBEDDER", "fastembed"),
+            embedder=os.environ.get("MNEMO_EMBEDDER", "pplx"),
             embed_model=os.environ.get("MNEMO_EMBED_MODEL") or None,
+            models_dir=os.path.expanduser(
+                os.environ.get("MNEMO_MODELS_DIR", "~/.mnemo/models")
+            ),
+            embed_max_tokens=int(os.environ.get("MNEMO_EMBED_MAX_TOKENS", "2048")),
             store=os.environ.get("MNEMO_STORE", "sqlite"),
             store_path=os.environ.get(
                 "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")

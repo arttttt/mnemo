@@ -31,8 +31,9 @@ The sections below explain the same steps manually (and the `pip` alternative).
   old — a plain `pip install -e .` against the system interpreter fails before mnemo runs.
 - **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provisions a
   new‑enough interpreter automatically. With plain `pip`/`venv` you must first install Python 3.10+ yourself.
-- Optional **`embed`** extra for real local semantic search (fastembed downloads a small ONNX model once).
-  Without it, use the offline `hash` embedder (lexical only — good for testing).
+- The **`pplx`** extra for the default embedder (pplx-embed-v1-0.6b int8 ONNX; ~335 MB fetched once into
+  `~/.mnemo/models/pplx`, then offline). Or the **`embed`** extra for fastembed/bge models. Without either,
+  use the offline `hash` embedder (`MNEMO_EMBEDDER=hash`, lexical only — good for testing).
 
 ## 1. Get the code
 
@@ -46,9 +47,10 @@ cd mnemo
 **uv:**
 ```bash
 uv venv                          # create .venv
-uv pip install -e ".[dev]"       # core deps + pytest
-# optional — real local embeddings:
-uv pip install -e ".[dev,embed]"
+uv pip install -e ".[dev]"       # core deps + pytest (hash embedder, offline)
+# real local embeddings — the default pplx embedder:
+uv pip install -e ".[dev,pplx]"
+# (or fastembed/bge instead: ".[dev,embed]")
 ```
 
 **pip:**
