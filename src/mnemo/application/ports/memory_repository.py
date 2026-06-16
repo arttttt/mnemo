@@ -11,7 +11,26 @@ from mnemo.domain.memory import Memory
 
 
 class MemoryRepositoryPort(Protocol):
-    def add(self, memory: Memory, vector: Vector) -> None: ...
+    def add(self, memory: Memory, vector: Vector | None = None) -> None:
+        """Persist a memory. `vector=None` stores it **pending** (lexically searchable
+        via FTS5, absent from dense search) until `set_vector` lands — see deferred
+        embedding in docs/03-architecture.md."""
+        ...
+
+    # --- deferred embedding (the DB is the durable embed queue) ---
+    def set_vector(self, memory_id: str, vector: Vector) -> None:
+        """Attach the embedding to an existing record (upsert; no-op if id is gone)."""
+        ...
+
+    def has_vector(self, memory_id: str) -> bool: ...
+
+    def content_for(self, memory_id: str) -> str | None: ...
+
+    def next_unembedded(self, limit: int) -> list[str]:
+        """Ids of memories still missing a vector (the pending work-list)."""
+        ...
+
+    def pending_count(self) -> int: ...
 
     def find_by_hash(self, content_hash: str) -> Memory | None: ...
 

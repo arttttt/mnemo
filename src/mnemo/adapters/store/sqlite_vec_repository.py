@@ -44,7 +44,12 @@ _CANDIDATE_MULTIPLIER = 5
 
 
 class SqliteVecMemoryRepository:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, dim: int | None = None) -> None:
+        # The embedding dimension. Given up front (from the embedder) it lets a
+        # PENDING write — one with no vector yet, for deferred embedding — create the
+        # schema before any vector exists. Left None, it is learned from the first
+        # vectored add (the original behaviour), and a vector-less first write errors.
+        self._dim = dim
         self._conns = SqliteConnections(path)
         # The links table is dimension-independent, so it exists from the start
         # (an edge can be written before, or independently of, any memory row).
@@ -64,10 +69,16 @@ class SqliteVecMemoryRepository:
                 is not None
             )
 
-    def add(self, memory: Memory, vector: Vector) -> None:
+    def add(self, memory: Memory, vector: Vector | None = None) -> None:
         with self._conns.writer() as conn:
             if not self._ready:
-                self._create_schema(conn, len(vector))
+                dim = len(vector) if vector is not None else self._dim
+                if dim is None:
+                    raise ValueError(
+                        "cannot create the store schema without an embedding dimension:"
+                        " pass dim= for a pending (vector-less) first write"
+                    )
+                self._create_schema(conn, dim)
             conn.execute(
                 "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
                 " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
@@ -78,6 +89,48 @@ class SqliteVecMemoryRepository:
                 self._row(memory, vector),
             )
             conn.commit()
+
+    def set_vector(self, memory_id: str, vector: Vector) -> None:
+        if not self._ready:
+            return
+        with self._conns.writer() as conn:
+            conn.execute(
+                "UPDATE memories SET embedding = ? WHERE id = ?",
+                (serialize_float32(list(vector)), memory_id),
+            )
+            conn.commit()
+
+    def has_vector(self, memory_id: str) -> bool:
+        if not self._ready:
+            return False
+        row = self._conns.reader().execute(
+            "SELECT embedding IS NOT NULL FROM memories WHERE id = ?", (memory_id,)
+        ).fetchone()
+        return bool(row[0]) if row else False
+
+    def content_for(self, memory_id: str) -> str | None:
+        if not self._ready:
+            return None
+        row = self._conns.reader().execute(
+            "SELECT content FROM memories WHERE id = ?", (memory_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def next_unembedded(self, limit: int) -> list[str]:
+        if not self._ready or limit <= 0:
+            return []
+        rows = self._conns.reader().execute(
+            "SELECT id FROM memories WHERE embedding IS NULL LIMIT ?", (limit,)
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def pending_count(self) -> int:
+        if not self._ready:
+            return 0
+        (count,) = self._conns.reader().execute(
+            "SELECT count(*) FROM memories WHERE embedding IS NULL"
+        ).fetchone()
+        return count
 
     def find_by_hash(self, content_hash: str) -> Memory | None:
         return self._read_one(self._conns.reader(), "hash = ?", (content_hash,))
@@ -103,9 +156,12 @@ class SqliteVecMemoryRepository:
         candidate = limit * _CANDIDATE_MULTIPLIER
         reader = self._conns.reader()
 
+        # Pending memories (embedding IS NULL, deferred embedding) have no vector to
+        # rank — they are excluded from the dense leg; the lexical leg still finds them.
         dense = reader.execute(
             f"SELECT {_PAYLOAD}, vec_distance_cosine(m.embedding, ?) AS _distance"
-            f" FROM memories m WHERE {where} ORDER BY _distance ASC LIMIT ?",
+            f" FROM memories m WHERE {where} AND m.embedding IS NOT NULL"
+            f" ORDER BY _distance ASC LIMIT ?",
             (serialize_float32(list(vector)), *params, candidate),
         ).fetchall()
 
@@ -272,7 +328,7 @@ class SqliteVecMemoryRepository:
             CREATE TABLE memories (
                 id              TEXT PRIMARY KEY,
                 content         TEXT NOT NULL,
-                embedding       BLOB NOT NULL CHECK(vec_length(embedding) == {dim}),
+                embedding       BLOB CHECK(embedding IS NULL OR vec_length(embedding) == {dim}),
                 type            TEXT NOT NULL,
                 scope           TEXT NOT NULL,
                 project         TEXT,
@@ -312,11 +368,11 @@ class SqliteVecMemoryRepository:
         conn.commit()
         self._ready = True
 
-    def _row(self, memory: Memory, vector: Vector) -> dict:
+    def _row(self, memory: Memory, vector: Vector | None) -> dict:
         data = to_dict(memory)
         data["tags"] = json.dumps(data["tags"])
         data["related_files"] = json.dumps(data["related_files"])
-        data["embedding"] = serialize_float32(list(vector))
+        data["embedding"] = serialize_float32(list(vector)) if vector is not None else None
         return data
 
     @staticmethod

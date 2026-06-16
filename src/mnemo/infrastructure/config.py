@@ -18,6 +18,11 @@ class Config:
     port: int = 8765
     idle_grace_seconds: float = 300.0         # exit this long after the last connector leaves
     idle_check_interval_seconds: float = 5.0  # how often the service sweeps for live connectors
+    # Deferred embedding (the service's async worker pool; docs/03-architecture.md).
+    embed_workers: int = 1                     # parallel encodes — also the RAM bound (default 1 = safe)
+    embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
+    embed_max_retries: int = 3                 # retries before a memory is left lexical-only
+    embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
 
     @staticmethod
     def from_env() -> "Config":
@@ -40,4 +45,8 @@ class Config:
             idle_check_interval_seconds=float(
                 os.environ.get("MNEMO_IDLE_CHECK_INTERVAL_SECONDS", "5")
             ),
+            embed_workers=int(os.environ.get("MNEMO_EMBED_WORKERS", "1")),
+            embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
+            embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
+            embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),
         )

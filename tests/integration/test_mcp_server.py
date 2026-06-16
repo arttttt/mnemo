@@ -84,12 +84,16 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     from mcp.server.fastmcp.exceptions import ToolError
 
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+    from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
     from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
     from mnemo.application.use_cases.remember_memory import RememberMemory
 
     container = _container(tmp_path)
+    embedder = HashEmbedder(max_input=3)
     container.remember = RememberMemory(
-        container.repository, HashEmbedder(max_input=3), InProcessSessionProvider()
+        container.repository,
+        SyncEmbeddingScheduler(embedder, container.repository),
+        InProcessSessionProvider(),
     )
     mcp = build_mcp(container)
 

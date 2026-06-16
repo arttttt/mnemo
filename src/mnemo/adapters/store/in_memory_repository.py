@@ -21,15 +21,40 @@ from mnemo.domain.memory import Memory
 class InMemoryMemoryRepository:
     def __init__(self, path: str | None = None) -> None:
         self._path = Path(path) if path else None
-        self._items: list[tuple[Memory, Vector]] = []
+        self._items: list[tuple[Memory, Vector | None]] = []
         self._index_by_hash: dict[str, int] = {}
         self._links: list[Link] = []
         self._load()
 
-    def add(self, memory: Memory, vector: Vector) -> None:
+    def add(self, memory: Memory, vector: Vector | None = None) -> None:
         self._index_by_hash[memory.hash] = len(self._items)
-        self._items.append((memory, list(vector)))
+        self._items.append((memory, list(vector) if vector is not None else None))
         self._persist()
+
+    def set_vector(self, memory_id: str, vector: Vector) -> None:
+        for index, (memory, _) in enumerate(self._items):
+            if memory.id == memory_id:
+                self._items[index] = (memory, list(vector))
+                self._persist()
+                return
+
+    def has_vector(self, memory_id: str) -> bool:
+        return any(
+            memory.id == memory_id and stored is not None
+            for memory, stored in self._items
+        )
+
+    def content_for(self, memory_id: str) -> str | None:
+        for memory, _ in self._items:
+            if memory.id == memory_id:
+                return memory.content
+        return None
+
+    def next_unembedded(self, limit: int) -> list[str]:
+        return [m.id for m, vec in self._items if vec is None][:limit]
+
+    def pending_count(self) -> int:
+        return sum(1 for _, vec in self._items if vec is None)
 
     def find_by_hash(self, content_hash: str) -> Memory | None:
         index = self._index_by_hash.get(content_hash)
@@ -53,10 +78,12 @@ class InMemoryMemoryRepository:
         # Offline/test backend: it approximates hybrid with cosine over the (already
         # lexical) hash-embedding, so the raw `query` text is not needed here. The
         # real dense+lexical fusion lives in the SQLite backend.
+        # Pending (un-embedded) memories have no vector → absent from this dense
+        # backend. (The SQLite store still surfaces them via the FTS5 lexical leg.)
         scored = [
             ScoredMemory(memory=memory, score=cosine(vector, stored))
             for memory, stored in self._items
-            if criteria.matches(memory)
+            if stored is not None and criteria.matches(memory)
         ]
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:limit]
@@ -150,6 +177,7 @@ class InMemoryMemoryRepository:
         for row in rows:
             memory = from_dict(row["memory"])
             self._index_by_hash[memory.hash] = len(self._items)
-            self._items.append((memory, list(row["vector"])))
+            stored = row["vector"]
+            self._items.append((memory, list(stored) if stored is not None else None))
         if isinstance(raw, dict):
             self._links = [link_from_dict(link) for link in raw.get("links", [])]

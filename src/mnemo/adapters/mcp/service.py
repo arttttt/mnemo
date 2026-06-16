@@ -13,11 +13,13 @@ from __future__ import annotations
 import os
 import threading
 
+from mnemo.adapters.embedding.async_embedding_scheduler import AsyncEmbeddingScheduler
 from mnemo.adapters.mcp.connector_liveness import ConnectorLiveness
 from mnemo.adapters.mcp.idle_monitor import IdleMonitor
 from mnemo.adapters.mcp.run_paths import connectors_dir, run_dir
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.adapters.session.meta_session_provider import MetaSessionProvider
+from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
 
@@ -26,25 +28,42 @@ def main() -> None:
     config = Config.from_env()
     # The session id is owned by each agent's connector and arrives as request
     # metadata; the service just reads it (see MetaSessionProvider).
-    container = build_container(config, session_provider=MetaSessionProvider())
+    session_provider = MetaSessionProvider()
+    container = build_container(config, session_provider=session_provider)
+    # The service is long-running, so it embeds OFF the hot path: swap the inline
+    # scheduler for the async worker pool and rewire the write use case to it. Recovery
+    # is automatic — the workers drain the DB's pending rows on start.
+    scheduler = AsyncEmbeddingScheduler(
+        container.embedder,
+        container.repository,
+        workers=config.embed_workers,
+        queue_max=config.embed_queue_max,
+        max_retries=config.embed_max_retries,
+    )
+    container.scheduler = scheduler
+    container.remember = RememberMemory(container.repository, scheduler, session_provider)
+    scheduler.start()
     mcp = build_mcp(container, host=config.host, port=config.port)
-    _start_idle_monitor(config)
+    _start_idle_monitor(config, scheduler)
     mcp.run(transport="streamable-http")
 
 
-def _start_idle_monitor(config: Config) -> None:
+def _start_idle_monitor(config: Config, scheduler: AsyncEmbeddingScheduler) -> None:
     monitor = IdleMonitor(
         ConnectorLiveness(connectors_dir(config)),
-        on_idle=lambda: _shutdown(config),
+        on_idle=lambda: _shutdown(config, scheduler),
         grace_seconds=config.idle_grace_seconds,
         interval_seconds=config.idle_check_interval_seconds,
     )
     threading.Thread(target=monitor.run, name="mnemo-idle-monitor", daemon=True).start()
 
 
-def _shutdown(config: Config) -> None:
-    # Fires only when no connector is alive, so there are no in-flight requests.
-    # Committed data is durable in the SQLite WAL; just drop the pidfile and exit.
+def _shutdown(config: Config, scheduler: AsyncEmbeddingScheduler) -> None:
+    # Fires only when no connector is alive → no in-flight requests and no new writes.
+    # Finish embedding whatever is still pending (bounded by a timeout; the rest is
+    # recovered on the next start). Committed data is durable in the SQLite WAL.
+    scheduler.drain(config.embed_drain_timeout)
+    scheduler.stop()
     try:
         (run_dir(config) / "service.pid").unlink()
     except FileNotFoundError:
