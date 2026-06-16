@@ -7,10 +7,18 @@ absent).
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory import Memory
 
 _ALL = SearchCriteria(scope="all")
+
+
+def _hits(repo, embedder, text, criteria, limit=5):
+    """Run a semantic retrieval the way the use case does (text + its embedding)."""
+    return repo.retrieve(
+        Retrieval(criteria=criteria, limit=limit, text=text, vector=embedder.encode(text))
+    )
 
 
 def _in_memory(tmp_path):
@@ -76,7 +84,7 @@ def test_search_ranks_by_similarity(open_repo, embedder):
     for content in ["redis caching layer", "postgres migration plan", "redis cache eviction"]:
         _store(repo, embedder, content, project="api")
 
-    hits = repo.search("redis cache", embedder.encode("redis cache"), _ALL, limit=3)
+    hits = _hits(repo, embedder, "redis cache", _ALL, limit=3)
     assert hits[0].score >= hits[-1].score
     assert "redis" in hits[0].memory.content
 
@@ -87,7 +95,7 @@ def test_search_scopes_to_project(open_repo, embedder):
     _store(repo, embedder, "redis cache eviction notes", project="other")
 
     criteria = SearchCriteria(scope="project", project="api")
-    hits = repo.search("redis cache", embedder.encode("redis cache"), criteria, limit=5)
+    hits = _hits(repo, embedder, "redis cache", criteria, limit=5)
     assert [hit.memory.id for hit in hits] == [keep.id]
 
 
@@ -99,14 +107,15 @@ def test_search_filters_by_tags_and_files(open_repo, embedder):
     )
     _store(repo, embedder, "jwt rotation note", project="api", tags=["auth"])
 
-    by_tags = repo.search(
-        "jwt", embedder.encode("jwt"), SearchCriteria(scope="all", tags=("auth", "jwt")), limit=5
+    by_tags = _hits(
+        repo, embedder, "jwt", SearchCriteria(scope="all", tags=("auth", "jwt")), limit=5
     )
     assert [hit.memory.id for hit in by_tags] == [tagged.id]
 
-    by_file = repo.search(
+    by_file = _hits(
+        repo,
+        embedder,
         "jwt",
-        embedder.encode("jwt"),
         SearchCriteria(scope="all", related_files=("src/auth/jwt.ts",)),
         limit=5,
     )
@@ -118,7 +127,7 @@ def test_search_recency_excludes_old(open_repo, embedder):
     _store(repo, embedder, "fresh note", project="api")
 
     future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
-    assert repo.search("fresh note", embedder.encode("fresh note"), future_cutoff, limit=5) == []
+    assert _hits(repo, embedder, "fresh note", future_cutoff, limit=5) == []
 
 
 def test_pending_vector_lifecycle(open_repo, embedder):
@@ -141,7 +150,7 @@ def test_pending_vector_lifecycle(open_repo, embedder):
     assert repo.has_vector(pending.id) is True
     assert repo.pending_count() == 0
     assert repo.next_unembedded(10) == []
-    hits = repo.search("redis", embedder.encode("redis"), _ALL, limit=5)
+    hits = _hits(repo, embedder, "redis", _ALL, limit=5)
     assert any(hit.memory.id == pending.id for hit in hits)  # now in dense search
 
 
@@ -162,9 +171,7 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     pending = Memory.create("handleAuthCallback pending fix", project="api")
     repo.add(pending)  # no vector
 
-    hits = repo.search(
-        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=5
-    )
+    hits = _hits(repo, embedder, "handleAuthCallback", _ALL, limit=5)
     assert any(hit.memory.id == pending.id for hit in hits)
 
 
@@ -189,9 +196,7 @@ def test_sqlite_hybrid_finds_exact_token(tmp_path):
 
     # FTS5 is created with the schema, so an exact token ranks first via the
     # lexical (BM25) half of the hybrid, even though it is a rare term.
-    hits = repo.search(
-        "handleAuthCallback", embedder.encode("handleAuthCallback"), _ALL, limit=3
-    )
+    hits = _hits(repo, embedder, "handleAuthCallback", _ALL, limit=3)
     assert hits and hits[0].memory.id == target.id
 
 

@@ -11,8 +11,8 @@ from pathlib import Path
 from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.similarity import cosine
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
-from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
 from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
@@ -79,21 +79,19 @@ class InMemoryMemoryRepository:
                 return memory
         return None
 
-    def search(
-        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
-    ) -> list[ScoredMemory]:
+    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
         # Offline/test backend: it approximates hybrid with cosine over the (already
-        # lexical) hash-embedding, so the raw `query` text is not needed here. The
+        # lexical) hash-embedding, so the raw `request.text` is not needed here. The
         # real dense+lexical fusion lives in the SQLite backend.
         # Pending (un-embedded) memories have no vector → absent from this dense
         # backend. (The SQLite store still surfaces them via the FTS5 lexical leg.)
         scored = [
-            ScoredMemory(memory=memory, score=cosine(vector, stored))
+            ScoredMemory(memory=memory, score=cosine(request.vector, stored))
             for memory, stored in self._items
-            if stored is not None and criteria.matches(memory)
+            if stored is not None and request.criteria.matches(memory)
         ]
         scored.sort(key=lambda item: item.score, reverse=True)
-        return scored[:limit]
+        return scored[: request.limit]
 
     def register_duplicate(self, memory_id: str) -> None:
         for memory, _ in self._items:

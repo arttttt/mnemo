@@ -4,6 +4,7 @@ from __future__ import annotations
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.results.search_result import SearchResult
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.generators import iso_days_ago
 from mnemo.domain.memory_type import MemoryType
@@ -36,8 +37,13 @@ class SearchMemory:
             related_files=tuple(related_files or ()),
             created_after=iso_days_ago(recency_days) if recency_days else None,
         )
-        vector = self._embedder.encode(query)
-        scored = self._repository.search(query, vector, criteria, limit=limit)
+        request = Retrieval(
+            criteria=criteria,
+            limit=limit,
+            text=query,
+            vector=self._embedder.encode(query),
+        )
+        scored = self._repository.retrieve(request)
         return [
             SearchResult(
                 id=item.memory.id,

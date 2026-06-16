@@ -25,6 +25,7 @@ from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
@@ -186,12 +187,11 @@ class SqliteVecMemoryRepository:
             reader, "topic_key = ? AND status = 'active' AND project = ?", (topic_key, project)
         )
 
-    def search(
-        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
-    ) -> list[ScoredMemory]:
+    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
+        limit = request.limit
         if not self._ready or limit <= 0:
             return []
-        where, params = self._where(criteria)
+        where, params = self._where(request.criteria)
         candidate = limit * _CANDIDATE_MULTIPLIER
         reader = self._conns.reader()
 
@@ -201,11 +201,11 @@ class SqliteVecMemoryRepository:
             f"SELECT {_PAYLOAD}, vec_distance_cosine(m.embedding, ?) AS _distance"
             f" FROM memories m WHERE {where} AND m.embedding IS NOT NULL"
             f" ORDER BY _distance ASC LIMIT ?",
-            (serialize_float32(list(vector)), *params, candidate),
+            (serialize_float32(list(request.vector)), *params, candidate),
         ).fetchall()
 
         lexical: list[sqlite3.Row] = []
-        match = _match_query(query)
+        match = _match_query(request.text)
         if match is not None:
             lexical = reader.execute(
                 f"SELECT {_PAYLOAD}, bm25(memories_fts) AS _rank FROM memories_fts"
@@ -436,13 +436,15 @@ class SqliteVecMemoryRepository:
         )
 
 
-def _match_query(text: str) -> str | None:
+def _match_query(text: str | None) -> str | None:
     """Build a safe FTS5 MATCH string: each word token quoted, OR-joined.
 
     Quoting neutralizes FTS operators in user text; OR keeps lexical matching
-    lenient (the dense leg handles semantic recall). Returns None when the query
-    has no usable tokens, so the lexical leg is simply skipped.
+    lenient (the dense leg handles semantic recall). Returns None when there is no
+    query text or no usable tokens, so the lexical leg is simply skipped.
     """
+    if not text:
+        return None
     tokens = re.findall(r"\w+", text)
     if not tokens:
         return None
