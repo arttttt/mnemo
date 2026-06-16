@@ -29,6 +29,25 @@ def test_cli_store_then_search(tmp_path, monkeypatch):
     assert memory_id in found.stdout
 
 
+def test_cli_search_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
+    # --scope defaults to 'project'; with no --project there is nothing to scope to,
+    # so the command exits non-zero with an actionable message, not a stack trace.
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["search", "anything"])
+    assert result.exit_code != 0
+    assert "project" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_search_global_scope_needs_no_project(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["search", "anything", "--scope", "global"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "[]"  # empty store, but the command runs end-to-end
+
+
 def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 

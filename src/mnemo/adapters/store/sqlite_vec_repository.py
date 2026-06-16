@@ -328,11 +328,9 @@ class SqliteVecMemoryRepository:
         if criteria.scope == "global":
             clauses.append("m.scope = 'global'")
         elif criteria.scope != "all":  # 'project' = this project OR global (soft scope)
-            if criteria.project is None:
-                clauses.append("(m.project IS NULL OR m.scope = 'global')")
-            else:
-                clauses.append("(m.project = ? OR m.scope = 'global')")
-                params.append(criteria.project)
+            # SearchCriteria guarantees a project when scope='project'.
+            clauses.append("(m.project = ? OR m.scope = 'global')")
+            params.append(criteria.project)
         if criteria.type is not None:
             clauses.append("m.type = ?")
             params.append(criteria.type.value)
