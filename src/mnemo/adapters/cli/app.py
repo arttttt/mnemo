@@ -123,6 +123,33 @@ def stats() -> None:
 
 
 @app.command()
+def reindex(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be re-embedded; change nothing."
+    ),
+) -> None:
+    """Re-embed every memory with the current embedder (run after switching embedders).
+
+    Rebuilds the store at the new dimension if it changed; content, metadata and links
+    are preserved. A no-op when the embedder/dimension is unchanged.
+    """
+    from mnemo.application.use_cases.reindex_memories import ReindexMemories
+
+    container = build_container()
+    target_dim = container.embedder.dim
+    if dry_run:
+        typer.echo(json.dumps(
+            {"memories": len(container.repository.list_all()),
+             "target_dim": target_dim, "dry_run": True}
+        ))
+        return
+    count = ReindexMemories(
+        container.repository, container.embedder, container.scheduler
+    ).execute()
+    typer.echo(json.dumps({"reindexed": count, "dim": target_dim}))
+
+
+@app.command()
 def delete(
     ids: list[str] = typer.Argument(..., help="Ids of the memories to delete."),
 ) -> None:

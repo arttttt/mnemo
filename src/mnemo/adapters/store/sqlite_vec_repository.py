@@ -42,6 +42,15 @@ _PAYLOAD = (
 # outside the other's top-`limit` still survives. Brute-force makes this cheap.
 _CANDIDATE_MULTIPLIER = 5
 
+_INSERT_MEMORY = (
+    "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
+    " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
+    " updated_at, last_seen_at, duplicate_count) VALUES (:id, :content, :embedding,"
+    " :type, :scope, :project, :tags, :related_files, :topic_key, :session_id,"
+    " :status, :supersedes, :hash, :created_at, :updated_at, :last_seen_at,"
+    " :duplicate_count)"
+)
+
 
 class SqliteVecMemoryRepository:
     def __init__(self, path: str, dim: int | None = None) -> None:
@@ -79,16 +88,46 @@ class SqliteVecMemoryRepository:
                         " pass dim= for a pending (vector-less) first write"
                     )
                 self._create_schema(conn, dim)
-            conn.execute(
-                "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
-                " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
-                " updated_at, last_seen_at, duplicate_count) VALUES (:id, :content, :embedding,"
-                " :type, :scope, :project, :tags, :related_files, :topic_key, :session_id,"
-                " :status, :supersedes, :hash, :created_at, :updated_at, :last_seen_at,"
-                " :duplicate_count)",
-                self._row(memory, vector),
-            )
+            conn.execute(_INSERT_MEMORY, self._row(memory, vector))
             conn.commit()
+
+    def set_dimension(self, new_dim: int) -> None:
+        """Rebuild the store at a new embedding dimension (e.g. switching embedders).
+
+        Content, metadata and links are preserved; every embedding is dropped to
+        PENDING for re-computation by the caller. No-op if the dimension already
+        matches. The rebuild runs in one writer transaction.
+        """
+        if not self._ready:
+            self._dim = new_dim  # fresh store — first write creates the schema at new_dim
+            return
+        if self._current_dim() == new_dim:
+            return
+        memories = self.list_all()  # content + metadata (links live in their own table)
+        with self._conns.writer() as conn:
+            conn.executescript(
+                "DROP TRIGGER IF EXISTS memories_ai;"
+                "DROP TRIGGER IF EXISTS memories_ad;"
+                "DROP TRIGGER IF EXISTS memories_au;"
+                "DROP TABLE IF EXISTS memories_fts;"
+                "DROP TABLE IF EXISTS memories;"
+            )
+            self._ready = False
+            self._create_schema(conn, new_dim)  # recreate at the new dim (commits, sets _ready)
+            for memory in memories:
+                conn.execute(_INSERT_MEMORY, self._row(memory, None))  # re-insert PENDING
+            conn.commit()
+        self._dim = new_dim
+
+    def _current_dim(self) -> int | None:
+        """The dimension baked into the live schema (parsed from its CHECK clause)."""
+        row = self._conns.reader().execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'"
+        ).fetchone()
+        if not row or not row[0]:
+            return None
+        found = re.search(r"vec_length\(embedding\)\s*==\s*(\d+)", row[0])
+        return int(found.group(1)) if found else None
 
     def set_vector(self, memory_id: str, vector: Vector) -> None:
         if not self._ready:

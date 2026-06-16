@@ -32,6 +32,12 @@ class MemoryRepositoryPort(Protocol):
 
     def pending_count(self) -> int: ...
 
+    def set_dimension(self, new_dim: int) -> None:
+        """Prepare the store for `new_dim` embeddings, dropping every existing vector to
+        pending for re-computation. No-op when the dimension already matches. Used to
+        migrate between embedders; content/metadata/links are preserved."""
+        ...
+
     def find_by_hash(self, content_hash: str) -> Memory | None: ...
 
     def find_active_by_topic_key(
