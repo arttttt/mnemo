@@ -101,8 +101,26 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     runner.invoke(app, ["store", "two", "--project", "api"])
     runner.invoke(app, ["store", "three", "--project", "other"])
 
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 3
+    stats = json.loads(runner.invoke(app, ["stats"]).stdout)
+    assert stats["total"] == 3
+    assert stats["pending"] == 0  # the CLI embeds inline (sync scheduler), so nothing pending
     assert json.loads(runner.invoke(app, ["delete", one]).stdout)["deleted"] == 1
     assert json.loads(runner.invoke(app, ["clear", "api"]).stdout)["deleted"] == 1
     assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 1
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
+
+
+def test_cli_stats_reports_pending(tmp_path, monkeypatch):
+    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.domain.memory import Memory
+
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "embedded note", "--project", "api"])  # CLI embeds inline
+
+    # Inject a vector-less (pending) memory into the same store file.
+    repo = InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    repo.add(Memory.create("not embedded yet", project="api"))  # no vector → pending
+
+    stats = json.loads(runner.invoke(app, ["stats"]).stdout)
+    assert stats["total"] == 2
+    assert stats["pending"] == 1  # only the vector-less one

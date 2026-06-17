@@ -79,7 +79,7 @@ Superseding (evolution) is separate and keeps history; deletion physically remov
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
 ```
-mnemo stats [--project P]            # counts by type, projects, size
+mnemo stats [--project P]            # total + pending (awaiting a vector) + counts by type
 mnemo reindex [--dry-run]            # re-embed all memories; restarts the shared service
 mnemo consolidate [--project P]      # run background consolidation now (Phase 3)
 mnemo doctor                         # health: store/embedder/disk/warnings

@@ -159,11 +159,23 @@ def browse(
 
 @app.command()
 def stats() -> None:
-    """Show how many memories are stored, broken down by type."""
+    """Show how many memories are stored, by type, and how many await a vector.
+
+    `pending` = memories with no embedding yet — lexically searchable but absent
+    from dense/semantic search until the background worker embeds them (a
+    permanently-failed encode stays pending too, and is retried on the next start).
+    """
     container = build_container()
     memories = container.repository.list_all()
     by_type = Counter(memory.type.value for memory in memories)
-    typer.echo(json.dumps({"total": len(memories), "by_type": dict(by_type)}, indent=2))
+    typer.echo(json.dumps(
+        {
+            "total": len(memories),
+            "pending": container.repository.pending_count(),
+            "by_type": dict(by_type),
+        },
+        indent=2,
+    ))
 
 
 @app.command()
