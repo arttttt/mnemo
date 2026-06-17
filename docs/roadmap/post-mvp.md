@@ -33,6 +33,23 @@ needs **LLM synthesis**, and the read path stays LLM‑free in the MVP. A post�
 digest in the background worker (off the hot path) and have `recall` just read it. In the MVP, the agent
 retrieves on demand with `search` (`type=rule` for rules, `type=progress` for where it left off).
 
+### Transient embedder (idle‑unload)
+**Why:** the design principle is "heavy things are transient" and the README promises "~1 GB while active,
+~0 when idle" — but only the **generator** (loaded just for a consolidation window) and the **whole service**
+(idle‑exit when the last connector leaves) actually unload. The **embedder stays resident for the service's
+life**: its ONNX session holds **~0.7 GB** (mmap'd weights paged in by inference + the ORT CPU arena's
+high‑water of activations), and a single 2048‑token encode bumps that to **~1.5 GB and never releases**
+(measured). So while an agent is connected but **quiet** (not writing), the service holds the full embedder
+footprint instead of falling toward idle — the resting plateau does **not** drop on its own. (ORT arena tuning
+— `enable_cpu_mem_arena=False` or per‑run shrinkage — only lowers the long‑input *peak* ~1.5→1.0 GB; it does
+not return the resting plateau, which is the loaded model itself.)
+**What:** make the embedder transient like the generator — **lazily load** the ONNX session on first encode and
+**unload** it (drop the session → the OS reclaims the weights + arena) after an idle grace, reloading on demand.
+Embedding is already off the hot path (the async worker), so the reload cost is tolerable; a grace timer avoids
+load/unload thrash. Natural home: the async embedding scheduler (it already has an idle notion). Closes the
+"connected but quiet" gap so idle RAM falls to **baseline**, not only to ~0 when *every* agent disconnects.
+Optionally pair with `enable_cpu_mem_arena=False` to also cap the active long‑input peak.
+
 ---
 
 ## Retrieval & recall surface — problems found by dogfooding
