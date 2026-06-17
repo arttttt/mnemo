@@ -38,7 +38,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑13 (SHOULD).** Per‑project and global rules (`rule`), retrievable by `search` (`type=rule`).
 
 ### Background processing
-- **FR‑14 (SHOULD).** Periodic consolidation by a small LLM: dedup‑merge, summarization, insight extraction.
+- **FR‑14 (SHOULD).** Periodic consolidation by a **staged pipeline** of small models — a reranker (dedup‑routing), an NLI model (contradiction flags), and an LLM (merge/summarize); see [08-consolidation.md](08-consolidation.md).
 - **FR‑15 (MUST).** Consolidation is NOT on the write hot path and does NOT block agents.
 
 ### Integration
@@ -56,7 +56,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 
 ### Privacy / locality
 - **NFR‑1 (MUST).** Zero outbound network calls at runtime (except a one‑time model weights download at install).
-- **NFR‑2 (MUST).** Embeddings and the LLM run locally only (ONNX / llama.cpp / Ollama). No cloud API keys.
+- **NFR‑2 (MUST).** Embeddings, the cross‑encoders (reranker/NLI) and the LLM run locally only (ONNX / sentence‑transformers / llama.cpp / Ollama). No cloud API keys.
 - **NFR‑3 (SHOULD).** Air‑gapped mode: everything works without internet after the initial install.
 - **NFR‑4 (MUST).** No telemetry.
 
@@ -70,7 +70,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
   service leaves ~0 resident when **no** agent is connected; while an agent works, its connector (tens of MB, in
   the agent's own process tree) lives with it. No hard ceiling — once local LLMs run they dominate the machine;
   mnemo's job is to add the minimum, not to hit a number.
-- **NFR‑9 (MUST).** The heavy generative model is loaded only for the consolidation window, then unloaded.
+- **NFR‑9 (MUST).** The consolidation models are loaded only for the consolidation window, then unloaded (the cross‑encoders are cheap; the LLM is the heavy, transient part).
 - **NFR‑10 (MUST).** Correct on a 16 GB machine, including when the coding agent itself runs alongside.
 
 ### Concurrency

@@ -54,13 +54,13 @@ the heavy parts load **once** in the shared service, with thin connectors — ne
 |---|---|---|
 | **No agent connected** (after grace) | nothing — the service has exited | **~0** |
 | **N agents, no generator** | one shared service `S` + one thin connector `c` per agent | **`S + c·N`** |
-| **Consolidation window** | + the generator, transient | **+ GBs** (then freed) |
+| **Consolidation window** | + reranker + NLI (cheap) + the generator (transient) | **+ ~2–3 GB** (then freed) |
 
-Measured on real hardware (single‑user, real bge‑small embedder): **service `S` ≈ 170 MB** (Python runtime +
-embedded SQLite store + the loaded embedder), **connector `c` ≈ 40 MB** (Python + the MCP SDK, no embedder/store).
-The store is **brute‑force `sqlite-vec` + FTS5** — no ANN/HNSW index. So 10 agents ≈ `170 + 40·10 = 570 MB`, vs
-`170·10 = 1.7 GB` if each agent ran its own server — the shared embedder is the decisive saving; the `c·N` tail
-is cheap.
+Measured on real hardware (single‑user): with the chosen **pplx int8** embedder, **service `S` ≈ 1.2 GB**
+(Python runtime + embedded SQLite store + the loaded embedder ~1.1 GB), **connector `c` ≈ 40 MB** (Python +
+the MCP SDK, no embedder/store). The store is **brute‑force `sqlite-vec` + FTS5** — no ANN/HNSW index. So 10
+agents ≈ `1200 + 40·10 = 1.6 GB`, vs `1200·10 = 12 GB` if each agent ran its own server — the shared
+embedder is the decisive saving; the `c·N` tail is cheap.
 
 The number is a guide, not a ceiling: once a **local model for the coding agent itself** runs, it is the main
 consumer and the machine is in the GBs regardless — mnemo's job is just to stay the minimum, and we schedule
@@ -76,7 +76,10 @@ MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: 
 MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
 MNEMO_EMBED_WORKERS=1                # deferred-embed worker threads (= the RAM bound)
-MNEMO_GENERATOR=qwen3-4b-instruct-2507-q4   # or "off"
+# Consolidation pipeline (Phase 3) — all multilingual; see 08-consolidation.md. Models NOT yet chosen.
+MNEMO_RERANKER=<model>                      # Stage 1 routing/dedup (cross-encoder)
+MNEMO_NLI=<model>                           # Stage 2 contradiction (cross-encoder, bidirectional)
+MNEMO_GENERATOR=<model>                     # Stage 3 generation only; or "off"
 MNEMO_GENERATOR_ENGINE=llama.cpp            # llama.cpp | ollama
-MNEMO_CONSOLIDATE_EVERY=50          # new records before a trigger
+MNEMO_CONSOLIDATE_EVERY=50                  # new records before a trigger
 ```

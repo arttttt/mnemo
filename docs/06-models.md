@@ -1,9 +1,14 @@
 # 06 — Models
 
-Principle: **minimum models**. Only the embedder is mandatory. The generator is a single, small,
-background model. Specialist models (NER, reranker) are optional upgrades, not for v1.
+Principle: **minimum models, each earns its place — and each does only what it is best at.** The embedder
+is mandatory (search + candidate selection). Background **consolidation is a staged pipeline** (see
+[08-consolidation.md](08-consolidation.md)) that adds three more small models, one per stage: a **reranker**
+(routing/dedup), an **NLI** model (contradiction), and the **generator** LLM (the merged text). The
+cross-encoders are tiny and cheap; the generator is transient. Further specialists (NER, extractor) stay
+optional upgrades.
 
-> Licenses don't matter to us; where convenient we prefer Apache‑2.0. All options are local, no cloud.
+> **Everything is multilingual** — no language is guaranteed to be English, so every stage must match the
+> multilingual embedder. Licenses: we prefer Apache‑2.0 where convenient. All options are local, no cloud.
 
 ## 1. Embedder (mandatory)
 
@@ -73,50 +78,59 @@ chosen, the concrete limit is pplx's **32K tokens** (`max_position_embeddings = 
 a single focused memory, so the bound rarely bites. The offline hash embedder has no meaningful window and
 imposes no limit. The policy ("never truncate") is in [04-data-model.md](04-data-model.md).
 
-## 2. Generator (background; on demand; transient)
+## 2. Generator — the generation stage (background; on demand; transient)
 
-A single small instruct LLM. Loaded only for the consolidation window, then unloaded.
+A single small instruct LLM, loaded only for the consolidation **generation** stage (Stage 3), then
+unloaded. It no longer does routing or classification — cross-encoders do that far better and lighter
+(§3). The LLM is reserved for the one task that needs synthesis: writing the merged / summarized record
+from a confirmed same-topic cluster. So the bar is **faithful, concise, multilingual generation**, not
+tool-use.
 
-| Model | Size | Context | Notes |
+Requirements: ≤ ~4B (transient on a 16 GB machine), **multilingual**, local on Apple Silicon (GGUF via
+llama.cpp/Metal), permissive license preferred, and — the decisive measured axis — **faithfulness** (no
+fabricated facts when merging). Selection is on a local benchmark (see
+[research/generator-benchmark.md](research/generator-benchmark.md)) — **no model is committed yet.** The
+candidates are multilingual ≤4B instruct models (Apache preferred); smaller models that produced degenerate
+or hallucinated output were eliminated. On a RAM-tight machine: the smallest passing candidate, or
+`MNEMO_GENERATOR=off` (the pipeline still dedups via the reranker — see
+[08-consolidation.md](08-consolidation.md#degradation--economy-mode)).
+
+### Structured-output reliability on a small model
+JSON validity is a *solved* problem at any size with **grammar/guided decoding** (llama.cpp GBNF or
+`guided_json`) + a **flat** schema (no nested `$defs`) + `temperature=0`. So size buys not "valid JSON" but
+the *right values*: faithful merges, no fabricated facts. Keep the prompt focused on the one task and
+describe the schema in it (the grammar is not injected into the prompt).
+
+## 3. Consolidation specialists — core, not optional
+
+These are **not** "optional upgrades": the pipeline's classification stages are better *and* lighter as
+small cross-encoders than as an LLM (a 107M reranker beat every 3–4B LLM at routing — recall of true
+duplicates ~0.91 vs ~0.0, and it cannot hallucinate ids). Both are multilingual and run on CPU via
+`sentence-transformers.CrossEncoder`. Evidence: [research/generator-benchmark.md](research/generator-benchmark.md).
+
+| Stage | Model class | Why | Status |
 |---|---|---|---|
-| **Qwen3‑4B‑Instruct‑2507** ⭐ | 4B | 262K | most battle‑tested for structured/JSON + tool‑use at 4B; Apache‑2.0 |
-| **Qwen3.5‑4B‑Instruct** | 4B | 262K | newer family (~Mar 2026); alternative |
-| **Gemma 4 E4B** | ~4.5B eff. | 128K | works; slightly weaker at pure tool‑calling than Qwen at this size; Gemma license (ToS) |
-| **Qwen3‑1.7B** | 1.7B | — | if 16 GB is under pressure: cheaper, for simple consolidation tasks |
+| routing / dedup | reranker (cross-encoder) | scores seed-vs-candidate → threshold; can't hallucinate ids | small multilingual — **not yet chosen** (benchmarking) |
+| contradiction | NLI (cross-encoder) | entailment / contradiction; run BOTH directions (NLI is asymmetric) | small multilingual — **not yet chosen** |
 
-**v1 default:** `Qwen3-4B-Instruct-2507` (GGUF Q4) via llama.cpp on‑demand.
-On a RAM‑tight machine — `Qwen3-1.7B` or disable the generator entirely (cosine dedup).
+### Still optional (must earn their place)
+| Role | Model | When to add |
+|---|---|---|
+| Entity extraction / dedup | GLiNER2 (<500M, ONNX) | if you need precise entity-merge |
+| Structured extraction | NuExtract3 (4B, Apache-2.0) | if you actively parse code/docs into JSON |
+| Memory specialist | driaforall/mem-agent (Qwen3-4B-Thinking) | a reasoning layer over markdown memory; expensive (agentic loop) |
 
-**Why not Gemma 4 by default, although we discussed it:** Gemma 4 works, but for the role "reliable
-JSON/tool‑use at 4B", Qwen3‑4B‑Instruct‑2507 is better proven and has no Gemma ToS. We keep
-Gemma 4 E4B as a supported alternative.
+## Inference engines
 
-### Structured‑output reliability on a small model
-At 4B, function‑calling/JSON success depends heavily on the "contract": the same model ranges ~7%…100%.
-Therefore **mandatory**: a fixed format + grammar/guided decoding (llama.cpp GBNF grammar or
-vLLM `guided_json`) + `temperature=0`. A flat JSON schema is more reliable than a nested one
-(`$defs` sharply raise the error rate).
-
-## 3. Optional specialist models (upgrades, not v1)
-
-**Opt‑in by default.** Using several small specialist models (NER, reranker, extractor) is fine — but each
-must **earn its place** with a measured quality/perf gain, or be enabled explicitly by config. Don't add
-models speculatively: the default build is just the embedder + (optional) one generator.
-
-| Role | Model | Where | When to add |
-|---|---|---|---|
-| Entity extraction / dedup | **GLiNER2** (<500M, ONNX) | CPU | if you need precise entity‑merge without a GPU |
-| Candidate reranking | **Qwen3‑Reranker‑0.6B** / bge‑reranker‑v2‑m3 | CPU | if search quality hits a ceiling |
-| Structured extraction | **NuExtract3** (4B, Apache‑2.0) | on demand | if you actively parse code/docs into JSON |
-| Memory specialist | **driaforall/mem-agent** (Qwen3‑4B‑Thinking) | on demand | as a reasoning layer over markdown memory; expensive (agentic loop) |
-
-## Inference engine for the generator
-
-- **Default: llama.cpp** (via `llama-cpp-python`) — precise RAM control, on‑demand load/unload, GGUF quants, GBNF grammar. Ideal for "load for consolidation → unload".
-- **Ollama with `keep_alive=0`** — easier to install; unloads the model after idle. OK as an alternative.
-- **vLLM** — NOT needed here: its advantage (continuous batching for many concurrent requests) matters when the LLM is on the hot path; ours is a single batch background job.
+- **Generator (LLM):** **llama.cpp** (`llama-cpp-python`, Metal, GGUF, GBNF grammar) — precise RAM control,
+  load for the generation stage → unload. Ollama (`keep_alive=0`) is an alternative; vLLM is not needed
+  (single batch background job). For a truly clean RAM reset, run the batch in a killable subprocess.
+- **Reranker + NLI (cross-encoders):** `sentence-transformers.CrossEncoder` on CPU — small, fast, and CPU
+  gives an accurate RAM number (Metal undercounts mmap'd weights).
 
 ## Layout under 16 GB
-- On CPU: the embedder (always) + optional GLiNER/reranker.
-- The generator: loaded into RAM (or VRAM, if available) only for the consolidation window; Q4‑4B ≈ 3–4 GB, freed immediately.
-- If a local model for the coding agent itself runs alongside — it dominates; then move consolidation to machine‑idle and/or use the 1.7B.
+- Resident: the embedder (always, ~1.1 GB) + the thin service/connector.
+- Consolidation window (transient): the **reranker** (~0.1–0.7 GB) and **NLI** (~0.3 GB) run cheaply over
+  the candidates; the **generator** (~1.5–3 GB at ≤4B Q4) loads only for the few confirmed clusters, then
+  frees immediately.
+- If a local coding-agent model runs alongside it dominates RAM — schedule consolidation for machine-idle.
