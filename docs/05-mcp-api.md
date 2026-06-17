@@ -39,21 +39,33 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
 
-### `search(query, scope?, project?, type?, tags?, related_files?, recency_days?, limit?) -> list[MemoryHit]`
+### `search(query, scope?, project?, type?, tags?, related_files?, created_after?, limit?) -> list[MemoryHit]`
 The single retrieval tool. `scope` decides project vs. global vs. **cross‑project**; the optional filters narrow it.
 ```python
-search("how do we handle auth errors")                  # current project + global (default)
-search("connection pool limits", scope="all")           # cross‑project
-search("redis", scope="all", type="decision", limit=5)  # cross‑project, typed
-search("article-x", tags=["article-x"])                 # ALL given tags must be present
-search("jwt", related_files=["src/auth/jwt.ts"])        # references ANY of these files
-search("recent changes", recency_days=7)                # only memories from the last 7 days
+search("how do we handle auth errors", project="checkout-api")  # project + global (default scope)
+search("connection pool limits", scope="all")                   # cross‑project
+search("redis", scope="all", type="decision", limit=5)          # cross‑project, typed
+search("article-x", scope="all", tags=["article-x"])            # ALL given tags must be present
+search("jwt", scope="all", related_files=["src/auth/jwt.ts"])   # references ANY of these files
+search("changes", scope="all", created_after="2026-06-01")      # created at/after an ISO‑8601 instant
 ```
-- `scope`: `project` (default = current project + global) | `global` | `all` (every project). (`session` is post‑MVP.)
+- `scope`: `project` (default = the named project + global; **requires** `project`) | `global` | `all` (every project). Passing `project` with `global`/`all` is rejected. (`session` is post‑MVP.)
 - Filters (all optional): `type` (one type), `tags` (memory must carry **all** of them), `related_files`
-  (references **any** of them), `recency_days` (created within the last N days).
-- Project scope is a **hard filter** (current project + `global`); other projects are excluded from the default scope. Cross‑project search is the explicit `scope="all"` (see [04-data-model.md](04-data-model.md)).
+  (references **any** of them), `created_after` (created at/after an ISO‑8601 date or datetime).
+- Project scope is a **hard filter** (the named project + `global`); other projects are excluded from the default scope. Cross‑project search is the explicit `scope="all"` (see [04-data-model.md](04-data-model.md)).
 - `MemoryHit = {id, score, type, scope, project, content, related_files, created_at}`.
+
+### `browse(scope?, project?, type?, tags?, related_files?, created_after?, limit?) -> list[BrowseHit]`
+The query‑less companion to `search`: retrieve a **category**, newest first, with no relevance ranking. Use it
+when a semantic query would only bias the order ("all `type=decision` in this project", "everything tagged
+`feedback`"). Same filters and scoping rules as `search` (a `project` is required for `scope="project"`).
+```python
+browse(project="checkout-api")                   # newest memories in the project + global
+browse(project="checkout-api", type="decision")  # all decisions, newest first
+browse(scope="all", tags=["feedback"])           # a category across every project
+```
+- No `query`, no ranking: hits are ordered by recency, so there is **no `score`**.
+- `BrowseHit = {id, type, scope, project, content, related_files, created_at}` (a `MemoryHit` without `score`).
 
 ### Deletion — `delete` / `clear` / `purge`
 Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.
@@ -76,7 +88,7 @@ mnemo export / import                # portability (Phase 4)
 (`delete` / `clear` / `purge` are also available as CLI commands.)
 
 ## Design notes
-- One write verb, one read verb, plus deletion — type/scope/filters are parameters. (`recall` is post‑MVP.)
+- One write verb, two read verbs (`search` by meaning, `browse` by filter), plus deletion — type/scope/filters are parameters. (`recall` is post‑MVP.)
 - `search` defaults to **hybrid** (dense + lexical) so exact matches (function names, error codes) aren't missed.
 - `remember` is fast and idempotent by `hash` / `topic_key`.
 - Cross‑project search is a `scope="all"` flag, not a separate tool.

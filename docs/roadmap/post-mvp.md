@@ -59,12 +59,13 @@ another semantic search and hope. The graph lives in the data, not the interface
 edges out/in, single hop — not multi‑hop inference) MCP tools that read the existing `links` table. Pure
 interface, no new storage; stays within the deterministic typed‑edge graph (not a knowledge graph).
 
-### Query‑less browse / list mode
+### Query‑less browse / list mode — **shipped**
 **Why:** `search` requires a `query`, so "all `type=decision` in this project, newest first" can't be expressed
 without inventing a query that itself biases ranking. Retrieving a *category* (e.g. `tags=["feedback"]`) shouldn't
 need a semantic guess.
-**What:** allow `search` with an empty/optional `query` — a pure filter (type / tags / scope / recency) ordered by
-recency, with no relevance ranking. A browse path distinct from semantic search.
+**What:** a separate `browse` tool — a pure filter (type / tags / scope / `created_after`) ordered by recency,
+no relevance ranking and no `score`, distinct from semantic `search`. Built on a `retrieve(Retrieval)` store
+contract where a request with no text/vector is the browse path (no embedding). See [05-mcp-api.md](../05-mcp-api.md).
 
 ### Ranking quality on the hybrid path
 **Why:** a generic "status/next‑steps" memory floats to the top of unrelated queries (observed again on the
