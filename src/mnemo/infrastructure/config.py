@@ -25,6 +25,11 @@ class Config:
     embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
     embed_max_retries: int = 3                 # retries before a memory is left lexical-only
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
+    # Recall / consolidation models — off by default; no model is finalized.
+    reranker: str = "off"                       # MNEMO_RERANKER: a fastembed cross-encoder id, or "off"
+    generator: str = "off"                      # MNEMO_GENERATOR: a local GGUF path, or "off"
+    rerank_top_k: int = 20                       # how many candidates the reranker keeps
+    generator_max_tokens: int = 512             # synthesis output token cap
 
     @staticmethod
     def from_env() -> "Config":
@@ -55,4 +60,8 @@ class Config:
             embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
             embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
             embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),
+            reranker=os.environ.get("MNEMO_RERANKER", "off"),
+            generator=os.environ.get("MNEMO_GENERATOR", "off"),
+            rerank_top_k=int(os.environ.get("MNEMO_RERANK_TOP_K", "20")),
+            generator_max_tokens=int(os.environ.get("MNEMO_GENERATOR_MAX_TOKENS", "512")),
         )
