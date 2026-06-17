@@ -67,6 +67,18 @@ need a semantic guess.
 no relevance ranking and no `score`, distinct from semantic `search`. Built on a `retrieve(Retrieval)` store
 contract where a request with no text/vector is the browse path (no embedding). See [05-mcp-api.md](../05-mcp-api.md).
 
+### Lexical leg: stop‑word filtering / query sanitizer
+**Why:** `_match_query` (the SQLite store) splits a query into every `\w+` token and OR‑joins them
+(`"a" OR "b" OR …`), and FTS5's default `unicode61` tokenizer does not strip stop‑words. So "how do we handle
+auth errors" pulls in any row containing a filler word ("do", "we") via the lexical leg, which then earns an RRF
+contribution — noise that, at a small `limit`, can displace the right answer (a specific instance of the
+ranking‑quality wart below).
+**What:** a reusable **query sanitizer** rather than inlined rules at the call site — a `StopWordsPort` provider
+(built‑in per‑language sets, later file/config‑extensible) plus a `QuerySanitizer` (lowercase, drop stop‑words and
+too‑short tokens), injected via the container. `_match_query` would call `sanitizer.tokens(text)` and keep only
+the FTS quoting/joining; the same sanitizer is reusable anywhere query text is processed. Consider AND / phrase
+matching for multi‑token queries as a separate lever.
+
 ### Ranking quality on the hybrid path
 **Why:** a generic "status/next‑steps" memory floats to the top of unrelated queries (observed again on the
 SQLite + bge‑small path: a storage‑engine query returned the status note above the ADR). At a small `limit` this
