@@ -50,7 +50,7 @@ def _job() -> Job:
 
 
 def test_runs_each_stage_in_order_and_returns_the_output_slot():
-    pipe = Pipeline([_Produce((1, 2, 3)), _Sum()], produces=TOTAL)
+    pipe = Pipeline([_Produce((1, 2, 3)), _Sum()], intake=JOB, produces=TOTAL)
     assert pipe.run(_job()) == 6
 
 
@@ -66,24 +66,24 @@ def test_the_job_is_readable_without_being_declared_a_requirement():
             seen["project"] = ctx.get(JOB).project
             return ctx.set(NUMBERS, ())
 
-    Pipeline([_ReadJob(), _Sum()], produces=TOTAL).run(_job())
+    Pipeline([_ReadJob(), _Sum()], intake=JOB, produces=TOTAL).run(_job())
     assert seen["project"] == "api"
 
 
 def test_a_stage_whose_input_no_earlier_stage_produces_is_rejected_on_build():
     with pytest.raises(PipelineError) as exc:
-        Pipeline([_Sum(), _Produce((1,))], produces=TOTAL)  # Sum before Produce
+        Pipeline([_Sum(), _Produce((1,))], intake=JOB, produces=TOTAL)  # Sum before Produce
     assert "numbers" in str(exc.value)
 
 
 def test_a_pipeline_that_never_produces_its_output_is_rejected_on_build():
     with pytest.raises(PipelineError) as exc:
-        Pipeline([_Produce((1,))], produces=TOTAL)  # nobody fills TOTAL
+        Pipeline([_Produce((1,))], intake=JOB, produces=TOTAL)  # nobody fills TOTAL
     assert "total" in str(exc.value)
 
 
 def test_a_stage_that_does_not_fill_what_it_promised_fails_at_run():
-    pipe = Pipeline([_Liar()], produces=TOTAL)
+    pipe = Pipeline([_Liar()], intake=JOB, produces=TOTAL)
     with pytest.raises(PipelineError) as exc:
         pipe.run(_job())
     assert "total" in str(exc.value)

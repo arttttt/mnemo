@@ -124,3 +124,19 @@ def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     stats = json.loads(runner.invoke(app, ["stats"]).stdout)
     assert stats["total"] == 2
     assert stats["pending"] == 1  # only the vector-less one
+
+
+def test_cli_recall_groups_a_projects_memory_by_type(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "use jwt", "--type", "decision", "--project", "api"])
+    runner.invoke(app, ["store", "fixed a race", "--type", "debug", "--project", "api"])
+    runner.invoke(app, ["store", "other thing", "--type", "decision", "--project", "other"])
+
+    result = runner.invoke(app, ["recall", "api"])
+    assert result.exit_code == 0, result.output
+    bundle = json.loads(result.stdout)
+    assert bundle["project"] == "api"
+    assert bundle["total"] == 2  # the 'other' project is excluded
+    by_type = {section["type"]: section for section in bundle["sections"]}
+    assert set(by_type) == {"decision", "debug"}
+    assert len(by_type["decision"]["memories"]) == 1
