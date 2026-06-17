@@ -70,8 +70,7 @@ Logical schema of one memory. Stored as a point in the vector store: `vector` + 
     "supersedes": null,                // id of the previous version (record evolution)
     "topic_key": "auth/jwt-model",      // stable key for upserting an "evolving" record
     "created_at": "2026-06-13T18:42:00Z",
-    "updated_at": "2026-06-13T18:42:00Z",
-    "last_seen_at": "2026-06-13T18:42:00Z"
+    "updated_at": "2026-06-13T18:42:00Z"
   }
 }
 ```
@@ -105,8 +104,8 @@ background/ingestion capability — **post‑MVP** (see [10-roadmap.md](10-roadm
 
 ## Dedup & evolution on write (no LLM)
 
-1. **Exact duplicate** → the `hash` of normalized content matches an existing record: bump `last_seen_at` /
-   `duplicate_count`, don't spawn a new record. Identical text carries no new information.
+1. **Exact duplicate** → the `hash` of normalized content matches an existing record: don't spawn a new record,
+   return its id with `status: "duplicate"`. Identical text carries no new information.
 2. **`topic_key` upsert (explicit evolution)** → if `topic_key` matches an existing record, the new one
    supersedes it (old → `status: superseded`, kept). This is the writer's explicit signal — **not** dedup.
 3. **Near‑similar is NOT acted on here.** We do **not** suppress near‑duplicates on write — a small but
