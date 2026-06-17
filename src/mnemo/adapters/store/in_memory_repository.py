@@ -102,13 +102,6 @@ class InMemoryMemoryRepository:
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[: request.limit]
 
-    def register_duplicate(self, memory_id: str) -> None:
-        for memory, _ in self._items:
-            if memory.id == memory_id:
-                memory.register_duplicate()
-                break
-        self._persist()
-
     def mark_superseded(self, memory_id: str) -> None:
         for memory, _ in self._items:
             if memory.id == memory_id:

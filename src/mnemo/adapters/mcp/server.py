@@ -70,7 +70,8 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """Save a memory to the local store so it can be recalled later.
 
         No LLM runs on write. Reusing a `topic_key` supersedes the prior memory of
-        that key. Returns {id, dedup, superseded}.
+        that key. Returns {id, status}, where status is "created", "duplicate"
+        (identical content already stored), or "superseded" (a topic_key upsert).
         """
         result = container.remember.execute(
             content=content,

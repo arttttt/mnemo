@@ -8,8 +8,8 @@ mnemo is, at its core, a **mutable, evolving typed store** that also needs vecto
 append-only vector warehouse. Its hot path and its evolution model are dominated by relational/transactional
 operations, with similarity search as *one* feature among them:
 
-- **In-place updates on every write.** Exact-duplicate writes bump a counter (`duplicate_count`,
-  `last_seen_at`); a `topic_key` upsert flips the prior record to `status: superseded`. These are routine,
+- **In-place updates on every write.** A `topic_key` upsert flips the prior record to `status: superseded`;
+  deferred embedding writes the vector back onto the pending row (`set_vector`). These are routine,
   not occasional.
 - **Atomic two-record evolution.** "Mark the old record superseded **and** insert the successor" must be one
   atomic unit, or a crash leaves a torn state (old superseded, successor missing).

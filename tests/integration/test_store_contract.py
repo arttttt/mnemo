@@ -237,14 +237,6 @@ def test_find_active_by_topic_key(open_repo, embedder):
     assert repo.find_active_by_topic_key("absent/key", "api") is None
 
 
-def test_register_duplicate_increments_count(open_repo, embedder):
-    repo = open_repo()
-    memory = _store(repo, embedder, "seen twice", project="api")
-
-    repo.register_duplicate(memory.id)
-    assert repo.find_by_hash(memory.hash).duplicate_count == 1
-
-
 def test_mark_superseded_sets_status(open_repo, embedder):
     repo = open_repo()
     memory = _store(repo, embedder, "old version", project="api")

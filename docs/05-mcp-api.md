@@ -19,7 +19,7 @@ memories (by `session_id`/date, or by meaning via the embedder) and *synthesize*
 MVP the agent instead **retrieves on demand** with `search`: `search("...", type="rule")` for rules,
 `search("...", type="progress")` for where it left off.
 
-### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, dedup}`
+### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, status}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)
 ```python
 remember("Using JWT with refresh rotation; httpOnly cookies; ...",
@@ -35,7 +35,7 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
   lexical index → enqueue embed** (the vector is computed off the hot path — see
   [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation)). Near‑similar memories are
   **not** suppressed here (see [04-data-model.md](04-data-model.md)).
-- Returns `{id, dedup}`: `dedup` is `null` (new), or `"exact"` (identical existing record).
+- Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already stored — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the edge lives in `links`).
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
 

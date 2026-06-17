@@ -26,8 +26,6 @@ class Memory:
     hash: str
     created_at: str
     updated_at: str
-    last_seen_at: str
-    duplicate_count: int
 
     @classmethod
     def create(
@@ -63,14 +61,7 @@ class Memory:
             hash=content_hash(content),
             created_at=stamp,
             updated_at=stamp,
-            last_seen_at=stamp,
-            duplicate_count=0,
         )
-
-    def register_duplicate(self) -> None:
-        """Record that an identical memory was seen again."""
-        self.duplicate_count += 1
-        self.last_seen_at = now()
 
     def mark_superseded(self) -> None:
         """Mark this record as replaced by a newer one (kept for history)."""
