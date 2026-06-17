@@ -130,6 +130,33 @@ def test_search_recency_excludes_old(open_repo, embedder):
     assert _hits(repo, embedder, "fresh note", future_cutoff, limit=5) == []
 
 
+def test_browse_lists_by_recency_with_no_score(open_repo, embedder):
+    """A retrieval with no text and no vector is a filter-only browse: newest
+    first, no relevance ranking (score 0.0), no embedding needed."""
+    repo = open_repo()
+    one = _store(repo, embedder, "first note", project="api")
+    two = _store(repo, embedder, "second note", project="api")
+    three = _store(repo, embedder, "third note", project="api")
+
+    hits = repo.retrieve(Retrieval(criteria=_ALL, limit=10))
+    created = [hit.memory.created_at for hit in hits]
+    assert created == sorted(created, reverse=True)  # newest first
+    assert {hit.memory.id for hit in hits} == {one.id, two.id, three.id}
+    assert all(hit.score == 0.0 for hit in hits)  # order conveys recency, not a score
+
+
+def test_browse_respects_scope_and_includes_pending(open_repo, embedder):
+    repo = open_repo()
+    mine = _store(repo, embedder, "my project note", project="api")
+    _store(repo, embedder, "other project note", project="other")
+    pending = Memory.create("pending browse note", project="api")
+    repo.add(pending)  # no vector — browse still surfaces it (no vector needed)
+
+    criteria = SearchCriteria(scope="project", project="api")
+    hits = repo.retrieve(Retrieval(criteria=criteria, limit=10))
+    assert {hit.memory.id for hit in hits} == {mine.id, pending.id}
+
+
 def test_pending_vector_lifecycle(open_repo, embedder):
     """Deferred embedding: a memory can be stored without a vector (pending), then
     have it attached later — it only enters dense search once set_vector lands."""

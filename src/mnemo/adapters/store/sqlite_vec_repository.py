@@ -191,6 +191,8 @@ class SqliteVecMemoryRepository:
         limit = request.limit
         if not self._ready or limit <= 0:
             return []
+        if request.text is None and request.vector is None:
+            return self._browse(request.criteria, limit)
         where, params = self._where(request.criteria)
         candidate = limit * _CANDIDATE_MULTIPLIER
         reader = self._conns.reader()
@@ -226,6 +228,17 @@ class SqliteVecMemoryRepository:
             ScoredMemory(memory=self._to_memory(rows_by_id[memory_id]), score=score)
             for memory_id, score in ranked
         ]
+
+    def _browse(self, criteria: SearchCriteria, limit: int) -> list[ScoredMemory]:
+        """Filter-only retrieval, newest first — no query, no ranking. Pending
+        (un-embedded) memories are included; the score is 0.0 (order conveys recency)."""
+        where, params = self._where(criteria)
+        rows = self._conns.reader().execute(
+            f"SELECT {_PAYLOAD} FROM memories m WHERE {where}"
+            f" ORDER BY m.created_at DESC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
     def register_duplicate(self, memory_id: str) -> None:
         with self._conns.writer() as conn:

@@ -80,6 +80,15 @@ class InMemoryMemoryRepository:
         return None
 
     def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
+        # No query text and no vector → filter-only browse, newest first. Pending
+        # (un-embedded) memories are included (no vector needed to rank them).
+        if request.text is None and request.vector is None:
+            matched = [
+                memory for memory, _ in self._items if request.criteria.matches(memory)
+            ]
+            matched.sort(key=lambda memory: memory.created_at, reverse=True)
+            return [ScoredMemory(memory=memory, score=0.0) for memory in matched[: request.limit]]
+
         # Offline/test backend: it approximates hybrid with cosine over the (already
         # lexical) hash-embedding, so the raw `request.text` is not needed here. The
         # real dense+lexical fusion lives in the SQLite backend.
