@@ -1,8 +1,8 @@
 """The output of a recall run — a project's memory grouped by type for a digest.
 
-This is the model-free recall: a structured bundle, no LLM synthesis yet. A later
-generation stage will compress it into prose; until then the grouping and order carry
-the structure.
+Always carries the structured grouping; ``summary`` is the optional LLM-synthesized
+prose, filled only when a generator stage ran (otherwise the grouping and order carry
+the structure on their own).
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ class RecallSection:
 class RecallBundle:
     project: str
     sections: tuple[RecallSection, ...]
+    summary: str | None = None
 
     @property
     def total(self) -> int:
