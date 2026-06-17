@@ -45,11 +45,13 @@ fork with native DiskANN ANN) is the upgrade path if we ever outgrow brute‑for
   pinned revision; its custom arch isn't a stock `fastembed` model). dim 1024.
 - One‑time weights download at install; afterwards fully offline.
 
-## Generator inference: **llama.cpp** via `llama-cpp-python`
+## Consolidation‑model inference
 
-- On‑demand load/unload, GGUF quants, **GBNF grammar** for guaranteed‑valid JSON.
-- **Alternative:** Ollama with `keep_alive=0` (simpler install, auto‑unload).
-- **Rejected for the core: vLLM** — built for sustained concurrent serving; our generator is a single background
+Consolidation is a staged pipeline (see [08-consolidation.md](08-consolidation.md)); each model class has its runtime:
+- **Reranker + NLI (cross‑encoders):** `sentence-transformers.CrossEncoder` on CPU — small, fast, accurate RAM.
+- **Generator (LLM):** **llama.cpp** via `llama-cpp-python` — on‑demand load/unload, GGUF quants, **GBNF grammar**
+  for guaranteed‑valid JSON. **Alternative:** Ollama with `keep_alive=0` (simpler install, auto‑unload).
+  **Rejected for the core: vLLM** — built for sustained concurrent serving; our LLM stage is a single background
   batch job, and a resident vLLM violates the on‑demand/RAM goals.
 
 ## On‑demand lifecycle: **connector‑spawned service** + grace idle‑exit
