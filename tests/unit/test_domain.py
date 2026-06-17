@@ -27,12 +27,6 @@ def test_global_scope_forces_global_project():
     assert memory.project == GLOBAL_PROJECT
 
 
-def test_register_duplicate_increments_count():
-    memory = Memory.create("x")
-    memory.register_duplicate()
-    assert memory.duplicate_count == 1
-
-
 def test_mark_superseded():
     memory = Memory.create("x")
     memory.mark_superseded()

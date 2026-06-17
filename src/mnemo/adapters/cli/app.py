@@ -50,7 +50,7 @@ def store(
         None, "--file", help="File path this memory concerns (repeatable)."
     ),
 ) -> None:
-    """Store a memory. No LLM runs on write; prints {id, dedup, superseded}."""
+    """Store a memory. No LLM runs on write; prints {id, status}."""
     container = build_container()
     try:
         result = container.remember.execute(

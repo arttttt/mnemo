@@ -26,7 +26,7 @@ def test_remember_then_search_finds_it():
     stored = remember.execute(
         content="Use JWT with refresh token rotation", type="decision", project="api"
     )
-    assert stored.dedup is None
+    assert stored.status == "created"
     hits = search.execute(query="jwt refresh rotation", project="api")
     assert any(hit.id == stored.id for hit in hits)
 
@@ -72,7 +72,7 @@ def test_exact_duplicate_is_not_stored_twice():
     repo, remember, _, _ = _wiring()
     first = remember.execute(content="same content", project="api")
     second = remember.execute(content="  Same   Content ", project="api")
-    assert second.dedup == "exact"
+    assert second.status == "duplicate"
     assert second.id == first.id
     assert len(repo.list_all()) == 1
 
@@ -85,7 +85,7 @@ def test_topic_key_upsert_supersedes_prior():
     second = remember.execute(
         content="Auth model v2", type="decision", project="api", topic_key="auth/model"
     )
-    assert second.superseded == first.id
+    assert second.status == "superseded"  # which record it replaced lives in the links edge
 
     status_by_id = {m.id: m.status for m in repo.list_all()}
     assert status_by_id[first.id] == "superseded"

@@ -63,8 +63,7 @@ class RememberMemory:
         # Exact duplicate: identical normalized content already stored — don't spawn a row.
         exact = self._repository.find_by_hash(memory.hash)
         if exact is not None:
-            self._repository.register_duplicate(exact.id)
-            return RememberResult(id=exact.id, dedup="exact")
+            return RememberResult(id=exact.id, status="duplicate")
 
         # Explicit evolution: reusing a topic_key supersedes the prior record (kept as history).
         superseded_id: str | None = None
@@ -99,4 +98,5 @@ class RememberMemory:
                 )
             )
 
-        return RememberResult(id=memory.id, superseded=superseded_id)
+        status = "superseded" if superseded_id is not None else "created"
+        return RememberResult(id=memory.id, status=status)

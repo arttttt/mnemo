@@ -7,5 +7,6 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class RememberResult:
     id: str
-    dedup: str | None = None        # None | "exact"
-    superseded: str | None = None   # id of the record this one superseded (topic_key upsert)
+    # "created" (new row) | "duplicate" (exact content already stored, nothing written)
+    # | "superseded" (a topic_key upsert replaced a prior memory; the edge lives in `links`)
+    status: str

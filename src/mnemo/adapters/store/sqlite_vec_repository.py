@@ -37,7 +37,7 @@ from mnemo.domain.memory import Memory
 _PAYLOAD = (
     "m.id, m.content, m.type, m.scope, m.project, m.tags, m.related_files,"
     " m.topic_key, m.session_id, m.status, m.supersedes, m.hash, m.created_at,"
-    " m.updated_at, m.last_seen_at, m.duplicate_count"
+    " m.updated_at"
 )
 # Over-fetch each retrieval leg before fusion so an item strong in one leg but
 # outside the other's top-`limit` still survives. Brute-force makes this cheap.
@@ -46,10 +46,9 @@ _CANDIDATE_MULTIPLIER = 5
 _INSERT_MEMORY = (
     "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
     " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
-    " updated_at, last_seen_at, duplicate_count) VALUES (:id, :content, :embedding,"
+    " updated_at) VALUES (:id, :content, :embedding,"
     " :type, :scope, :project, :tags, :related_files, :topic_key, :session_id,"
-    " :status, :supersedes, :hash, :created_at, :updated_at, :last_seen_at,"
-    " :duplicate_count)"
+    " :status, :supersedes, :hash, :created_at, :updated_at)"
 )
 
 
@@ -240,18 +239,6 @@ class SqliteVecMemoryRepository:
         ).fetchall()
         return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
-    def register_duplicate(self, memory_id: str) -> None:
-        with self._conns.writer() as conn:
-            memory = self._read_one(conn, "id = ?", (memory_id,))
-            if memory is None:
-                return
-            memory.register_duplicate()
-            conn.execute(
-                "UPDATE memories SET duplicate_count = ?, last_seen_at = ? WHERE id = ?",
-                (memory.duplicate_count, memory.last_seen_at, memory_id),
-            )
-            conn.commit()
-
     def mark_superseded(self, memory_id: str) -> None:
         with self._conns.writer() as conn:
             memory = self._read_one(conn, "id = ?", (memory_id,))
@@ -390,9 +377,7 @@ class SqliteVecMemoryRepository:
                 supersedes      TEXT,
                 hash            TEXT NOT NULL,
                 created_at      TEXT NOT NULL,
-                updated_at      TEXT NOT NULL,
-                last_seen_at    TEXT NOT NULL,
-                duplicate_count INTEGER NOT NULL
+                updated_at      TEXT NOT NULL
             );
             CREATE INDEX memories_hash ON memories(hash);
             CREATE INDEX memories_topic ON memories(topic_key, project);
@@ -443,8 +428,6 @@ class SqliteVecMemoryRepository:
                 "hash": row["hash"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
-                "last_seen_at": row["last_seen_at"],
-                "duplicate_count": row["duplicate_count"],
             }
         )
 

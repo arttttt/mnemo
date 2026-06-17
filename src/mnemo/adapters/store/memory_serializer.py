@@ -22,8 +22,6 @@ def to_dict(memory: Memory) -> dict:
         "hash": memory.hash,
         "created_at": memory.created_at,
         "updated_at": memory.updated_at,
-        "last_seen_at": memory.last_seen_at,
-        "duplicate_count": memory.duplicate_count,
     }
 
 
@@ -43,6 +41,4 @@ def from_dict(data: dict) -> Memory:
         hash=data["hash"],
         created_at=data["created_at"],
         updated_at=data["updated_at"],
-        last_seen_at=data["last_seen_at"],
-        duplicate_count=data["duplicate_count"],
     )
