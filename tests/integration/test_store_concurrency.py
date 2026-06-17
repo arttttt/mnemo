@@ -8,6 +8,7 @@ import concurrent.futures as cf
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory import Memory
 
@@ -29,7 +30,10 @@ def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
 
     def read(_):
         # Runs alongside the writers; must not error (and never sees a torn DB).
-        return repo.search("redis cache", embedder.encode("redis cache"), _ALL, limit=5)
+        return repo.retrieve(
+            Retrieval(criteria=_ALL, limit=5, text="redis cache",
+                      vector=embedder.encode("redis cache"))
+        )
 
     with cf.ThreadPoolExecutor(max_workers=writers * 2) as pool:
         tasks = [pool.submit(write, w) for w in range(writers)]

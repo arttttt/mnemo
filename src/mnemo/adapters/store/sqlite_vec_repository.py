@@ -25,6 +25,7 @@ from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
@@ -186,12 +187,13 @@ class SqliteVecMemoryRepository:
             reader, "topic_key = ? AND status = 'active' AND project = ?", (topic_key, project)
         )
 
-    def search(
-        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
-    ) -> list[ScoredMemory]:
+    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
+        limit = request.limit
         if not self._ready or limit <= 0:
             return []
-        where, params = self._where(criteria)
+        if request.text is None and request.vector is None:
+            return self._browse(request.criteria, limit)
+        where, params = self._where(request.criteria)
         candidate = limit * _CANDIDATE_MULTIPLIER
         reader = self._conns.reader()
 
@@ -201,11 +203,11 @@ class SqliteVecMemoryRepository:
             f"SELECT {_PAYLOAD}, vec_distance_cosine(m.embedding, ?) AS _distance"
             f" FROM memories m WHERE {where} AND m.embedding IS NOT NULL"
             f" ORDER BY _distance ASC LIMIT ?",
-            (serialize_float32(list(vector)), *params, candidate),
+            (serialize_float32(list(request.vector)), *params, candidate),
         ).fetchall()
 
         lexical: list[sqlite3.Row] = []
-        match = _match_query(query)
+        match = _match_query(request.text)
         if match is not None:
             lexical = reader.execute(
                 f"SELECT {_PAYLOAD}, bm25(memories_fts) AS _rank FROM memories_fts"
@@ -226,6 +228,17 @@ class SqliteVecMemoryRepository:
             ScoredMemory(memory=self._to_memory(rows_by_id[memory_id]), score=score)
             for memory_id, score in ranked
         ]
+
+    def _browse(self, criteria: SearchCriteria, limit: int) -> list[ScoredMemory]:
+        """Filter-only retrieval, newest first — no query, no ranking. Pending
+        (un-embedded) memories are included; the score is 0.0 (order conveys recency)."""
+        where, params = self._where(criteria)
+        rows = self._conns.reader().execute(
+            f"SELECT {_PAYLOAD} FROM memories m WHERE {where}"
+            f" ORDER BY m.created_at DESC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
     def register_duplicate(self, memory_id: str) -> None:
         with self._conns.writer() as conn:
@@ -436,13 +449,15 @@ class SqliteVecMemoryRepository:
         )
 
 
-def _match_query(text: str) -> str | None:
+def _match_query(text: str | None) -> str | None:
     """Build a safe FTS5 MATCH string: each word token quoted, OR-joined.
 
     Quoting neutralizes FTS operators in user text; OR keeps lexical matching
-    lenient (the dense leg handles semantic recall). Returns None when the query
-    has no usable tokens, so the lexical leg is simply skipped.
+    lenient (the dense leg handles semantic recall). Returns None when there is no
+    query text or no usable tokens, so the lexical leg is simply skipped.
     """
+    if not text:
+        return None
     tokens = re.findall(r"\w+", text)
     if not tokens:
         return None

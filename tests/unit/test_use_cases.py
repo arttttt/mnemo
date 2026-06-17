@@ -4,6 +4,7 @@ from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+from mnemo.application.use_cases.browse_memory import BrowseMemory
 from mnemo.application.use_cases.delete_memory import DeleteMemory
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
@@ -36,6 +37,26 @@ def test_project_scoped_search_without_a_project_errors():
     _, _, search, _ = _wiring()
     with pytest.raises(ValueError):
         search.execute(query="anything")
+
+
+def test_browse_lists_newest_first_without_a_query():
+    repo, remember, _, _ = _wiring()
+    browse = BrowseMemory(repo)
+    a = remember.execute(content="alpha", project="api")
+    b = remember.execute(content="beta", project="api")
+
+    results = browse.execute(project="api")
+    created = [r.created_at for r in results]
+    assert created == sorted(created, reverse=True)  # newest first
+    assert {r.id for r in results} == {a.id, b.id}
+    assert not hasattr(results[0], "score")  # browse hits carry no relevance score
+
+
+def test_browse_inherits_the_scope_project_guard():
+    repo, _, _, _ = _wiring()
+    browse = BrowseMemory(repo)
+    with pytest.raises(ValueError):
+        browse.execute()  # scope defaults to 'project' with no project
 
 
 def test_sync_remember_embeds_immediately():
@@ -129,10 +150,12 @@ def test_search_filters_by_tag():
     assert [hit.id for hit in hits] == [auth.id]
 
 
-def test_search_recency_days_keeps_fresh():
+def test_search_created_after_keeps_fresh():
     _, remember, search, _ = _wiring()
     fresh = remember.execute(content="fresh decision today", project="api")
-    hits = search.execute(query="fresh decision today", project="api", recency_days=7)
+    hits = search.execute(
+        query="fresh decision today", project="api", created_after="2000-01-01"
+    )
     assert any(hit.id == fresh.id for hit in hits)
 
 

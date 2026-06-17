@@ -109,9 +109,9 @@ def build_mcp(container: Optional[Container] = None, **settings):
             list[str],
             Field(description="Keep only memories referencing ANY of these file paths."),
         ] = None,
-        recency_days: Annotated[
-            int,
-            Field(ge=1, description="Keep only memories created within the last N days."),
+        created_after: Annotated[
+            str,
+            Field(description="Keep only memories created at or after this ISO-8601 instant (e.g. '2026-06-01' or '2026-06-01T00:00:00+00:00')."),
         ] = None,
         limit: Annotated[
             int,
@@ -122,7 +122,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
 
         Returns a list of hits, each {id, score, type, scope, project, content,
         related_files, created_at}. Use scope='all' for cross-project search.
-        Optional filters (type, tags, related_files, recency_days) narrow the results.
+        Optional filters (type, tags, related_files, created_after) narrow the results.
         """
         results = container.search.execute(
             query=query,
@@ -131,7 +131,56 @@ def build_mcp(container: Optional[Container] = None, **settings):
             type=type,
             tags=tags,
             related_files=related_files,
-            recency_days=recency_days,
+            created_after=created_after,
+            limit=limit,
+        )
+        return [asdict(result) for result in results]
+
+    @mcp.tool()
+    def browse(
+        scope: Annotated[
+            SearchScope,
+            Field(description="'project' (default) = the given project + global, and REQUIRES the project param; 'global' = only global; 'all' = every project (cross-project)."),
+        ] = "project",
+        project: Annotated[
+            str,
+            Field(description="Project slug to scope to. Required when scope='project' (the default), and must be omitted for scope='global'/'all'."),
+        ] = None,
+        type: Annotated[
+            MemoryTypeName,
+            Field(description="Restrict results to a single memory type."),
+        ] = None,
+        tags: Annotated[
+            list[str],
+            Field(description="Keep only memories carrying ALL of these tags."),
+        ] = None,
+        related_files: Annotated[
+            list[str],
+            Field(description="Keep only memories referencing ANY of these file paths."),
+        ] = None,
+        created_after: Annotated[
+            str,
+            Field(description="Keep only memories created at or after this ISO-8601 instant (e.g. '2026-06-01' or '2026-06-01T00:00:00+00:00')."),
+        ] = None,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=100, description="Maximum number of memories to return."),
+        ] = 10,
+    ) -> list[dict]:
+        """List memories by filter, newest first — browse without a query.
+
+        Use this for category retrieval ("all type=decision in this project") where
+        a semantic query would only bias the order. No relevance ranking, so hits
+        carry no score; they are ordered by recency. Each hit is {id, type, scope,
+        project, content, related_files, created_at}. Use `search` to find by meaning.
+        """
+        results = container.browse.execute(
+            scope=scope,
+            project=project,
+            type=type,
+            tags=tags,
+            related_files=related_files,
+            created_after=created_after,
             limit=limit,
         )
         return [asdict(result) for result in results]

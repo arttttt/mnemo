@@ -48,6 +48,28 @@ def test_cli_search_global_scope_needs_no_project(tmp_path, monkeypatch):
     assert result.stdout.strip() == "[]"  # empty store, but the command runs end-to-end
 
 
+def test_cli_browse_lists_memories_without_a_query(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    a = json.loads(runner.invoke(app, ["store", "alpha", "--project", "api"]).stdout)["id"]
+    b = json.loads(runner.invoke(app, ["store", "beta", "--project", "api"]).stdout)["id"]
+
+    result = runner.invoke(app, ["browse", "--project", "api"])
+    assert result.exit_code == 0, result.output
+    hits = json.loads(result.stdout)
+    created = [hit["created_at"] for hit in hits]
+    assert created == sorted(created, reverse=True)  # newest first
+    assert {hit["id"] for hit in hits} == {a, b}
+    assert all("score" not in hit for hit in hits)  # browse carries no score
+
+
+def test_cli_browse_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["browse"])  # --scope defaults to 'project', no --project
+    assert result.exit_code != 0
+    assert "project" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 

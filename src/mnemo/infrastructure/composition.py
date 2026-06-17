@@ -6,6 +6,7 @@ from mnemo.adapters.session.in_process_session_provider import InProcessSessionP
 from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.ports.session_provider import SessionProviderPort
+from mnemo.application.use_cases.browse_memory import BrowseMemory
 from mnemo.application.use_cases.delete_memory import DeleteMemory
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
@@ -31,6 +32,7 @@ def build_container(
         scheduler=scheduler,
         remember=RememberMemory(repository, scheduler, session_provider),
         search=SearchMemory(repository, embedder),
+        browse=BrowseMemory(repository),
         delete=DeleteMemory(repository),
     )
 

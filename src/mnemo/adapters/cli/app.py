@@ -88,8 +88,8 @@ def search(
     related_files: Optional[list[str]] = typer.Option(
         None, "--file", help="Keep only memories referencing ANY of these files (repeatable)."
     ),
-    recency_days: Optional[int] = typer.Option(
-        None, "--recency-days", min=1, help="Only memories created within the last N days."
+    created_after: Optional[str] = typer.Option(
+        None, "--created-after", help="Keep only memories created at or after this ISO-8601 instant (e.g. 2026-06-01)."
     ),
     limit: int = typer.Option(
         10, "--limit", "-l", min=1, max=100, help="Maximum number of hits."
@@ -105,7 +105,51 @@ def search(
             type=type,
             tags=tags,
             related_files=related_files,
-            recency_days=recency_days,
+            created_after=created_after,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc))
+    typer.echo(json.dumps([asdict(r) for r in results], indent=2, ensure_ascii=False))
+
+
+@app.command()
+def browse(
+    scope: str = typer.Option(
+        "project",
+        "--scope",
+        "-s",
+        help="'project' (the given project + global; requires --project), 'global', or 'all' (cross-project).",
+    ),
+    project: Optional[str] = typer.Option(
+        None, "--project", "-p", help="Project slug to scope to. Required with --scope project (the default), omitted for global/all."
+    ),
+    type: Optional[str] = typer.Option(
+        None, "--type", "-t", help=f"Restrict to one type: {_TYPES}."
+    ),
+    tags: Optional[list[str]] = typer.Option(
+        None, "--tag", help="Keep only memories carrying ALL of these tags (repeatable)."
+    ),
+    related_files: Optional[list[str]] = typer.Option(
+        None, "--file", help="Keep only memories referencing ANY of these files (repeatable)."
+    ),
+    created_after: Optional[str] = typer.Option(
+        None, "--created-after", help="Keep only memories created at or after this ISO-8601 instant (e.g. 2026-06-01)."
+    ),
+    limit: int = typer.Option(
+        10, "--limit", "-l", min=1, max=100, help="Maximum number of memories."
+    ),
+) -> None:
+    """List memories by filter, newest first (no query, no ranking); prints JSON."""
+    container = build_container()
+    try:
+        results = container.browse.execute(
+            scope=scope,
+            project=project,
+            type=type,
+            tags=tags,
+            related_files=related_files,
+            created_after=created_after,
             limit=limit,
         )
     except ValueError as exc:

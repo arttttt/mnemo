@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
-from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
 from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
@@ -44,9 +44,10 @@ class MemoryRepositoryPort(Protocol):
         self, topic_key: str, project: str | None
     ) -> Memory | None: ...
 
-    def search(
-        self, query: str, vector: Vector, criteria: SearchCriteria, limit: int
-    ) -> list[ScoredMemory]: ...
+    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
+        """Rank memories for a retrieval request: dense (`request.vector`) and/or
+        lexical (`request.text`) legs fused, filtered by `request.criteria`."""
+        ...
 
     def register_duplicate(self, memory_id: str) -> None: ...
 
