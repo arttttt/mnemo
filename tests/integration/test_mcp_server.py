@@ -27,7 +27,7 @@ def _tools(tmp_path):
 
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
-    assert {"remember", "search", "delete", "clear", "purge"} <= set(_tools(tmp_path))
+    assert {"remember", "search", "browse", "delete", "clear", "purge"} <= set(_tools(tmp_path))
 
 
 def test_remember_advertises_allowed_types(tmp_path):
@@ -54,6 +54,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     }
     assert required["remember"] == ["content"]
     assert required["search"] == ["query"]
+    assert required["browse"] == []  # query-less: every param is optional
     assert required["delete"] == ["ids"]
     assert required["clear"] == ["project"]
     assert required["purge"] == []
@@ -126,6 +127,30 @@ def test_mcp_search_rejects_project_with_all_or_global_scope(tmp_path):
         with pytest.raises(ToolError) as exc:
             _call(mcp, "search", {"query": "x", "scope": scope, "project": "api"})
         assert f"scope='{scope}'" in str(exc.value)
+
+
+def test_mcp_browse_lists_memories_without_a_query(tmp_path):
+    """The browse tool is callable via call_tool and returns recency-ordered hits
+    that carry no score (no relevance ranking)."""
+    mcp = build_mcp(_container(tmp_path))
+    a = json.loads(_call(mcp, "remember", {"content": "alpha", "type": "decision", "project": "api"})[0])
+    b = json.loads(_call(mcp, "remember", {"content": "beta", "project": "api"})[0])
+
+    hits = [json.loads(block) for block in _call(mcp, "browse", {"project": "api"})]
+    created = [hit["created_at"] for hit in hits]
+    assert created == sorted(created, reverse=True)  # newest first
+    assert {hit["id"] for hit in hits} == {a["id"], b["id"]}
+    assert all("score" not in hit for hit in hits)  # browse carries no score
+
+
+def test_mcp_browse_requires_a_project_in_project_scope(tmp_path):
+    """Browse inherits the same scope/project guard as search."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "browse", {})  # scope defaults to 'project', no project
+    assert "scope='project'" in str(exc.value)
 
 
 def test_mcp_clear_and_purge(tmp_path):

@@ -7,6 +7,7 @@ WHERE) for pushed-down filtering. Only active memories are ever returned.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
@@ -20,9 +21,20 @@ class SearchCriteria:
     type: MemoryType | None = None
     tags: tuple[str, ...] = ()              # memory must carry ALL of these
     related_files: tuple[str, ...] = ()     # memory must reference ANY of these
-    created_after: str | None = None        # ISO timestamp; keep created_at >= this
+    created_after: str | None = None        # ISO-8601 lower bound; keep created_at >= this
 
     def __post_init__(self) -> None:
+        # created_after is compared lexicographically against the stored ISO created_at,
+        # so a malformed value would filter silently and wrongly — validate it as ISO-8601
+        # (date or datetime) up front and reject anything else with a clear error.
+        if self.created_after is not None:
+            try:
+                datetime.fromisoformat(self.created_after.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError(
+                    "created_after must be an ISO-8601 date or datetime (e.g. "
+                    f"'2026-06-01' or '2026-06-01T00:00:00+00:00'); got {self.created_after!r}"
+                )
         # A project-scoped search must name the project to scope to. There is no
         # "current project" to infer here — without a project the search would
         # silently match only project-less + global rows (almost always nothing),

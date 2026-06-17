@@ -1,16 +1,15 @@
-"""Interface for the search use case."""
+"""Interface for the browse use case."""
 from __future__ import annotations
 
 from typing import Protocol
 
-from mnemo.application.results.search_result import SearchResult
+from mnemo.application.results.browse_result import BrowseResult
 
 
-class SearchMemoryUseCase(Protocol):
+class BrowseMemoryUseCase(Protocol):
     def execute(
         self,
         *,
-        query: str,
         scope: str = "project",
         project: str | None = None,
         type: str | None = None,
@@ -18,4 +17,4 @@ class SearchMemoryUseCase(Protocol):
         related_files: list[str] | None = None,
         created_after: str | None = None,
         limit: int = 10,
-    ) -> list[SearchResult]: ...
+    ) -> list[BrowseResult]: ...

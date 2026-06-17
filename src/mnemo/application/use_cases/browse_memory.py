@@ -1,25 +1,25 @@
-"""Retrieve active memories by similarity within a (soft) scope and filters."""
+"""List active memories by filter, newest first — retrieval without a query.
+
+No embedding and no relevance ranking: a filter-only browse (type / tags / scope /
+recency) ordered by recency, distinct from the semantic `search`. Builds a
+`Retrieval` with neither text nor vector, so the store takes its browse path.
+"""
 from __future__ import annotations
 
-from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.results.search_result import SearchResult
+from mnemo.application.results.browse_result import BrowseResult
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory_type import MemoryType
 
 
-class SearchMemory:
-    def __init__(
-        self, repository: MemoryRepositoryPort, embedder: EmbedderPort
-    ) -> None:
+class BrowseMemory:
+    def __init__(self, repository: MemoryRepositoryPort) -> None:
         self._repository = repository
-        self._embedder = embedder
 
     def execute(
         self,
         *,
-        query: str,
         scope: str = "project",
         project: str | None = None,
         type: str | None = None,
@@ -27,7 +27,7 @@ class SearchMemory:
         related_files: list[str] | None = None,
         created_after: str | None = None,
         limit: int = 10,
-    ) -> list[SearchResult]:
+    ) -> list[BrowseResult]:
         criteria = SearchCriteria(
             scope=scope,
             project=project,
@@ -36,17 +36,10 @@ class SearchMemory:
             related_files=tuple(related_files or ()),
             created_after=created_after,
         )
-        request = Retrieval(
-            criteria=criteria,
-            limit=limit,
-            text=query,
-            vector=self._embedder.encode(query),
-        )
-        scored = self._repository.retrieve(request)
+        scored = self._repository.retrieve(Retrieval(criteria=criteria, limit=limit))
         return [
-            SearchResult(
+            BrowseResult(
                 id=item.memory.id,
-                score=round(item.score, 4),
                 type=item.memory.type.value,
                 scope=item.memory.scope.value,
                 project=item.memory.project,
