@@ -8,6 +8,7 @@ of mnemo runs without it.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -19,24 +20,38 @@ _log = logging.getLogger("mnemo.generator")
 
 
 class LlamaCppGenerator:
-    def __init__(self, model_path: str, *, context_tokens: int = 4096) -> None:
-        self._model_path = model_path
+    def __init__(
+        self, model: str, *, filename: str = "*q4_k_m.gguf", context_tokens: int = 4096
+    ) -> None:
+        self._model = model
+        self._filename = filename
         self._context_tokens = context_tokens
 
     @contextmanager
     def session(self) -> Iterator[LoadedGenerator]:
-        from llama_cpp import Llama
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise RuntimeError(
+                "the recall generator needs llama-cpp-python — install it "
+                "(pip install llama-cpp-python) or set MNEMO_GENERATOR=off"
+            ) from exc
 
         start = time.monotonic()
-        llama = Llama(
-            model_path=self._model_path,
-            n_ctx=self._context_tokens,
-            n_gpu_layers=-1,  # offload to Metal when present, else CPU
-            verbose=False,
-        )
+        # a local GGUF path loads directly; anything else is treated as a HF repo to fetch
+        if os.path.exists(self._model):
+            llama = Llama(
+                model_path=self._model, n_ctx=self._context_tokens,
+                n_gpu_layers=-1, verbose=False,  # offload to Metal when present, else CPU
+            )
+        else:
+            llama = Llama.from_pretrained(
+                repo_id=self._model, filename=self._filename,
+                n_ctx=self._context_tokens, n_gpu_layers=-1, verbose=False,
+            )
         _log.info(
             "generator loaded model=%s load=%.2fs peak_rss=%.0fMB",
-            self._model_path, time.monotonic() - start, peak_rss_mb(),
+            self._model, time.monotonic() - start, peak_rss_mb(),
         )
         try:
             yield _LoadedLlamaCppGenerator(llama)
@@ -44,7 +59,7 @@ class LlamaCppGenerator:
             if hasattr(llama, "close"):
                 llama.close()
             del llama
-            _log.info("generator released model=%s peak_rss=%.0fMB", self._model_path, peak_rss_mb())
+            _log.info("generator released model=%s peak_rss=%.0fMB", self._model, peak_rss_mb())
 
 
 class _LoadedLlamaCppGenerator:

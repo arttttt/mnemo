@@ -93,4 +93,4 @@ def _build_generator(config: Config) -> GeneratorPort | None:
         return None
     from mnemo.adapters.generation.llama_cpp_generator import LlamaCppGenerator
 
-    return LlamaCppGenerator(config.generator)
+    return LlamaCppGenerator(config.generator, filename=config.generator_file)

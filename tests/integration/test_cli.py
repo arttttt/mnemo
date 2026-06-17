@@ -8,6 +8,8 @@ testing = pytest.importorskip("typer.testing")
 def _runner_and_app(tmp_path, monkeypatch):
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
     monkeypatch.setenv("MNEMO_STORE", "memory")
+    monkeypatch.setenv("MNEMO_RERANKER", "off")    # keep tests offline: no model download
+    monkeypatch.setenv("MNEMO_GENERATOR", "off")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
