@@ -59,6 +59,67 @@ stage prefers `keep_separate` when unsure, and **topic granularity is respected*
 same subject under different `topic_key`s are kept separate (that separation is the user's intent, not a
 mistake to "fix").
 
+## Pipeline abstraction — composable stages
+
+The staged pipeline above is **not** a hard-coded monolith; it is **composed from interchangeable
+stages**, so a new consolidation task is sketched at development time by listing blocks. Four pieces,
+all honoring the layering in [09-tech-stack.md](09-tech-stack.md):
+
+- **`PipelineStage`** (port, in `application`). One stage = one responsibility (SRP): it reads named
+  slots from the context, uses **one model behind its own port**, and writes named slots. It declares a
+  light contract — `requires` / `provides` (the slot names it needs / fills).
+- **`Pipeline`** (in `application`). A trivial **sequential** runner. At construction it validates the
+  chain (every stage's `requires` is produced by an earlier stage or the `Job`); after each stage it
+  asserts the stage actually filled its `provides`. No event bus, no DAG — the boundary between stages
+  is simply the function return.
+- **`Job` → `PipelineContext` → `Result`.** `Job` is the immutable input (the triggering `seeds`,
+  scope, config). It seeds an immutable `PipelineContext` that each stage extends copy-on-write. The
+  output is a `Result` — a **plan** of operations (`merge` / `supersede` / `insert` / `flag`), never a
+  direct store write.
+- **`Executor`** (adapter). Applies the plan **idempotently** through the write queue. Operations
+  address records by id, so re-running a batch cannot corrupt data.
+
+**Assembly is static, at development time** — one small builder function per task, reviewed as plain code:
+
+```python
+def build_dedup_pipeline(deps):            # application/pipelines/dedup.py
+    return Pipeline([
+        SelectCandidatesStage(deps.embedder, deps.repo),
+        RoutingStage(deps.reranker),
+        ContradictionStage(deps.nli),
+        GenerationStage(deps.generator),
+        FaithfulnessGate(),
+        PlanStage(),
+    ])
+```
+
+A new task = a new builder file listing different blocks. Swapping a model = a new adapter behind the
+same port (OCP, no stage change); a new model *class* = a new stage + a new port (OCP, the core is
+untouched). Stages are swappable (LSP) and depend only on ports (DIP).
+
+**Lifecycle and RAM.** A heavy stage loads its model lazily at the start of its `run` and **unloads at
+the end** (the generator frees its RAM before the next stage), keeping the on-demand budget in
+[07-lifecycle-and-ram.md](07-lifecycle-and-ram.md). The stage boundary is also the natural logging
+point (`stage=routing in=12 out=3 dur=…`).
+
+**What is validated — and what is not.** Validation is layered and targeted, never a generic per-stage
+content check:
+- **Structural, every stage (cheap):** the `requires` / `provides` contract — catches a mis-assembled
+  pipeline at construction, not as a runtime surprise.
+- **Reranker / NLI:** the output is scores — structurally always valid; the decision is a *calibrated
+  threshold*, not a post-hoc check.
+- **Generator:** valid JSON is **guaranteed by grammar / guided decoding** — enforced, not validated.
+  The one content risk (a fabricated or degenerate merge) is checked by a dedicated **`FaithfulnessGate`
+  stage** — grounding (every id / number in the output ⊆ the cluster inputs) + coherence (not
+  degenerate). A failed gate does not error; it **falls back to `keep_separate`** (asymmetric safety: a
+  missed merge is harmless, a wrong merge corrupts memory).
+- **`PlanStage`:** deterministic, with invariants asserted (never merges across `topic_key`, never
+  supersedes a record outside the candidates).
+
+**Failure.** Any stage that throws or times out aborts the **whole job** — nothing is applied, the
+source memories are untouched ("processing must not drop data"). Because apply is a single plan at the
+end (not per-stage writes), there is never a partial application.
+
 ## The models (one per stage)
 
 Everything is multilingual (no language is guaranteed to be English), to match the embedder.
