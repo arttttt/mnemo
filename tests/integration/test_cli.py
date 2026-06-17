@@ -8,6 +8,8 @@ testing = pytest.importorskip("typer.testing")
 def _runner_and_app(tmp_path, monkeypatch):
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
     monkeypatch.setenv("MNEMO_STORE", "memory")
+    monkeypatch.setenv("MNEMO_RERANKER", "off")    # keep tests offline: no model download
+    monkeypatch.setenv("MNEMO_GENERATOR", "off")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
@@ -127,16 +129,27 @@ def test_cli_stats_reports_pending(tmp_path, monkeypatch):
 
 
 def test_cli_recall_groups_a_projects_memory_by_type(tmp_path, monkeypatch):
+    monkeypatch.setenv("MNEMO_LOG_LEVEL", "ERROR")  # keep timing/model logs off stdout
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "use jwt", "--type", "decision", "--project", "api"])
     runner.invoke(app, ["store", "fixed a race", "--type", "debug", "--project", "api"])
     runner.invoke(app, ["store", "other thing", "--type", "decision", "--project", "other"])
 
-    result = runner.invoke(app, ["recall", "api"])
+    result = runner.invoke(app, ["recall", "api", "auth"])
     assert result.exit_code == 0, result.output
     bundle = json.loads(result.stdout)
     assert bundle["project"] == "api"
+    assert bundle["query"] == "auth"
     assert bundle["total"] == 2  # the 'other' project is excluded
+    assert bundle["summary"] is None  # no generator configured → structured bundle only
     by_type = {section["type"]: section for section in bundle["sections"]}
     assert set(by_type) == {"decision", "debug"}
     assert len(by_type["decision"]["memories"]) == 1
+
+
+def test_cli_recall_rejects_a_blank_query(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["recall", "api", "   "])  # whitespace-only query
+    assert result.exit_code != 0
+    assert "query" in result.output
+    assert "Traceback" not in result.output

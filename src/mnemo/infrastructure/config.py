@@ -25,6 +25,13 @@ class Config:
     embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
     embed_max_retries: int = 3                 # retries before a memory is left lexical-only
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
+    # Recall pipeline models — EXAMPLE defaults for the test pipeline; replace after the
+    # benchmark picks the finalists. Set any to "off" to drop that stage.
+    reranker: str = "jinaai/jina-reranker-v2-base-multilingual"  # MNEMO_RERANKER: fastembed id / "off"
+    generator: str = "Qwen/Qwen2.5-3B-Instruct-GGUF"             # MNEMO_GENERATOR: HF GGUF repo / path / "off"
+    generator_file: str = "*q4_k_m.gguf"                         # MNEMO_GENERATOR_FILE: GGUF glob in the repo
+    rerank_top_k: int = 20                                       # how many candidates the reranker keeps
+    generator_max_tokens: int = 512                             # synthesis output token cap
 
     @staticmethod
     def from_env() -> "Config":
@@ -55,4 +62,9 @@ class Config:
             embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
             embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
             embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),
+            reranker=os.environ.get("MNEMO_RERANKER", "jinaai/jina-reranker-v2-base-multilingual"),
+            generator=os.environ.get("MNEMO_GENERATOR", "Qwen/Qwen2.5-3B-Instruct-GGUF"),
+            generator_file=os.environ.get("MNEMO_GENERATOR_FILE", "*q4_k_m.gguf"),
+            rerank_top_k=int(os.environ.get("MNEMO_RERANK_TOP_K", "20")),
+            generator_max_tokens=int(os.environ.get("MNEMO_GENERATOR_MAX_TOKENS", "512")),
         )

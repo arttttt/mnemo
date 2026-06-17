@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from collections import Counter
 from dataclasses import asdict
 from typing import Optional
@@ -10,6 +12,7 @@ import typer
 
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
+from mnemo.infrastructure.logging_config import configure_logging
 
 _TYPES = ", ".join(member.value for member in MemoryType)
 
@@ -160,19 +163,33 @@ def browse(
 @app.command()
 def recall(
     project: str = typer.Argument(..., help="Project whose memory to recall."),
+    query: str = typer.Argument(..., help="What to recall about — a question or topic."),
     limit: int = typer.Option(
         50, "--limit", "-l", min=1, max=200, help="Maximum number of memories to gather."
     ),
 ) -> None:
-    """Recall a project's memory as a structured bundle, grouped by type (no LLM).
+    """Recall a project's memory as a query-focused bundle (a summary too, with a generator).
 
-    A dev/debug view (CLI-only): a synthesized, non-dumping recall is a later addition,
-    so this is not exposed on the agent-facing MCP surface yet. Prints JSON.
+    A dev/debug view (CLI-only): MNEMO_RERANKER orders the gather by the query, MNEMO_GENERATOR
+    synthesizes a summary; without either it is the structured grouping. Not exposed on the
+    agent-facing MCP surface yet. Model timing/RAM go to the logs (MNEMO_LOG_LEVEL); the bundle
+    prints as JSON.
     """
-    bundle = build_container().recall.execute(project=project, limit=limit)
+    configure_logging()
+    started = time.monotonic()
+    try:
+        bundle = build_container().recall.execute(project=project, query=query, limit=limit)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc))
+    logging.getLogger("mnemo.recall").info(
+        "recall project=%s total=%d in %.2fs",
+        bundle.project, bundle.total, time.monotonic() - started,
+    )
     payload = {
         "project": bundle.project,
+        "query": query,
         "total": bundle.total,
+        "summary": bundle.summary,
         "sections": [
             {
                 "type": section.type,
