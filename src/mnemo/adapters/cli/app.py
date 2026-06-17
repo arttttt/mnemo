@@ -158,6 +158,36 @@ def browse(
 
 
 @app.command()
+def recall(
+    project: str = typer.Argument(..., help="Project whose memory to recall."),
+    limit: int = typer.Option(
+        50, "--limit", "-l", min=1, max=200, help="Maximum number of memories to gather."
+    ),
+) -> None:
+    """Recall a project's memory as a structured bundle, grouped by type (no LLM).
+
+    A dev/debug view (CLI-only): a synthesized, non-dumping recall is a later addition,
+    so this is not exposed on the agent-facing MCP surface yet. Prints JSON.
+    """
+    bundle = build_container().recall.execute(project=project, limit=limit)
+    payload = {
+        "project": bundle.project,
+        "total": bundle.total,
+        "sections": [
+            {
+                "type": section.type,
+                "memories": [
+                    {"id": memory.id, "content": memory.content, "created_at": memory.created_at}
+                    for memory in section.memories
+                ],
+            }
+            for section in bundle.sections
+        ],
+    }
+    typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+@app.command()
 def stats() -> None:
     """Show how many memories are stored, by type, and how many await a vector.
 
