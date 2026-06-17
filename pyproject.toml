@@ -14,6 +14,13 @@ dependencies = [
 # Default embedder: pplx-embed-v1-0.6b int8 ONNX on CPU, via raw onnxruntime (heavy).
 pplx = ["onnxruntime>=1.16", "tokenizers>=0.15", "huggingface-hub>=0.20", "numpy>=1.24"]
 embed = ["fastembed>=0.4.0"]   # alternative embedder (bge-small / fastembed models)
+# Recall / consolidation model stages (opt-in, heavy): the cross-encoder reranker and
+# the instruct generator. A base install runs without them (stages off / actionable error).
+recall = [
+    "fastembed>=0.4.0",         # reranker — cross-encoder via fastembed (ONNX, no torch)
+    "llama-cpp-python>=0.3.0",  # generator — small instruct LLM via llama.cpp (GGUF)
+    "huggingface-hub>=0.20",    # model download (GGUF / ONNX)
+]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

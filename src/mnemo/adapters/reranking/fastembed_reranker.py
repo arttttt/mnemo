@@ -25,7 +25,13 @@ class FastEmbedReranker:
 
     @contextmanager
     def session(self) -> Iterator[LoadedReranker]:
-        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        try:
+            from fastembed.rerank.cross_encoder import TextCrossEncoder
+        except ImportError as exc:
+            raise RuntimeError(
+                "the recall reranker needs fastembed — install the model extra "
+                '(pip install "mnemo[recall]") or set MNEMO_RERANKER=off'
+            ) from exc
 
         start = time.monotonic()
         encoder = TextCrossEncoder(model_name=self._model_name, cache_dir=self._cache_dir)

@@ -33,8 +33,8 @@ class LlamaCppGenerator:
             from llama_cpp import Llama
         except ImportError as exc:
             raise RuntimeError(
-                "the recall generator needs llama-cpp-python — install it "
-                "(pip install llama-cpp-python) or set MNEMO_GENERATOR=off"
+                "the recall generator needs llama-cpp-python — install the model extra "
+                '(pip install "mnemo[recall]") or set MNEMO_GENERATOR=off'
             ) from exc
 
         start = time.monotonic()
