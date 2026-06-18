@@ -8,10 +8,16 @@ with a lean (non-arena) session so it does not pre-grab memory. ``onnxruntime`` 
 """
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from llmkit.runtime._stats import peak_rss_mb
+
+_log = logging.getLogger("llmkit.onnx")
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,7 @@ class OnnxEncoderRuntime:
         from tokenizers import Tokenizer
 
         src = self._source
+        started = time.monotonic()
         local = snapshot_download(
             src.repo,
             revision=src.revision,
@@ -61,11 +68,18 @@ class OnnxEncoderRuntime:
         self._tokenizer = tokenizer
         self._session = session
         self._inputs = frozenset(spec.name for spec in session.get_inputs())
+        _log.info(
+            "encoder loaded model=%s load=%.2fs peak_rss=%.0fMB",
+            src.repo, time.monotonic() - started, peak_rss_mb(),
+        )
 
     def unload(self) -> None:
+        if self._session is None:
+            return
         self._session = None
         self._tokenizer = None
         self._inputs = frozenset()
+        _log.info("encoder freed model=%s peak_rss=%.0fMB", self._source.repo, peak_rss_mb())
 
     def forward(self, texts: Sequence[str]) -> Any:
         """Raw model output for single texts (e.g. token embeddings to pool)."""
@@ -76,6 +90,7 @@ class OnnxEncoderRuntime:
         return self._run([(left, right) for left, right in pairs])
 
     def _run(self, inputs: list[Any]) -> Any:
+        started = time.monotonic()
         np = self._np
         encoded = self._tokenizer.encode_batch(inputs)
         feed = {"input_ids": np.array([e.ids for e in encoded], dtype=np.int64)}
@@ -83,4 +98,9 @@ class OnnxEncoderRuntime:
             feed["attention_mask"] = np.array([e.attention_mask for e in encoded], dtype=np.int64)
         if "token_type_ids" in self._inputs:
             feed["token_type_ids"] = np.array([e.type_ids for e in encoded], dtype=np.int64)
-        return self._session.run(None, feed)[0]
+        output = self._session.run(None, feed)[0]
+        _log.info(
+            "encoder ran n=%d in %.3fs peak_rss=%.0fMB",
+            len(inputs), time.monotonic() - started, peak_rss_mb(),
+        )
+        return output
