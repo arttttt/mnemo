@@ -20,6 +20,8 @@ class Config:
     port: int = 8765
     idle_grace_seconds: float = 300.0         # exit this long after the last connector leaves
     idle_check_interval_seconds: float = 5.0  # how often the service sweeps for live connectors
+    service_ready_timeout: float = 120.0      # how long a spawn waits for the service to listen
+    #                                           (covers a cold model download+load)
     # Deferred embedding (the service's async worker pool; docs/03-architecture.md).
     embed_workers: int = 1                     # parallel encodes — also the RAM bound (default 1 = safe)
     embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
@@ -57,6 +59,9 @@ class Config:
             idle_grace_seconds=float(os.environ.get("MNEMO_IDLE_GRACE_SECONDS", "300")),
             idle_check_interval_seconds=float(
                 os.environ.get("MNEMO_IDLE_CHECK_INTERVAL_SECONDS", "5")
+            ),
+            service_ready_timeout=float(
+                os.environ.get("MNEMO_SERVICE_READY_TIMEOUT", "120")
             ),
             embed_workers=int(os.environ.get("MNEMO_EMBED_WORKERS", "1")),
             embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
