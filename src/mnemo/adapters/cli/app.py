@@ -181,6 +181,12 @@ def recall(
         bundle = build_container().recall.execute(project=project, query=query, limit=limit)
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
+    except RuntimeError as exc:
+        # The optional reranker/generator extras are missing (their adapters raise an
+        # actionable RuntimeError telling you to install mnemo[recall] or set the model
+        # to "off"). Surface that message, not a traceback.
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
     logging.getLogger("mnemo.recall").info(
         "recall project=%s total=%d in %.2fs",
         bundle.project, bundle.total, time.monotonic() - started,

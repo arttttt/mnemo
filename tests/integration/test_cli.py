@@ -153,3 +153,28 @@ def test_cli_recall_rejects_a_blank_query(tmp_path, monkeypatch):
     assert result.exit_code != 0
     assert "query" in result.output
     assert "Traceback" not in result.output
+
+
+def test_cli_recall_reports_missing_model_dep_without_a_traceback(tmp_path, monkeypatch):
+    # The reranker/generator adapters raise an actionable RuntimeError when their
+    # optional extra is absent; the CLI must show the message, not a stack trace.
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+
+    class _Boom:
+        def execute(self, **_kwargs):
+            raise RuntimeError(
+                'the recall generator needs llama-cpp-python — install the model extra '
+                '(pip install "mnemo[recall]") or set MNEMO_GENERATOR=off'
+            )
+
+    class _Container:
+        recall = _Boom()
+
+    monkeypatch.setattr(
+        "mnemo.adapters.cli.app.build_container", lambda *a, **k: _Container()
+    )
+
+    result = runner.invoke(app, ["recall", "api", "auth"])
+    assert result.exit_code == 1
+    assert "llama-cpp-python" in result.output
+    assert "Traceback" not in result.output
