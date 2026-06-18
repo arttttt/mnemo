@@ -10,6 +10,7 @@ from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.results.remember_result import RememberResult
+from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
 from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
@@ -39,6 +40,10 @@ class RememberMemory:
         tags: list[str] | None = None,
         topic_key: str | None = None,
     ) -> RememberResult:
+        # Same scope↔project contract the read path enforces: a project-scoped write must
+        # name its project (else it is silently unreachable by a project search), and a
+        # global write must not carry one (scope is authoritative).
+        validate_scope_project(scope, project)
         memory = Memory.create(
             content=content,
             type=type,

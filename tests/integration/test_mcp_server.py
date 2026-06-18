@@ -153,6 +153,26 @@ def test_mcp_browse_requires_a_project_in_project_scope(tmp_path):
     assert "scope='project'" in str(exc.value)
 
 
+def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):
+    """The write path enforces the same contract as the read path: a project-scoped
+    remember with no project is a loud error, not a silently unreachable row."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {"content": "orphan note"})  # scope defaults to 'project'
+    assert "scope='project'" in str(exc.value)
+
+
+def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {"content": "a rule", "scope": "global", "project": "api"})
+    assert "scope='global'" in str(exc.value)
+
+
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "remember", {"content": "alpha", "project": "api"})

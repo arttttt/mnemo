@@ -31,6 +31,20 @@ def test_remember_then_search_finds_it():
     assert any(hit.id == stored.id for hit in hits)
 
 
+def test_remember_project_scope_without_a_project_is_rejected():
+    # The write path enforces the same scope↔project contract the read path does: a
+    # project-scoped write with no project would be unreachable by a project search.
+    _, remember, _, _ = _wiring()
+    with pytest.raises(ValueError):
+        remember.execute(content="orphan note")  # scope defaults to 'project', no project
+
+
+def test_remember_global_scope_rejects_a_project():
+    _, remember, _, _ = _wiring()
+    with pytest.raises(ValueError):
+        remember.execute(content="a rule", scope="global", project="api")  # contradictory
+
+
 def test_project_scoped_search_without_a_project_errors():
     # scope defaults to 'project'; with no project there is nothing to scope to,
     # so the search fails fast instead of silently returning nothing.
