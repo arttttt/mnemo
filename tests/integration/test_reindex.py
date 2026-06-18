@@ -9,6 +9,7 @@ from mnemo.adapters.session.in_process_session_provider import InProcessSessionP
 from mnemo.application.use_cases.reindex_memories import ReindexMemories
 from mnemo.application.use_cases.remember_memory import RememberMemory
 from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.domain.memory import Memory
 
 
 def _remember(repo, embedder, content, **kwargs):
@@ -79,6 +80,48 @@ def test_sqlite_reindex_rebuilds_schema_dim(tmp_path):
 
     _reindex(repo, HashEmbedder(dim=128))
     assert repo._current_dim() == 128  # the embedding-column CHECK was rebuilt
+
+
+def test_sqlite_set_dimension_is_atomic_on_failure(tmp_path, monkeypatch):
+    """A failure mid-rebuild must leave the original store fully intact — never the
+    0-rows-on-disk outcome of a non-atomic drop-then-recreate."""
+    repo = _sqlite(tmp_path, dim=256)
+    embedder = HashEmbedder(dim=256)
+    kept = []
+    for content in ["alpha note", "beta note", "gamma note"]:
+        memory = Memory.create(content, project="api")
+        repo.add(memory, embedder.encode(content))
+        kept.append(memory)
+
+    # Fail at the final rebuild step — AFTER the destructive drop/rename — so only an
+    # atomic swap survives it; a drop-then-recreate would already have wiped the rows.
+    def boom(*args, **kwargs):
+        raise RuntimeError("injected mid-rebuild failure")
+
+    monkeypatch.setattr(repo, "_rebuild_indexes_and_fts", boom)
+
+    with pytest.raises(RuntimeError):
+        repo.set_dimension(128)
+
+    assert repo._current_dim() == 256  # dimension unchanged — the swap rolled back
+    assert {m.id for m in repo.list_all()} == {m.id for m in kept}  # no rows lost
+    # still fully queryable: the original table + FTS survived the rollback
+    hits = SearchMemory(repo, embedder).execute(query="beta note", scope="all")
+    assert any(hit.id == kept[1].id for hit in hits)
+
+
+def test_sqlite_set_dimension_rebuilds_fts(tmp_path):
+    """After a swap the external-content FTS index is rebuilt. Proven via a STILL-PENDING
+    memory (no vector → absent from the dense leg), so the only way to find it is the
+    lexical leg reading the rebuilt FTS index."""
+    repo = _sqlite(tmp_path, dim=256)
+    _remember(repo, HashEmbedder(dim=256), "a note with the rare token zzqqx inside")
+
+    repo.set_dimension(128)  # everything back to pending; FTS rebuilt against the swap
+    assert repo.pending_count() == 1  # not re-embedded → dense leg cannot surface it
+
+    hits = SearchMemory(repo, HashEmbedder(dim=128)).execute(query="zzqqx", scope="all")
+    assert any("zzqqx" in hit.content for hit in hits)
 
 
 def test_cli_reindex(tmp_path, monkeypatch):
