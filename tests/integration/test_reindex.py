@@ -73,6 +73,22 @@ def test_reindex_is_noop_when_dimension_unchanged(repo):
     assert repo.pending_count() == 0
 
 
+def test_reindex_pages_through_all_pending(repo, monkeypatch):
+    # Force several pages so the drain loop — not a single pre-read count — is exercised:
+    # every pending row must be re-embedded, none missed at a page boundary.
+    import mnemo.application.use_cases.reindex_memories as reindex_module
+
+    monkeypatch.setattr(reindex_module, "_REINDEX_PAGE", 2)
+    old = HashEmbedder(dim=256)
+    for i in range(5):
+        _remember(repo, old, f"note {i}")
+    assert repo.pending_count() == 0  # embedded at 256
+
+    count = _reindex(repo, HashEmbedder(dim=128))
+    assert count == 5  # all five scheduled across pages
+    assert repo.pending_count() == 0
+
+
 def test_sqlite_reindex_rebuilds_schema_dim(tmp_path):
     repo = _sqlite(tmp_path, dim=256)
     _remember(repo, HashEmbedder(dim=256), "note one")
