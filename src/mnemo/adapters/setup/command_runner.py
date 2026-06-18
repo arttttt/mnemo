@@ -17,4 +17,10 @@ class CommandRunner(Protocol):
 
 class SubprocessCommandRunner:
     def run(self, argv: list[str]) -> int:
-        return subprocess.run(argv, check=False).returncode
+        try:
+            return subprocess.run(argv, check=False).returncode
+        except OSError:
+            # The client's binary is absent or not executable (the named `mnemo setup
+            # <client>` path skips detect()). Report it as a failed install — 127 is the
+            # conventional "command not found" code — instead of leaking a traceback.
+            return 127

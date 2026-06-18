@@ -11,6 +11,8 @@ from mnemo.application.ports.embedder import EmbedderPort
 from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 
+_REINDEX_PAGE = 256  # rows fetched per scan while draining the pending set
+
 
 class ReindexMemories:
     def __init__(
@@ -26,7 +28,15 @@ class ReindexMemories:
     def execute(self) -> int:
         """Re-embed every memory at the current embedder's dimension; returns the count."""
         self._repository.set_dimension(self._embedder.dim)
-        pending = self._repository.next_unembedded(self._repository.pending_count())
-        for memory_id in pending:
-            self._scheduler.schedule(memory_id)
-        return len(pending)
+        # Page through the pending rows until none remain, rather than trusting one
+        # pre-read count. reindex runs with the inline (sync) scheduler — the service is
+        # stopped first — so each scheduled id is embedded at once and leaves the pending
+        # set, which is what lets the scan advance and the loop terminate.
+        reindexed = 0
+        while True:
+            batch = self._repository.next_unembedded(_REINDEX_PAGE)
+            if not batch:
+                return reindexed
+            for memory_id in batch:
+                self._scheduler.schedule(memory_id)
+                reindexed += 1

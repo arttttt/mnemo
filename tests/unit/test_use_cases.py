@@ -31,6 +31,20 @@ def test_remember_then_search_finds_it():
     assert any(hit.id == stored.id for hit in hits)
 
 
+def test_remember_project_scope_without_a_project_is_rejected():
+    # The write path enforces the same scope↔project contract the read path does: a
+    # project-scoped write with no project would be unreachable by a project search.
+    _, remember, _, _ = _wiring()
+    with pytest.raises(ValueError):
+        remember.execute(content="orphan note")  # scope defaults to 'project', no project
+
+
+def test_remember_global_scope_rejects_a_project():
+    _, remember, _, _ = _wiring()
+    with pytest.raises(ValueError):
+        remember.execute(content="a rule", scope="global", project="api")  # contradictory
+
+
 def test_project_scoped_search_without_a_project_errors():
     # scope defaults to 'project'; with no project there is nothing to scope to,
     # so the search fails fast instead of silently returning nothing.
@@ -75,6 +89,32 @@ def test_exact_duplicate_is_not_stored_twice():
     assert second.status == "duplicate"
     assert second.id == first.id
     assert len(repo.list_all()) == 1
+
+
+def test_same_content_in_two_projects_is_kept_separately():
+    # The exact-dup hash key is global, but content is unique only within a scope: the
+    # same fact in another project is a distinct memory, not a duplicate to drop.
+    repo, remember, _, _ = _wiring()
+    first = remember.execute(content="shared fact", project="api")
+    second = remember.execute(content="shared fact", project="other")
+    assert second.status == "created"
+    assert second.id != first.id
+    assert len(repo.list_all()) == 2
+
+
+def test_re_remembering_superseded_content_creates_a_fresh_row():
+    # Re-storing content that was superseded must write a new, retrievable row — not
+    # return the dead (superseded) id and silently store nothing.
+    repo, remember, search, _ = _wiring()
+    first = remember.execute(content="reborn note", project="api")
+    repo.mark_superseded(first.id)
+
+    second = remember.execute(content="reborn note", project="api")
+    assert second.status == "created"
+    assert second.id != first.id
+
+    ids = {hit.id for hit in search.execute(query="reborn note", project="api")}
+    assert second.id in ids and first.id not in ids
 
 
 def test_topic_key_upsert_supersedes_prior():
@@ -209,3 +249,31 @@ def test_delete_clear_purge():
     assert {m.project for m in repo.list_all()} == {"other"}
     assert deletion.purge().deleted == 1
     assert repo.list_all() == []
+
+
+def test_clear_scope_global_targets_globals_and_spares_projects():
+    # Globals live under the GLOBAL_PROJECT sentinel, unreachable by a project slug;
+    # scope='global' clears exactly them and leaves project memories intact.
+    repo, remember, _, deletion = _wiring()
+    remember.execute(content="a project note", project="api")
+    remember.execute(content="a global rule", scope="global", type="rule")
+
+    assert deletion.clear(scope="global").deleted == 1
+    assert {m.content for m in repo.list_all()} == {"a project note"}
+
+
+def test_clear_scope_project_spares_globals():
+    repo, remember, _, deletion = _wiring()
+    remember.execute(content="a project note", project="api")
+    remember.execute(content="a global rule", scope="global", type="rule")
+
+    assert deletion.clear("api").deleted == 1  # positional project, scope defaults to project
+    assert {m.content for m in repo.list_all()} == {"a global rule"}
+
+
+def test_clear_enforces_the_scope_project_contract():
+    _, _, _, deletion = _wiring()
+    with pytest.raises(ValueError):
+        deletion.clear(scope="project")          # project scope needs a project
+    with pytest.raises(ValueError):
+        deletion.clear("api", scope="global")    # project + global is contradictory

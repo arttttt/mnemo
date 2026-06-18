@@ -20,6 +20,11 @@ from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 
 _log = logging.getLogger("mnemo.embed")
 
+# A failed encode is retried with exponential backoff so a fast-failing embedder can't
+# spin a worker (or drain) through its retries back-to-back, burning CPU.
+_RETRY_BACKOFF_BASE = 0.5
+_RETRY_BACKOFF_MAX = 30.0
+
 
 class AsyncEmbeddingScheduler:
     def __init__(
@@ -38,9 +43,10 @@ class AsyncEmbeddingScheduler:
         self._cond = threading.Condition()
         self._stopping = False
         self._in_flight = 0
-        self._claimed: set[str] = set()      # ids a worker is currently embedding
+        self._claimed: set[str] = set()      # ids a worker (or an inline encode) is embedding
         self._retries: dict[str, int] = {}   # id -> failed attempts so far
         self._failed: set[str] = set()        # gave up after max_retries (stays lexical-only)
+        self._retry_after: dict[str, float] = {}  # id -> monotonic time before which it can't retry
         self._threads = [
             threading.Thread(target=self._run, name=f"mnemo-embed-{i}", daemon=True)
             for i in range(max(1, workers))
@@ -60,14 +66,25 @@ class AsyncEmbeddingScheduler:
             thread.start()
 
     def drain(self, timeout: float) -> None:
-        """Block until all pending work is embedded (or timeout) — used before idle-exit."""
+        """Block until all pending work is embedded (or timeout) — used before idle-exit.
+
+        Assumes writes have stopped (the idle monitor only drains once no connector is
+        alive), so the work set only shrinks. The pending DB scan runs OUTSIDE the lock so
+        it never blocks the workers; only the in-memory counters are read under it.
+        """
         deadline = time.monotonic() + timeout
-        with self._cond:
-            while self._in_flight > 0 or self._first_claimable() is not None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return
-                self._cond.wait(remaining)
+        while True:
+            with self._cond:
+                busy = self._in_flight > 0 or self._has_pending_retry()
+            # `_first_claimable()` does the DB scan; membership/get on the shared sets are
+            # GIL-atomic, so calling it without the lock is safe (and never blocks a worker).
+            if not busy and self._first_claimable() is None:
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            with self._cond:
+                self._cond.wait(min(0.1, remaining))  # bounded re-check of the DB predicate
 
     def stop(self) -> None:
         with self._cond:
@@ -86,11 +103,28 @@ class AsyncEmbeddingScheduler:
                 "backpressure: %d pending at cap %d — embedding %s inline (this blocks the write)",
                 pending, self._queue_max, memory_id,
             )
-            self._embed_one(memory_id)
+            self._embed_inline(memory_id)
             return
         _log.debug("queued %s (pending=%d); waking a worker", memory_id, pending)
         with self._cond:
             self._cond.notify()
+
+    def _embed_inline(self, memory_id: str) -> None:
+        # Backpressure fallback on the caller's thread. Account for it in `_in_flight` and
+        # `_claimed` like the worker path, so a concurrent `drain()` waits for it and no
+        # worker double-encodes the same id.
+        with self._cond:
+            if memory_id in self._claimed:
+                return  # a worker already has it
+            self._in_flight += 1
+            self._claimed.add(memory_id)
+        try:
+            self._embed_one(memory_id)
+        finally:
+            with self._cond:
+                self._in_flight -= 1
+                self._claimed.discard(memory_id)
+                self._cond.notify_all()
 
     # --- worker ---
     def _run(self) -> None:
@@ -105,7 +139,7 @@ class AsyncEmbeddingScheduler:
                         break
                     if self._stopping:
                         return
-                    self._cond.wait()
+                    self._cond.wait()  # woken by schedule(), a completion, or a retry timer
             try:
                 self._embed_one(memory_id)
             finally:
@@ -115,11 +149,16 @@ class AsyncEmbeddingScheduler:
                     self._cond.notify_all()  # wake drain() and idle workers
 
     def _first_claimable(self) -> str | None:
-        """The next pending id no worker holds and that hasn't permanently failed.
-        Caller holds `self._cond`."""
+        """The next pending id no worker holds, not permanently failed, and past its retry
+        backoff. Reads are GIL-atomic, so this is safe with OR without `self._cond`."""
+        now = time.monotonic()
         for memory_id in self._repository.next_unembedded(self._queue_max):
-            if memory_id not in self._claimed and memory_id not in self._failed:
-                return memory_id
+            if memory_id in self._claimed or memory_id in self._failed:
+                continue
+            retry_at = self._retry_after.get(memory_id)
+            if retry_at is not None and retry_at > now:
+                continue  # backing off — not eligible to retry yet
+            return memory_id
         return None
 
     def _claim_next(self) -> str | None:
@@ -127,6 +166,11 @@ class AsyncEmbeddingScheduler:
         if memory_id is not None:
             self._claimed.add(memory_id)
         return memory_id
+
+    def _has_pending_retry(self) -> bool:
+        """Caller holds `self._cond`. True while some id is waiting out its retry backoff
+        (so drain keeps waiting for the retry instead of returning early)."""
+        return any(memory_id not in self._failed for memory_id in self._retry_after)
 
     def _embed_one(self, memory_id: str) -> None:
         if self._repository.has_vector(memory_id):
@@ -141,21 +185,35 @@ class AsyncEmbeddingScheduler:
             self._record_failure(memory_id)
             return
         self._repository.set_vector(memory_id, vector)
-        self._retries.pop(memory_id, None)
+        with self._cond:  # bookkeeping mutation stays under the lock
+            self._retries.pop(memory_id, None)
+            self._retry_after.pop(memory_id, None)
         _log.info(
             "embedded %s in %d ms (%d chars)",
             memory_id, int((time.monotonic() - start) * 1000), len(content),
         )
 
     def _record_failure(self, memory_id: str) -> None:
-        attempts = self._retries.get(memory_id, 0) + 1
-        self._retries[memory_id] = attempts
-        if attempts >= self._max_retries:
-            self._failed.add(memory_id)
-            _log.warning(
-                "embedding permanently failed for %s after %d attempts (stays lexical-only)",
-                memory_id, attempts,
-            )
-        else:
-            with self._cond:  # leave it pending; nudge a worker to retry
-                self._cond.notify()
+        with self._cond:
+            attempts = self._retries.get(memory_id, 0) + 1
+            self._retries[memory_id] = attempts
+            if attempts >= self._max_retries:
+                self._failed.add(memory_id)
+                self._retry_after.pop(memory_id, None)
+                self._cond.notify_all()  # let drain observe the give-up
+                _log.warning(
+                    "embedding permanently failed for %s after %d attempts (stays lexical-only)",
+                    memory_id, attempts,
+                )
+                return
+            backoff = min(_RETRY_BACKOFF_BASE * 2 ** (attempts - 1), _RETRY_BACKOFF_MAX)
+            self._retry_after[memory_id] = time.monotonic() + backoff
+        # Wake a worker once the backoff elapses (one-shot timer → retries are spaced, and
+        # the worker loop stays purely notify-driven).
+        timer = threading.Timer(backoff, self._wake)
+        timer.daemon = True
+        timer.start()
+
+    def _wake(self) -> None:
+        with self._cond:
+            self._cond.notify_all()

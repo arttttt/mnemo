@@ -36,3 +36,27 @@ def test_generator_fills_a_query_focused_summary_alongside_the_grouping():
 
     assert bundle.summary == "auth uses jwt rotation"  # stripped
     assert bundle.total == 1  # the structured grouping is still present alongside the summary
+
+
+class _RecordingGenerator:
+    """Records the max_tokens the synthesize stage asks for."""
+
+    def __init__(self) -> None:
+        self.max_tokens: int | None = None
+
+    @contextmanager
+    def session(self):
+        yield self
+
+    def generate(self, prompt, *, max_tokens):
+        self.max_tokens = max_tokens
+        return "summary"
+
+
+def test_max_tokens_threads_through_to_the_generator():
+    repo = _repo_with(Memory.create("auth jwt rotation", type="decision", project="api"))
+    generator = _RecordingGenerator()
+    pipeline = build_recall_pipeline(repo, generator=generator, max_tokens=123)
+    pipeline.run(RecallRequest(project="api", query="auth"))
+
+    assert generator.max_tokens == 123  # not the hardcoded 512

@@ -154,3 +154,30 @@ def test_permanent_failure_gives_up_lexical_only(tmp_path):
         assert repo.pending_count() == 1
     finally:
         scheduler.stop()
+
+
+def test_failing_encode_retries_exactly_max_retries_then_stops(tmp_path):
+    # A fast-failing encode must not spin: it is retried (with backoff) exactly max_retries
+    # times, then the id is parked in _failed. Counting the encode calls proves there is no
+    # busy-spin past the cap, and that drain waits out the spaced retries before returning.
+    class CountingBroken(HashEmbedder):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def encode(self, text):
+            self.calls += 1
+            raise RuntimeError("always fails")
+
+    embedder = CountingBroken()
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(embedder, repo, max_retries=3)
+    scheduler.start()
+    try:
+        memory = _pending(repo, "doomed note")
+        scheduler.schedule(memory.id)
+        scheduler.drain(timeout=8.0)
+        assert repo.has_vector(memory.id) is False
+        assert embedder.calls == 3  # exactly max_retries — backoff, never a tight loop
+    finally:
+        scheduler.stop()

@@ -31,7 +31,6 @@ _log = logging.getLogger("mnemo.service")
 def main() -> None:
     configure_logging()
     config = Config.from_env()
-    _migrate_store(config)
     # The session id is owned by each agent's connector and arrives as request
     # metadata; the service just reads it (see MetaSessionProvider).
     session_provider = MetaSessionProvider()
@@ -56,18 +55,6 @@ def main() -> None:
     mcp = build_mcp(container, host=config.host, port=config.port)
     _start_idle_monitor(config, scheduler)
     mcp.run(transport="streamable-http")
-
-
-def _migrate_store(config: Config) -> None:
-    # One-off, disposable schema migrations for an existing store, run before the
-    # store is opened (DB migration policy). Remove once every live store is migrated.
-    if config.store != "sqlite":
-        return
-    from mnemo.infrastructure.migrations import drop_dedup_columns
-
-    dropped = drop_dedup_columns(config.sqlite_path)
-    if dropped:
-        _log.info("store migration: dropped legacy columns %s", dropped)
 
 
 def _start_idle_monitor(config: Config, scheduler: AsyncEmbeddingScheduler) -> None:

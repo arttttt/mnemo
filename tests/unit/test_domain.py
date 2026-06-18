@@ -1,3 +1,5 @@
+import pytest
+
 from mnemo.domain.constants import GLOBAL_PROJECT
 from mnemo.domain.hashing import content_hash, normalize
 from mnemo.domain.memory import Memory
@@ -31,3 +33,11 @@ def test_mark_superseded():
     memory = Memory.create("x")
     memory.mark_superseded()
     assert memory.status == "superseded"
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
+def test_create_rejects_empty_content(blank):
+    # Blank content otherwise hashes to the empty-string digest, collapsing every empty
+    # memory store-wide into one "duplicate". The create factory enforces the invariant.
+    with pytest.raises(ValueError):
+        Memory.create(blank)

@@ -52,6 +52,69 @@ _INSERT_MEMORY = (
 )
 
 
+def _create_table_sql(name: str, dim: int) -> str:
+    """The `memories` table at a given name and embedding dimension. The dimension is
+    baked into the embedding-column CHECK; `set_dimension` builds a new table at the
+    new dimension and swaps it in atomically."""
+    return (
+        f"CREATE TABLE {name} ("
+        " id              TEXT PRIMARY KEY,"
+        " content         TEXT NOT NULL,"
+        f" embedding       BLOB CHECK(embedding IS NULL OR vec_length(embedding) == {dim}),"
+        " type            TEXT NOT NULL,"
+        " scope           TEXT NOT NULL,"
+        " project         TEXT,"
+        " tags            TEXT NOT NULL,"
+        " related_files   TEXT NOT NULL,"
+        " topic_key       TEXT,"
+        " session_id      TEXT,"
+        " status          TEXT NOT NULL,"
+        " supersedes      TEXT,"
+        " hash            TEXT NOT NULL,"
+        " created_at      TEXT NOT NULL,"
+        " updated_at      TEXT NOT NULL"
+        ")"
+    )
+
+
+# Copy content + metadata into the rebuilt table, resetting every embedding to NULL
+# (re-pending) so the caller re-embeds at the new dimension.
+_COPY_TO_REBUILT = (
+    "INSERT INTO memories_new (id, content, embedding, type, scope, project, tags,"
+    " related_files, topic_key, session_id, status, supersedes, hash, created_at,"
+    " updated_at) SELECT id, content, NULL, type, scope, project, tags, related_files,"
+    " topic_key, session_id, status, supersedes, hash, created_at, updated_at FROM memories"
+)
+
+# Derived store state — built as part of schema CREATION so every store is correct
+# from birth, and rebuilt verbatim after a `set_dimension` table swap (DB schema rule).
+_INDEX_STATEMENTS = (
+    "CREATE INDEX memories_hash ON memories(hash)",
+    "CREATE INDEX memories_topic ON memories(topic_key, project)",
+    "CREATE INDEX memories_status ON memories(status)",
+)
+_FTS_STATEMENT = (
+    "CREATE VIRTUAL TABLE memories_fts USING fts5("
+    " content, content='memories', content_rowid='rowid')"
+)
+_TRIGGER_STATEMENTS = (
+    "CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN"
+    " INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);"
+    " END",
+    "CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN"
+    " INSERT INTO memories_fts(memories_fts, rowid, content)"
+    " VALUES('delete', old.rowid, old.content);"
+    " END",
+    "CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN"
+    " INSERT INTO memories_fts(memories_fts, rowid, content)"
+    " VALUES('delete', old.rowid, old.content);"
+    " INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);"
+    " END",
+)
+# Repopulate the external-content FTS index from the (renamed) memories table.
+_FTS_REBUILD = "INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"
+
+
 class SqliteVecMemoryRepository:
     def __init__(self, path: str, dim: int | None = None) -> None:
         # The embedding dimension. Given up front (from the embedder) it lets a
@@ -96,27 +159,42 @@ class SqliteVecMemoryRepository:
 
         Content, metadata and links are preserved; every embedding is dropped to
         PENDING for re-computation by the caller. No-op if the dimension already
-        matches. The rebuild runs in one writer transaction.
+        matches.
+
+        The rebuild is ATOMIC: it copies into a fresh table and swaps it in inside one
+        explicit transaction, so the original `memories` is never the only copy on disk
+        and is dropped only once the rewrite has succeeded. A failure mid-rebuild rolls
+        back to the original store intact; readers see the old table until commit, so
+        the table never disappears under a concurrent query (DB schema rule: never
+        drop/recreate to change a table).
         """
         if not self._ready:
             self._dim = new_dim  # fresh store — first write creates the schema at new_dim
             return
         if self._current_dim() == new_dim:
             return
-        memories = self.list_all()  # content + metadata (links live in their own table)
         with self._conns.writer() as conn:
-            conn.executescript(
-                "DROP TRIGGER IF EXISTS memories_ai;"
-                "DROP TRIGGER IF EXISTS memories_ad;"
-                "DROP TRIGGER IF EXISTS memories_au;"
-                "DROP TABLE IF EXISTS memories_fts;"
-                "DROP TABLE IF EXISTS memories;"
-            )
-            self._ready = False
-            self._create_schema(conn, new_dim)  # recreate at the new dim (commits, sets _ready)
-            for memory in memories:
-                conn.execute(_INSERT_MEMORY, self._row(memory, None))  # re-insert PENDING
-            conn.commit()
+            # Drive the transaction explicitly: `executescript` would force-commit the
+            # destructive DDL, breaking atomicity. Autocommit mode hands us BEGIN/COMMIT.
+            conn.isolation_level = None
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute(_create_table_sql("memories_new", new_dim))
+                conn.execute(_COPY_TO_REBUILT)  # snapshot under the writer lock, in-txn
+                conn.execute("DROP TRIGGER memories_ai")
+                conn.execute("DROP TRIGGER memories_ad")
+                conn.execute("DROP TRIGGER memories_au")
+                conn.execute("DROP TABLE memories_fts")
+                conn.execute("DROP TABLE memories")
+                conn.execute("ALTER TABLE memories_new RENAME TO memories")
+                self._rebuild_indexes_and_fts(conn)
+                conn.execute("COMMIT")
+            except Exception:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+            finally:
+                conn.isolation_level = ""  # restore the shared writer's legacy mode
         self._dim = new_dim
 
     def _current_dim(self) -> int | None:
@@ -171,8 +249,17 @@ class SqliteVecMemoryRepository:
         ).fetchone()
         return count
 
-    def find_by_hash(self, content_hash: str) -> Memory | None:
-        return self._read_one(self._conns.reader(), "hash = ?", (content_hash,))
+    def find_active_by_hash(
+        self, content_hash: str, project: str | None
+    ) -> Memory | None:
+        reader = self._conns.reader()
+        if project is None:
+            return self._read_one(
+                reader, "hash = ? AND status = 'active' AND project IS NULL", (content_hash,)
+            )
+        return self._read_one(
+            reader, "hash = ? AND status = 'active' AND project = ?", (content_hash, project)
+        )
 
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None
@@ -360,48 +447,24 @@ class SqliteVecMemoryRepository:
         return self._to_memory(row) if row else None
 
     def _create_schema(self, conn: sqlite3.Connection, dim: int) -> None:
-        conn.executescript(
-            f"""
-            CREATE TABLE memories (
-                id              TEXT PRIMARY KEY,
-                content         TEXT NOT NULL,
-                embedding       BLOB CHECK(embedding IS NULL OR vec_length(embedding) == {dim}),
-                type            TEXT NOT NULL,
-                scope           TEXT NOT NULL,
-                project         TEXT,
-                tags            TEXT NOT NULL,
-                related_files   TEXT NOT NULL,
-                topic_key       TEXT,
-                session_id      TEXT,
-                status          TEXT NOT NULL,
-                supersedes      TEXT,
-                hash            TEXT NOT NULL,
-                created_at      TEXT NOT NULL,
-                updated_at      TEXT NOT NULL
-            );
-            CREATE INDEX memories_hash ON memories(hash);
-            CREATE INDEX memories_topic ON memories(topic_key, project);
-            CREATE INDEX memories_status ON memories(status);
-
-            CREATE VIRTUAL TABLE memories_fts USING fts5(
-                content, content='memories', content_rowid='rowid'
-            );
-            CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
-                INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
-            END;
-            CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
-                INSERT INTO memories_fts(memories_fts, rowid, content)
-                VALUES('delete', old.rowid, old.content);
-            END;
-            CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
-                INSERT INTO memories_fts(memories_fts, rowid, content)
-                VALUES('delete', old.rowid, old.content);
-                INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
-            END;
-            """
-        )
+        conn.execute(_create_table_sql("memories", dim))
+        self._rebuild_indexes_and_fts(conn, rebuild=False)  # empty table — nothing to backfill
         conn.commit()
         self._ready = True
+
+    def _rebuild_indexes_and_fts(
+        self, conn: sqlite3.Connection, *, rebuild: bool = True
+    ) -> None:
+        """(Re)build the indexes, FTS5 table and sync triggers on `memories`. Run both
+        when creating a fresh schema and as the final step of a `set_dimension` swap;
+        `rebuild` backfills the external-content FTS index from the (renamed) table."""
+        for statement in _INDEX_STATEMENTS:
+            conn.execute(statement)
+        conn.execute(_FTS_STATEMENT)
+        for statement in _TRIGGER_STATEMENTS:
+            conn.execute(statement)
+        if rebuild:
+            conn.execute(_FTS_REBUILD)
 
     def _row(self, memory: Memory, vector: Vector | None) -> dict:
         data = to_dict(memory)

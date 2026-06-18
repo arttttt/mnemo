@@ -47,6 +47,15 @@ def test_cli_installer_reports_failure_on_nonzero_exit():
     assert result.status == "failed" and "3" in result.message
 
 
+def test_subprocess_runner_returns_nonzero_for_a_missing_binary():
+    # The named `mnemo setup <client>` path runs the client's binary without detect(),
+    # so a missing binary must surface as a non-zero code, not a raised OSError/traceback.
+    from mnemo.adapters.setup.command_runner import SubprocessCommandRunner
+
+    code = SubprocessCommandRunner().run(["mnemo-no-such-client-binary-zzqqx"])
+    assert code != 0
+
+
 def test_mcp_servers_json_creates_and_preserves_other_servers(tmp_path):
     config = tmp_path / ".cursor" / "mcp.json"
     installer = McpServersJsonInstaller("cursor", config, "mnemo", ["/opt/bin/mnemo-mcp", "--x"])

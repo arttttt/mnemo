@@ -36,6 +36,12 @@ def build_mcp(container: Optional[Container] = None, **settings):
     # `settings` (e.g. host/port) configure the transport; stdio ignores them.
     mcp = FastMCP("mnemo", **settings)
 
+    # NOTE: optional params are typed `str = None` (etc.), NOT `Optional[str]`, on purpose.
+    # Optional[...] renders in the tool schema as anyOf[T, null], which some MCP clients
+    # surface as an "unknown" type; a bare concrete type reads cleanly. Enforced by
+    # tests/integration/test_mcp_server.py::test_optional_params_expose_concrete_types —
+    # do not "fix" these to Optional.
+
     @mcp.tool()
     def remember(
         content: Annotated[
@@ -195,10 +201,17 @@ def build_mcp(container: Optional[Container] = None, **settings):
 
     @mcp.tool()
     def clear(
-        project: Annotated[str, Field(description="Project whose memories to delete.")],
+        project: Annotated[
+            str,
+            Field(description="Project whose memories to delete. Omit and set scope='global' to clear the global memories."),
+        ] = None,
+        scope: Annotated[
+            StoreScope,
+            Field(description="'project' = delete one project's memories (requires project); 'global' = delete the global memories."),
+        ] = "project",
     ) -> dict:
-        """Permanently delete all memories of one project. Returns {deleted}."""
-        return asdict(container.delete.clear(project))
+        """Permanently delete one project's memories, or the global memories. Returns {deleted}."""
+        return asdict(container.delete.clear(project, scope=scope))
 
     @mcp.tool()
     def purge() -> dict:

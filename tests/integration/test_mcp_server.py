@@ -56,7 +56,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["search"] == ["query"]
     assert required["browse"] == []  # query-less: every param is optional
     assert required["delete"] == ["ids"]
-    assert required["clear"] == ["project"]
+    assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
 
 
@@ -153,6 +153,26 @@ def test_mcp_browse_requires_a_project_in_project_scope(tmp_path):
     assert "scope='project'" in str(exc.value)
 
 
+def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):
+    """The write path enforces the same contract as the read path: a project-scoped
+    remember with no project is a loud error, not a silently unreachable row."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {"content": "orphan note"})  # scope defaults to 'project'
+    assert "scope='project'" in str(exc.value)
+
+
+def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {"content": "a rule", "scope": "global", "project": "api"})
+    assert "scope='global'" in str(exc.value)
+
+
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
@@ -160,3 +180,12 @@ def test_mcp_clear_and_purge(tmp_path):
 
     assert json.loads(_call(mcp, "clear", {"project": "api"})[0])["deleted"] == 1
     assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 1
+
+
+def test_mcp_clear_scope_global_targets_globals(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "remember", {"content": "a project note", "project": "api"})
+    _call(mcp, "remember", {"content": "a global rule", "scope": "global", "type": "rule"})
+
+    deleted = json.loads(_call(mcp, "clear", {"scope": "global"})[0])["deleted"]
+    assert deleted == 1  # only the global memory, no project param needed

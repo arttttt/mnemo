@@ -31,6 +31,16 @@ def test_cli_store_then_search(tmp_path, monkeypatch):
     assert memory_id in found.stdout
 
 
+def test_cli_store_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
+    # The write path enforces the scope↔project contract too: a project-scoped store
+    # with no project exits non-zero with a message, not a silently unreachable row.
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["store", "orphan note"])  # --scope defaults to 'project'
+    assert result.exit_code != 0
+    assert "project" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_search_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
     # --scope defaults to 'project'; with no --project there is nothing to scope to,
     # so the command exits non-zero with an actionable message, not a stack trace.
@@ -112,6 +122,25 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
 
 
+def test_cli_clear_scope_global_targets_globals(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "proj note", "--project", "api"])
+    runner.invoke(app, ["store", "global rule", "--scope", "global", "--type", "rule"])
+
+    cleared = runner.invoke(app, ["clear", "--scope", "global"])
+    assert cleared.exit_code == 0, cleared.output
+    assert json.loads(cleared.stdout)["deleted"] == 1
+    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1  # project note survives
+
+
+def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["clear"])  # --scope defaults to 'project', no project given
+    assert result.exit_code != 0
+    assert "project" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
     from mnemo.domain.memory import Memory
@@ -152,4 +181,29 @@ def test_cli_recall_rejects_a_blank_query(tmp_path, monkeypatch):
     result = runner.invoke(app, ["recall", "api", "   "])  # whitespace-only query
     assert result.exit_code != 0
     assert "query" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_recall_reports_missing_model_dep_without_a_traceback(tmp_path, monkeypatch):
+    # The reranker/generator adapters raise an actionable RuntimeError when their
+    # optional extra is absent; the CLI must show the message, not a stack trace.
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+
+    class _Boom:
+        def execute(self, **_kwargs):
+            raise RuntimeError(
+                'the recall generator needs llama-cpp-python — install the model extra '
+                '(pip install "mnemo[recall]") or set MNEMO_GENERATOR=off'
+            )
+
+    class _Container:
+        recall = _Boom()
+
+    monkeypatch.setattr(
+        "mnemo.adapters.cli.app.build_container", lambda *a, **k: _Container()
+    )
+
+    result = runner.invoke(app, ["recall", "api", "auth"])
+    assert result.exit_code == 1
+    assert "llama-cpp-python" in result.output
     assert "Traceback" not in result.output

@@ -30,12 +30,12 @@ remember("quick note about the retry loop", project="checkout-api")          # t
 remember("Auth model v2: ...", type="decision", project="checkout-api",
          topic_key="auth/model")                                             # evolves the same record
 ```
-- `type` default `working-notes`; `scope` default `project` (or `global` if no project).
-- Behavior: normalize → **exact‑dup** check (hash) → **`topic_key` upsert** if matched (supersede) → **insert +
+- `type` default `working-notes`; `scope` default `project`. A project‑scoped write **requires** a `project` (or use `scope="global"`), and passing a `project` with `scope="global"` is rejected — the same scope↔project contract the read tools enforce.
+- Behavior: reject blank content → normalize → **exact‑dup** check (hash, only against **active** records in the **same project/scope**) → **`topic_key` upsert** if matched (supersede) → **insert +
   lexical index → enqueue embed** (the vector is computed off the hot path — see
   [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation)). Near‑similar memories are
   **not** suppressed here (see [04-data-model.md](04-data-model.md)).
-- Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already stored — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the edge lives in `links`).
+- Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already **active in the same project/scope** — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the edge lives in `links`).
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
 
@@ -72,6 +72,7 @@ Hard delete only (no soft‑delete). Available to **both the agent and the CLI**
 ```python
 delete(ids=["..."])     # remove specific memories
 clear(project="x")      # remove all memories of one project
+clear(scope="global")   # remove the global memories (no project — scope is authoritative)
 purge()                 # remove everything
 ```
 Superseding (evolution) is separate and keeps history; deletion physically removes records.

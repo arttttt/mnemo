@@ -41,6 +41,8 @@ class Memory:
         session_id: str | None = None,
         id: str | None = None,
     ) -> "Memory":
+        if not content or not content.strip():
+            raise ValueError("memory content is empty; store text worth remembering")
         scope = Scope(scope)
         type = MemoryType(type)
         if scope is Scope.GLOBAL:

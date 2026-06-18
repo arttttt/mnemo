@@ -32,9 +32,14 @@ def ensure_service_running(config: Config) -> None:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if _is_listening(config.host, config.port):
             return  # another connector brought it up while we waited for the lock
-        pid = _spawn_service(run_dir)
-        (run_dir / "service.pid").write_text(str(pid))
-        _wait_until_listening(config.host, config.port)  # hold the lock until ready
+        proc = _spawn_service(run_dir)
+        (run_dir / "service.pid").write_text(str(proc.pid))
+        # Hold the lock until the service accepts connections, so a burst spawns exactly
+        # one. A cold model download+load can take a while, so wait as long as the process
+        # is alive (up to a generous, configurable cap) and only give up if it dies.
+        # Releasing the lock while it is still loading would let the next connector spawn a
+        # second service onto the taken port and crash on bind().
+        _wait_until_listening(proc, config.host, config.port, config.service_ready_timeout)
 
 
 def _is_listening(host: str, port: int) -> bool:
@@ -45,7 +50,7 @@ def _is_listening(host: str, port: int) -> bool:
         return False
 
 
-def _spawn_service(run_dir: Path) -> int:
+def _spawn_service(run_dir: Path) -> subprocess.Popen:
     log = open(run_dir / "service.log", "a")
     try:
         proc = subprocess.Popen(
@@ -57,13 +62,22 @@ def _spawn_service(run_dir: Path) -> int:
         )
     finally:
         log.close()  # the child keeps its own dup of the fd
-    return proc.pid
+    return proc
 
 
-def _wait_until_listening(host: str, port: int, timeout: float = _READY_TIMEOUT) -> None:
+def _wait_until_listening(
+    proc: subprocess.Popen, host: str, port: int, timeout: float = _READY_TIMEOUT
+) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if _is_listening(host, port):
             return
+        if proc.poll() is not None:
+            # The service died before it ever listened — fail fast (and release the lock)
+            # so the next connector can respawn, rather than waiting out the whole timeout.
+            raise RuntimeError(
+                f"mnemo service exited with code {proc.returncode} before listening on "
+                f"{host}:{port}; see service.log"
+            )
         time.sleep(0.1)
-    raise TimeoutError(f"service did not become ready on {host}:{port}")
+    raise TimeoutError(f"service did not become ready on {host}:{port} within {timeout:.0f}s")
