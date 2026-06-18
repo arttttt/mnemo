@@ -24,6 +24,10 @@ class SqliteConnections:
         self._write_lock = threading.Lock()
         self._writer = self._open()
         self._reader_local = threading.local()
+        # Per-thread readers live in thread-local storage, which can't be enumerated;
+        # keep a flat registry too so close() can release every one (and its -wal/-shm).
+        self._readers: list[sqlite3.Connection] = []
+        self._readers_lock = threading.Lock()
 
     @contextmanager
     def writer(self) -> Iterator[sqlite3.Connection]:
@@ -37,7 +41,20 @@ class SqliteConnections:
         if conn is None:
             conn = self._open()
             self._reader_local.conn = conn
+            with self._readers_lock:
+                self._readers.append(conn)
         return conn
+
+    def close(self) -> None:
+        """Close the writer and every reader connection. Closing the writer lets SQLite
+        checkpoint and drop the -wal/-shm sidecars. Call on a clean shutdown; after it
+        the instance must not be used again."""
+        with self._write_lock:
+            self._writer.close()
+        with self._readers_lock:
+            for conn in self._readers:
+                conn.close()
+            self._readers.clear()
 
     def _open(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path, check_same_thread=False)
