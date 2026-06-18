@@ -162,6 +162,11 @@ class InMemoryMemoryRepository:
         return len(removed_ids)
 
     def _persist(self) -> None:
+        # NOTE: this is the offline/test backend (the SQLite store is the production one,
+        # crash-safe via its WAL). The write below is a plain truncate-then-write — NOT
+        # atomic and with no recovery — which is acceptable HERE precisely because no real
+        # data lives in this backend. Do not promote it to production without a temp-file
+        # + os.replace; the persistence guarantees belong to the SQLite store.
         if self._path is None:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
