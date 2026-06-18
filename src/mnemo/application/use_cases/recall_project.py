@@ -25,9 +25,14 @@ class RecallProject:
         reranker: RerankerPort | None = None,
         generator: GeneratorPort | None = None,
         rerank_top_k: int = 20,
+        generator_max_tokens: int = 512,
     ) -> None:
         self._pipeline = build_recall_pipeline(
-            repository, reranker=reranker, generator=generator, top_k=rerank_top_k
+            repository,
+            reranker=reranker,
+            generator=generator,
+            top_k=rerank_top_k,
+            max_tokens=generator_max_tokens,
         )
 
     def execute(self, *, project: str, query: str, limit: int = 50) -> RecallBundle:

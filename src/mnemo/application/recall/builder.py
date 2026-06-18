@@ -26,11 +26,12 @@ def build_recall_pipeline(
     reranker: RerankerPort | None = None,
     generator: GeneratorPort | None = None,
     top_k: int = 20,
+    max_tokens: int = 512,
 ) -> Pipeline[RecallRequest, RecallBundle]:
     stages = [GatherStage(repository)]
     if reranker is not None:
         stages.append(RerankStage(reranker, top_k=top_k))
     stages.append(AssembleStage())
     if generator is not None:
-        stages.append(SynthesizeStage(generator))
+        stages.append(SynthesizeStage(generator, max_tokens=max_tokens))
     return Pipeline(stages, intake=RECALL_REQUEST, produces=RECALL)

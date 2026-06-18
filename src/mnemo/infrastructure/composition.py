@@ -41,6 +41,7 @@ def build_container(
             reranker=_build_reranker(config),
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,
+            generator_max_tokens=config.generator_max_tokens,
         ),
         delete=DeleteMemory(repository),
     )
