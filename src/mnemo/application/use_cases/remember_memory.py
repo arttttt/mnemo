@@ -60,8 +60,11 @@ class RememberMemory:
                 f"{self._scheduler.max_input}; split it into smaller, focused memories"
             )
 
-        # Exact duplicate: identical normalized content already stored — don't spawn a row.
-        exact = self._repository.find_by_hash(memory.hash)
+        # Exact duplicate: identical normalized content already ACTIVE in this same
+        # scope/project — don't spawn a row. The lookup is project-scoped (the same
+        # content is a distinct memory in another project) and active-only (re-storing
+        # previously superseded content writes a fresh, retrievable row).
+        exact = self._repository.find_active_by_hash(memory.hash, memory.project)
         if exact is not None:
             return RememberResult(id=exact.id, status="duplicate")
 

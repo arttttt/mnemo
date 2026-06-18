@@ -22,12 +22,10 @@ class InMemoryMemoryRepository:
     def __init__(self, path: str | None = None) -> None:
         self._path = Path(path) if path else None
         self._items: list[tuple[Memory, Vector | None]] = []
-        self._index_by_hash: dict[str, int] = {}
         self._links: list[Link] = []
         self._load()
 
     def add(self, memory: Memory, vector: Vector | None = None) -> None:
-        self._index_by_hash[memory.hash] = len(self._items)
         self._items.append((memory, list(vector) if vector is not None else None))
         self._persist()
 
@@ -63,9 +61,17 @@ class InMemoryMemoryRepository:
         self._items = [(memory, None) for memory, _ in self._items]  # drop all to pending
         self._persist()
 
-    def find_by_hash(self, content_hash: str) -> Memory | None:
-        index = self._index_by_hash.get(content_hash)
-        return self._items[index][0] if index is not None else None
+    def find_active_by_hash(
+        self, content_hash: str, project: str | None
+    ) -> Memory | None:
+        for memory, _ in self._items:
+            if (
+                memory.status == "active"
+                and memory.hash == content_hash
+                and memory.project == project
+            ):
+                return memory
+        return None
 
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None
@@ -119,7 +125,6 @@ class InMemoryMemoryRepository:
     def delete_all(self) -> int:
         removed = len(self._items)
         self._items = []
-        self._index_by_hash = {}
         self._links = []
         self._persist()
         return removed
@@ -153,14 +158,8 @@ class InMemoryMemoryRepository:
             for link in self._links
             if link.source_id not in removed_ids and link.target_id not in removed_ids
         ]
-        self._reindex()
         self._persist()
         return len(removed_ids)
-
-    def _reindex(self) -> None:
-        self._index_by_hash = {
-            memory.hash: index for index, (memory, _) in enumerate(self._items)
-        }
 
     def _persist(self) -> None:
         if self._path is None:
@@ -183,7 +182,6 @@ class InMemoryMemoryRepository:
         rows = raw["memories"] if isinstance(raw, dict) else raw
         for row in rows:
             memory = from_dict(row["memory"])
-            self._index_by_hash[memory.hash] = len(self._items)
             stored = row["vector"]
             self._items.append((memory, list(stored) if stored is not None else None))
         if isinstance(raw, dict):

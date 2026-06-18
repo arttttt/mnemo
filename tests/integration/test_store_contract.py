@@ -57,14 +57,37 @@ def _store(repo, embedder, content, **kwargs):
     return memory
 
 
-def test_add_and_find_by_hash(open_repo, embedder):
+def test_add_and_find_active_by_hash(open_repo, embedder):
     repo = open_repo()
     memory = _store(repo, embedder, "durable note", type="decision", project="api")
 
-    found = repo.find_by_hash(memory.hash)
+    found = repo.find_active_by_hash(memory.hash, "api")
     assert found is not None and found.id == memory.id
     assert found.type == memory.type and found.content == "durable note"
-    assert repo.find_by_hash("does-not-exist") is None
+    assert repo.find_active_by_hash("does-not-exist", "api") is None
+
+
+def test_find_active_by_hash_is_scoped_to_project(open_repo, embedder):
+    """Identical content is a DISTINCT memory in another project — the hash key is
+    global but content is unique only within a scope, so the lookup is project-scoped."""
+    repo = open_repo()
+    here = _store(repo, embedder, "shared fact", project="api")
+    there = _store(repo, embedder, "shared fact", project="other")  # same hash, kept
+
+    assert here.hash == there.hash  # the content hash itself is project-independent
+    assert repo.find_active_by_hash(here.hash, "api").id == here.id
+    assert repo.find_active_by_hash(here.hash, "other").id == there.id
+    assert repo.find_active_by_hash(here.hash, "absent") is None
+
+
+def test_find_active_by_hash_ignores_superseded(open_repo, embedder):
+    """Superseded rows are not retrievable, so they must not match the dedup lookup —
+    otherwise re-storing the content would return a dead id and never re-create it."""
+    repo = open_repo()
+    memory = _store(repo, embedder, "evolving note", project="api")
+    repo.mark_superseded(memory.id)
+
+    assert repo.find_active_by_hash(memory.hash, "api") is None
 
 
 def test_persists_across_reopen(open_repo, embedder):
@@ -76,7 +99,7 @@ def test_persists_across_reopen(open_repo, embedder):
     stored = reopened.list_all()
     assert [m.id for m in stored] == [memory.id]
     assert stored[0].session_id == "run-1"  # session_id round-trips through the store
-    assert reopened.find_by_hash(memory.hash) is not None
+    assert reopened.find_active_by_hash(memory.hash, "api") is not None
 
 
 def test_search_ranks_by_similarity(open_repo, embedder):
@@ -169,7 +192,7 @@ def test_pending_vector_lifecycle(open_repo, embedder):
     assert repo.has_vector(pending.id) is False
     assert repo.content_for(pending.id) == "a pending memory about redis"
     # stored and addressable even without a vector
-    assert repo.find_by_hash(pending.hash) is not None
+    assert repo.find_active_by_hash(pending.hash, "api") is not None
     assert pending.id in {m.id for m in repo.list_all()}
 
     repo.set_vector(pending.id, embedder.encode(pending.content))

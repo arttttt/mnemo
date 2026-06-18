@@ -38,7 +38,14 @@ class MemoryRepositoryPort(Protocol):
         migrate between embedders; content/metadata/links are preserved."""
         ...
 
-    def find_by_hash(self, content_hash: str) -> Memory | None: ...
+    def find_active_by_hash(
+        self, content_hash: str, project: str | None
+    ) -> Memory | None:
+        """The ACTIVE memory whose content hashes to `content_hash` WITHIN `project`,
+        or None. Content is unique only within a scope, so the lookup is project-scoped
+        (global memories live under the `__global__` sentinel project) and ignores
+        superseded rows — mirroring `find_active_by_topic_key`."""
+        ...
 
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None

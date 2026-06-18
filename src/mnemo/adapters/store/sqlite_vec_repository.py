@@ -171,8 +171,17 @@ class SqliteVecMemoryRepository:
         ).fetchone()
         return count
 
-    def find_by_hash(self, content_hash: str) -> Memory | None:
-        return self._read_one(self._conns.reader(), "hash = ?", (content_hash,))
+    def find_active_by_hash(
+        self, content_hash: str, project: str | None
+    ) -> Memory | None:
+        reader = self._conns.reader()
+        if project is None:
+            return self._read_one(
+                reader, "hash = ? AND status = 'active' AND project IS NULL", (content_hash,)
+            )
+        return self._read_one(
+            reader, "hash = ? AND status = 'active' AND project = ?", (content_hash, project)
+        )
 
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None

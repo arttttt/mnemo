@@ -77,6 +77,32 @@ def test_exact_duplicate_is_not_stored_twice():
     assert len(repo.list_all()) == 1
 
 
+def test_same_content_in_two_projects_is_kept_separately():
+    # The exact-dup hash key is global, but content is unique only within a scope: the
+    # same fact in another project is a distinct memory, not a duplicate to drop.
+    repo, remember, _, _ = _wiring()
+    first = remember.execute(content="shared fact", project="api")
+    second = remember.execute(content="shared fact", project="other")
+    assert second.status == "created"
+    assert second.id != first.id
+    assert len(repo.list_all()) == 2
+
+
+def test_re_remembering_superseded_content_creates_a_fresh_row():
+    # Re-storing content that was superseded must write a new, retrievable row — not
+    # return the dead (superseded) id and silently store nothing.
+    repo, remember, search, _ = _wiring()
+    first = remember.execute(content="reborn note", project="api")
+    repo.mark_superseded(first.id)
+
+    second = remember.execute(content="reborn note", project="api")
+    assert second.status == "created"
+    assert second.id != first.id
+
+    ids = {hit.id for hit in search.execute(query="reborn note", project="api")}
+    assert second.id in ids and first.id not in ids
+
+
 def test_topic_key_upsert_supersedes_prior():
     repo, remember, search, _ = _wiring()
     first = remember.execute(
