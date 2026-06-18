@@ -7,7 +7,7 @@ WHERE) for pushed-down filtering. Only active memories are ever returned.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.memory import Memory
@@ -25,17 +25,22 @@ class SearchCriteria:
     created_after: str | None = None        # ISO-8601 lower bound; keep created_at >= this
 
     def __post_init__(self) -> None:
-        # created_after is compared lexicographically against the stored ISO created_at,
-        # so a malformed value would filter silently and wrongly — validate it as ISO-8601
-        # (date or datetime) up front and reject anything else with a clear error.
+        # Parse created_after to a datetime and normalize it to UTC up front: a malformed
+        # value would otherwise filter silently and wrongly, and a non-UTC offset would
+        # mis-order under the string comparison the SQL store uses. Stored created_at is
+        # always UTC ISO (domain.now()), so a UTC-normalized bound compares correctly in
+        # both the in-process matcher and the SQL `>=`.
         if self.created_after is not None:
             try:
-                datetime.fromisoformat(self.created_after.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(self.created_after.replace("Z", "+00:00"))
             except ValueError:
                 raise ValueError(
                     "created_after must be an ISO-8601 date or datetime (e.g. "
                     f"'2026-06-01' or '2026-06-01T00:00:00+00:00'); got {self.created_after!r}"
                 )
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)  # naive input is taken as UTC
+            object.__setattr__(self, "created_after", parsed.astimezone(timezone.utc).isoformat())
         # The scope↔project contract, shared with browse and clear (one source of truth).
         validate_scope_project(self.scope, self.project)
 
@@ -52,7 +57,9 @@ class SearchCriteria:
             path in memory.related_files for path in self.related_files
         ):
             return False
-        if self.created_after is not None and memory.created_at < self.created_after:
+        if self.created_after is not None and (
+            datetime.fromisoformat(memory.created_at) < datetime.fromisoformat(self.created_after)
+        ):
             return False
         return True
 

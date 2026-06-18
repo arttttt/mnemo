@@ -153,6 +153,23 @@ def test_search_recency_excludes_old(open_repo, embedder):
     assert _hits(repo, embedder, "fresh note", future_cutoff, limit=5) == []
 
 
+def test_created_after_filters_by_utc_instant(open_repo, embedder):
+    """A non-UTC-offset created_after is normalized to UTC, so it filters by instant
+    through both the in-process matcher and the SQL `>=` string comparison."""
+    repo = open_repo()
+    early = Memory.create("early note", project="api")
+    early.created_at = "2026-06-19T08:00:00+00:00"
+    repo.add(early, embedder.encode(early.content))
+    late = Memory.create("late note", project="api")
+    late.created_at = "2026-06-19T11:00:00+00:00"
+    repo.add(late, embedder.encode(late.content))
+
+    # bound 12:00+03:00 == 09:00 UTC → only the 11:00 memory is at/after it
+    criteria = SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+03:00")
+    hits = repo.retrieve(Retrieval(criteria=criteria, limit=10))  # filter-only browse
+    assert {hit.memory.id for hit in hits} == {late.id}
+
+
 def test_browse_lists_by_recency_with_no_score(open_repo, embedder):
     """A retrieval with no text and no vector is a filter-only browse: newest
     first, no relevance ranking (score 0.0), no embedding needed."""

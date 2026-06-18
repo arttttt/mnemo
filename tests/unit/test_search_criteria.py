@@ -34,6 +34,31 @@ def test_created_after_rejects_non_iso():
     assert "ISO-8601" in str(exc.value)
 
 
+def test_created_after_normalizes_a_non_utc_offset_to_utc():
+    # 12:00+03:00 is 09:00 UTC; stored created_at is UTC, so the bound must be normalized
+    # or the string comparison the SQL store uses would mis-order it.
+    criteria = SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+03:00")
+    assert criteria.created_after == "2026-06-19T09:00:00+00:00"
+
+
+def test_created_after_naive_input_is_taken_as_utc():
+    assert (
+        SearchCriteria(scope="all", created_after="2026-06-19T12:00:00").created_after
+        == "2026-06-19T12:00:00+00:00"
+    )
+
+
+def test_created_after_filters_by_instant_not_by_string():
+    from mnemo.domain.memory import Memory
+
+    memory = Memory.create("note", project="api")
+    memory.created_at = "2026-06-19T10:00:00+00:00"  # 10:00 UTC
+    # bound 12:00+03:00 == 09:00 UTC → the 10:00 memory is after it → kept
+    assert SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+03:00").matches(memory)
+    # bound 12:00+00:00 == 12:00 UTC → the 10:00 memory is before it → dropped
+    assert not SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+00:00").matches(memory)
+
+
 @pytest.mark.parametrize("scope", ["global", "all"])
 def test_project_is_rejected_with_global_or_all_scope(scope):
     # scope is authoritative for these — a project would be silently dropped, so the
