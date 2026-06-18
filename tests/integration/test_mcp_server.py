@@ -56,7 +56,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["search"] == ["query"]
     assert required["browse"] == []  # query-less: every param is optional
     assert required["delete"] == ["ids"]
-    assert required["clear"] == ["project"]
+    assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
 
 
@@ -160,3 +160,12 @@ def test_mcp_clear_and_purge(tmp_path):
 
     assert json.loads(_call(mcp, "clear", {"project": "api"})[0])["deleted"] == 1
     assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 1
+
+
+def test_mcp_clear_scope_global_targets_globals(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "remember", {"content": "a project note", "project": "api"})
+    _call(mcp, "remember", {"content": "a global rule", "scope": "global", "type": "rule"})
+
+    deleted = json.loads(_call(mcp, "clear", {"scope": "global"})[0])["deleted"]
+    assert deleted == 1  # only the global memory, no project param needed

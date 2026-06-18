@@ -112,6 +112,25 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
 
 
+def test_cli_clear_scope_global_targets_globals(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "proj note", "--project", "api"])
+    runner.invoke(app, ["store", "global rule", "--scope", "global", "--type", "rule"])
+
+    cleared = runner.invoke(app, ["clear", "--scope", "global"])
+    assert cleared.exit_code == 0, cleared.output
+    assert json.loads(cleared.stdout)["deleted"] == 1
+    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1  # project note survives
+
+
+def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["clear"])  # --scope defaults to 'project', no project given
+    assert result.exit_code != 0
+    assert "project" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
     from mnemo.domain.memory import Memory

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
@@ -35,24 +36,8 @@ class SearchCriteria:
                     "created_after must be an ISO-8601 date or datetime (e.g. "
                     f"'2026-06-01' or '2026-06-01T00:00:00+00:00'); got {self.created_after!r}"
                 )
-        # A project-scoped search must name the project to scope to. There is no
-        # "current project" to infer here — without a project the search would
-        # silently match only project-less + global rows (almost always nothing),
-        # so reject it with an explicit, actionable error instead.
-        if self.scope == "project" and self.project is None:
-            raise ValueError(
-                "scope='project' needs a project to scope to, but none was given; "
-                "pass the project slug, or use scope='global' (only global memories) "
-                "or scope='all' (search across every project)"
-            )
-        # The mirror case: 'all'/'global' ignore project entirely (scope is
-        # authoritative). Accepting a project here would silently drop the filter and
-        # return a wrong-scoped result, so reject the contradiction loudly instead.
-        if self.scope in ("global", "all") and self.project is not None:
-            raise ValueError(
-                f"project has no effect with scope='{self.scope}'; drop the project "
-                f"param, or use scope='project' to scope the search to it"
-            )
+        # The scope↔project contract, shared with browse and clear (one source of truth).
+        validate_scope_project(self.scope, self.project)
 
     def matches(self, memory: Memory) -> bool:
         if memory.status != "active":

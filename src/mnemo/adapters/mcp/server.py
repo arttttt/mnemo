@@ -195,10 +195,17 @@ def build_mcp(container: Optional[Container] = None, **settings):
 
     @mcp.tool()
     def clear(
-        project: Annotated[str, Field(description="Project whose memories to delete.")],
+        project: Annotated[
+            str,
+            Field(description="Project whose memories to delete. Omit and set scope='global' to clear the global memories."),
+        ] = None,
+        scope: Annotated[
+            StoreScope,
+            Field(description="'project' = delete one project's memories (requires project); 'global' = delete the global memories."),
+        ] = "project",
     ) -> dict:
-        """Permanently delete all memories of one project. Returns {deleted}."""
-        return asdict(container.delete.clear(project))
+        """Permanently delete one project's memories, or the global memories. Returns {deleted}."""
+        return asdict(container.delete.clear(project, scope=scope))
 
     @mcp.tool()
     def purge() -> dict:
