@@ -9,11 +9,10 @@ directly.
 """
 from typing import Protocol
 
+from mnemo.application.ports.token_window import TokenWindowPort
 
-class EmbeddingSchedulerPort(Protocol):
-    @property
-    def max_input(self) -> int: ...
 
-    def count_tokens(self, text: str) -> int: ...
-
+class EmbeddingSchedulerPort(TokenWindowPort, Protocol):
+    # max_input + count_tokens come from TokenWindowPort (the scheduler forwards them
+    # to the embedder); this port adds only the scheduling call.
     def schedule(self, memory_id: str) -> None: ...
