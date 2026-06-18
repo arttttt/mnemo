@@ -15,33 +15,49 @@ from mnemo.adapters.session.meta_session_provider import SESSION_META_KEY
 from mnemo.infrastructure.config import Config
 
 
-async def _serve(url: str, session: InProcessSessionProvider) -> None:
+async def _serve(url: str, session: InProcessSessionProvider, config: Config) -> None:
+    import anyio
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
 
-    async with streamable_http_client(url) as (http_read, http_write, _):
-        async with ClientSession(http_read, http_write) as upstream:
-            await upstream.initialize()
-            server = Server("mnemo")
+    async def _forward(action):
+        # Open a fresh upstream connection for this request, (re)starting the shared
+        # service first if it is not up. A single long-lived stream would die if the
+        # service restarts mid-session (e.g. `mnemo reindex` stops it), leaving the
+        # connector wedged; per-request connect + one retry recovers transparently.
+        # ensure_service_running blocks (socket waits), so it runs off the event loop.
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            await anyio.to_thread.run_sync(ensure_service_running, config)
+            try:
+                async with streamable_http_client(url) as (http_read, http_write, _):
+                    async with ClientSession(http_read, http_write) as upstream:
+                        await upstream.initialize()
+                        return await action(upstream)
+            except Exception as exc:  # noqa: BLE001 — transport/connection failure: retry once
+                last_error = exc
+        raise last_error
 
-            @server.list_tools()
-            async def list_tools():
-                return (await upstream.list_tools()).tools
+    server = Server("mnemo")
 
-            @server.call_tool(validate_input=False)
-            async def call_tool(name, arguments):
-                # Forward the upstream result verbatim (content + structured + isError),
-                # tagging the request with this connection's session id.
-                return await upstream.call_tool(
-                    name, arguments, meta={SESSION_META_KEY: session.current_session_id()}
-                )
+    @server.list_tools()
+    async def list_tools():
+        return (await _forward(lambda upstream: upstream.list_tools())).tools
 
-            async with stdio_server() as (stdio_read, stdio_write):
-                await server.run(
-                    stdio_read, stdio_write, server.create_initialization_options()
-                )
+    @server.call_tool(validate_input=False)
+    async def call_tool(name, arguments):
+        # Forward the upstream result verbatim (content + structured + isError),
+        # tagging the request with this connection's session id.
+        return await _forward(
+            lambda upstream: upstream.call_tool(
+                name, arguments, meta={SESSION_META_KEY: session.current_session_id()}
+            )
+        )
+
+    async with stdio_server() as (stdio_read, stdio_write):
+        await server.run(stdio_read, stdio_write, server.create_initialization_options())
 
 
 def main() -> None:
@@ -56,5 +72,7 @@ def main() -> None:
     # the whole run (the reference lives until anyio.run returns, i.e. process end).
     presence = ConnectorPresence(connectors_dir(config))
     presence.acquire(session.current_session_id())
-    ensure_service_running(config)  # start the shared service if it is not up yet
-    anyio.run(_serve, f"http://{config.host}:{config.port}/mcp", session)
+    ensure_service_running(config)  # bring the shared service up when this agent connects
+    # Each forwarded request re-ensures it too, so a restart mid-session (e.g. `mnemo
+    # reindex` stops it) recovers instead of wedging — see _serve._forward.
+    anyio.run(_serve, f"http://{config.host}:{config.port}/mcp", session, config)

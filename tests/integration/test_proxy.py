@@ -143,3 +143,77 @@ def test_proxy_spawns_the_service_when_down(free_tcp_port, tmp_path):
                 os.kill(int(pidfile.read_text()), signal.SIGTERM)
             except (ProcessLookupError, ValueError):
                 pass
+
+
+def test_proxy_reconnects_after_the_service_is_killed(free_tcp_port, tmp_path):
+    """Mid-session the service dies (the `mnemo reindex` scenario kills it). The next call
+    must respawn it and succeed, instead of leaving the connector wedged on a dead stream."""
+    import signal
+    import socket
+    import time
+
+    import anyio
+
+    host, port = "127.0.0.1", free_tcp_port
+    data_dir = tmp_path / "data"
+    pidfile = data_dir.parent / "run" / "service.pid"
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(_SRC),
+        "MNEMO_STORE": "memory",
+        "MNEMO_EMBEDDER": "hash",
+        "MNEMO_DATA_DIR": str(data_dir),
+        "MNEMO_HOST": host,
+        "MNEMO_PORT": str(port),
+    }
+
+    def _kill_service():
+        if pidfile.exists():
+            try:
+                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+
+    def _wait_port_free(timeout=10.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=0.25):
+                    pass
+            except OSError:
+                return
+            time.sleep(0.05)
+
+    async def flow():
+        from mcp.client.session import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["-c", "from mnemo.adapters.mcp.proxy import main; main()"],
+            env=env,
+        )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                first = await session.call_tool(
+                    "remember", {"content": "before the kill", "project": "api"}
+                )
+                assert not first.isError, _text(first)
+
+                # Kill the service out from under the live connector, mid-session.
+                await anyio.to_thread.run_sync(_kill_service)
+                await anyio.to_thread.run_sync(_wait_port_free)
+
+                # The next call must respawn the service and go through.
+                after = await session.call_tool(
+                    "remember", {"content": "after the respawn", "project": "api"}
+                )
+                assert not after.isError, _text(after)
+                hits = await session.call_tool("search", {"query": "respawn", "scope": "all"})
+                assert "after the respawn" in _text(hits)
+
+    try:
+        anyio.run(flow)
+    finally:
+        _kill_service()
