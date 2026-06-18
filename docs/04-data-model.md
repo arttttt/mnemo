@@ -104,8 +104,10 @@ background/ingestion capability — **post‑MVP** (see [10-roadmap.md](10-roadm
 
 ## Dedup & evolution on write (no LLM)
 
-1. **Exact duplicate** → the `hash` of normalized content matches an existing record: don't spawn a new record,
-   return its id with `status: "duplicate"`. Identical text carries no new information.
+1. **Exact duplicate** → the `hash` of normalized content matches an **active** record **in the same project/scope**:
+   don't spawn a new record, return its id with `status: "duplicate"`. Identical text carries no new information.
+   The same content in another project is a distinct memory (kept), and re‑storing previously superseded content
+   writes a fresh, retrievable record (the superseded one no longer matches the active‑only lookup).
 2. **`topic_key` upsert (explicit evolution)** → if `topic_key` matches an existing record, the new one
    supersedes it (old → `status: superseded`, kept). This is the writer's explicit signal — **not** dedup.
 3. **Near‑similar is NOT acted on here.** We do **not** suppress near‑duplicates on write — a small but
@@ -138,7 +140,8 @@ timestamps are added later as nullable fields, no breaking migration. See [10-ro
 
 Hard delete only — no soft‑delete/inactivation. All three are available to **both the agent and the CLI**:
 - `delete(ids)` — remove specific memories.
-- `clear(project)` — remove all memories of one project.
+- `clear(project)` — remove all memories of one project; `clear(scope="global")` removes the global memories
+  (stored under a reserved sentinel project, so they need the scope rather than a slug).
 - `purge()` — remove everything.
 
 Superseding is separate: it keeps history via `status: superseded`; deletion physically removes records.
