@@ -36,6 +36,12 @@ def build_mcp(container: Optional[Container] = None, **settings):
     # `settings` (e.g. host/port) configure the transport; stdio ignores them.
     mcp = FastMCP("mnemo", **settings)
 
+    # NOTE: optional params are typed `str = None` (etc.), NOT `Optional[str]`, on purpose.
+    # Optional[...] renders in the tool schema as anyOf[T, null], which some MCP clients
+    # surface as an "unknown" type; a bare concrete type reads cleanly. Enforced by
+    # tests/integration/test_mcp_server.py::test_optional_params_expose_concrete_types —
+    # do not "fix" these to Optional.
+
     @mcp.tool()
     def remember(
         content: Annotated[
