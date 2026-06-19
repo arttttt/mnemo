@@ -1,8 +1,6 @@
 """Focus recall — reranks the gathered memories by relevance to the query, keeps top-K."""
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
@@ -11,10 +9,6 @@ from mnemo.domain.memory import Memory
 
 class _KeywordReranker:
     """A deterministic stand-in for a cross-encoder: scores by query-word overlap."""
-
-    @contextmanager
-    def session(self):
-        yield self
 
     def rank(self, query, documents):
         words = set(query.lower().split())

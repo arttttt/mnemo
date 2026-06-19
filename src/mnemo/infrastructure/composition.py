@@ -1,12 +1,13 @@
 """Builds the Container by wiring concrete adapters from config (DI)."""
 from __future__ import annotations
 
+from llmkit.ports.generator import Generator
+from llmkit.ports.reranker import Reranker
+
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.generator import GeneratorPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.reranker import RerankerPort
 from mnemo.application.ports.session_provider import SessionProviderPort
 from mnemo.application.use_cases.browse_memory import BrowseMemory
 from mnemo.application.use_cases.delete_memory import DeleteMemory
@@ -80,18 +81,36 @@ def _build_repository(config: Config, dim: int) -> MemoryRepositoryPort:
     raise ValueError(f"unknown store: {config.store!r}")
 
 
-def _build_reranker(config: Config) -> RerankerPort | None:
+def _build_reranker(config: Config) -> Reranker | None:
     if config.reranker == "off":
         return None
-    from mnemo.adapters.reranking.fastembed_reranker import FastEmbedReranker
+    from llmkit.build import build_reranker
+    from llmkit.config import ModelConfig
+    from llmkit.lifecycle.residency import Transient
+    from llmkit.runtime.onnx_encoder import OnnxSource
 
     # cache_dir reuses the models dir so reranker weights live alongside the embedder's.
-    return FastEmbedReranker(config.reranker, cache_dir=config.models_dir or None)
+    return build_reranker(
+        ModelConfig(
+            source=OnnxSource(repo=config.reranker),
+            residency=Transient(),
+            cache_dir=config.models_dir or None,
+        )
+    )
 
 
-def _build_generator(config: Config) -> GeneratorPort | None:
+def _build_generator(config: Config) -> Generator | None:
     if config.generator == "off":
         return None
-    from mnemo.adapters.generation.llama_cpp_generator import LlamaCppGenerator
+    from llmkit.build import build_generator
+    from llmkit.config import ModelConfig
+    from llmkit.lifecycle.residency import Transient
+    from llmkit.runtime.llama_cpp import GgufSource
 
-    return LlamaCppGenerator(config.generator, filename=config.generator_file)
+    return build_generator(
+        ModelConfig(
+            source=GgufSource(model=config.generator, filename=config.generator_file),
+            residency=Transient(),
+            cache_dir=config.models_dir or None,
+        )
+    )

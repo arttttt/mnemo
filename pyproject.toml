@@ -17,9 +17,11 @@ embed = ["fastembed>=0.4.0"]   # alternative embedder (bge-small / fastembed mod
 # Recall / consolidation model stages (opt-in, heavy): the cross-encoder reranker and
 # the instruct generator. A base install runs without them (stages off / actionable error).
 recall = [
-    "fastembed>=0.4.0",         # reranker — cross-encoder via fastembed (ONNX, no torch)
+    "onnxruntime>=1.16",        # reranker / NLI — cross-encoder via ONNX Runtime (no torch)
+    "tokenizers>=0.15",         #   its tokenizer
+    "numpy>=1.24",              #   logit handling
     "llama-cpp-python>=0.3.0",  # generator — small instruct LLM via llama.cpp (GGUF)
-    "huggingface-hub>=0.20",    # model download (GGUF / ONNX)
+    "huggingface-hub>=0.20",    # model download (ONNX / GGUF)
 ]
 dev = ["pytest>=8.0"]
 
@@ -40,5 +42,5 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-m 'not heavy'"
 markers = [
-    "heavy: requires the heavy/networked fastembed backend (downloads a model)",
+    "heavy: requires a networked model backend (downloads weights)",
 ]
