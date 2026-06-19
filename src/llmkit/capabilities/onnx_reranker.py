@@ -22,5 +22,5 @@ class OnnxReranker:
             return []
         pairs = [(query, document) for document in documents]
         with self._manager.use() as runtime:
-            logits = runtime.forward_pairs(pairs)
+            logits = runtime.forward_pairs(pairs).output
         return [float(score) for score in logits.reshape(len(documents), -1)[:, 0]]

@@ -54,10 +54,22 @@ def _build_embedder(config: Config) -> EmbedderPort:
         from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 
         return HashEmbedder()
-    if name == "pplx":  # the default — pplx-embed-v1-0.6b int8 ONNX (CPU)
-        from mnemo.adapters.embedding.pplx_embedder import PplxEmbedder
+    if name == "pplx":  # the default — pplx-embed-v1-0.6b int8 ONNX (CPU), via llmkit
+        from llmkit.build import build_embedder
+        from llmkit.config import ModelConfig
+        from llmkit.lifecycle.residency import Resident
+        from llmkit.runtime.onnx_encoder import OnnxSource
 
-        return PplxEmbedder(max_input=config.embed_max_tokens, models_dir=config.models_dir)
+        source = OnnxSource(
+            repo="perplexity-ai/pplx-embed-v1-0.6b",
+            onnx_file="onnx/model_quantized.onnx",   # int8
+            revision="2c4d510dd4a732063c31a0f70193e35067b51fd8",  # pinned: switching = a reindex
+            max_input=config.embed_max_tokens,
+        )
+        return build_embedder(
+            ModelConfig(source=source, residency=Resident(), cache_dir=config.models_dir or None),
+            dim=1024,
+        )
     if name in ("fastembed", "bge-small", "bge-small-en-v1.5"):
         from mnemo.adapters.embedding.fastembed_embedder import FastEmbedEmbedder
 

@@ -7,6 +7,7 @@ import pytest
 from llmkit.capabilities.onnx_reranker import OnnxReranker
 from llmkit.lifecycle.manager import ResidencyManager
 from llmkit.lifecycle.residency import Resident, Transient
+from llmkit.runtime.onnx_encoder import EncoderOutput
 
 
 class _FakeEncoderRuntime:
@@ -24,7 +25,8 @@ class _FakeEncoderRuntime:
 
     def forward_pairs(self, pairs):
         assert self.loaded  # the manager must have loaded it before the call
-        return np.array(self._scores, dtype=np.float32).reshape(len(pairs), 1)
+        output = np.array(self._scores, dtype=np.float32).reshape(len(pairs), 1)
+        return EncoderOutput(output=output, attention_mask=None)
 
 
 def test_reranker_returns_a_score_per_document_in_order():

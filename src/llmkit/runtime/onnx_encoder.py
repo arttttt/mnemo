@@ -29,6 +29,12 @@ class OnnxSource:
     max_input: int = 512                   # truncation cap (a cross-encoder window is ~512)
 
 
+@dataclass(frozen=True)
+class EncoderOutput:
+    output: Any           # raw model output: logits (classifier) or last_hidden_state (embedder)
+    attention_mask: Any   # the padding mask used — heads that pool (the embedder) need it
+
+
 class OnnxEncoderRuntime:
     def __init__(self, source: OnnxSource, *, cache_dir: str | None = None) -> None:
         self._source = source
@@ -55,8 +61,6 @@ class OnnxEncoderRuntime:
             allow_patterns=[f"{src.onnx_file}*", src.tokenizer_file],
         )
         tokenizer = Tokenizer.from_file(str(Path(local) / src.tokenizer_file))
-        tokenizer.enable_truncation(max_length=src.max_input)
-        tokenizer.enable_padding()  # pad to the longest in each batch
         options = ort.SessionOptions()
         options.enable_cpu_mem_arena = False  # no greedy pre-allocation; freed on unload
         session = ort.InferenceSession(
@@ -89,18 +93,37 @@ class OnnxEncoderRuntime:
         """Raw model output for text pairs (e.g. cross-encoder logits)."""
         return self._run([(left, right) for left, right in pairs])
 
-    def _run(self, inputs: list[Any]) -> Any:
+    def count_tokens(self, text: str) -> int:
+        """Untruncated token count — the write path rejects over-window content with it."""
+        return len(self._tokenizer.encode(text).ids)
+
+    def _run(self, inputs: list[Any]) -> EncoderOutput:
         started = time.monotonic()
         np = self._np
-        encoded = self._tokenizer.encode_batch(inputs)
-        feed = {"input_ids": np.array([e.ids for e in encoded], dtype=np.int64)}
+        cap = self._source.max_input
+        # Truncate each sequence to the model's window, then pad the batch with zeros.
+        # The attention mask is 0 over the padding, so the pad id itself is irrelevant.
+        rows = [
+            (e.ids[:cap], e.attention_mask[:cap], e.type_ids[:cap])
+            for e in self._tokenizer.encode_batch(inputs)
+        ]
+        width = max((len(ids) for ids, _, _ in rows), default=0)
+
+        def stack(index: int) -> Any:
+            return np.array(
+                [list(row[index]) + [0] * (width - len(row[index])) for row in rows],
+                dtype=np.int64,
+            )
+
+        feed = {"input_ids": stack(0)}
+        mask = stack(1)
         if "attention_mask" in self._inputs:
-            feed["attention_mask"] = np.array([e.attention_mask for e in encoded], dtype=np.int64)
+            feed["attention_mask"] = mask
         if "token_type_ids" in self._inputs:
-            feed["token_type_ids"] = np.array([e.type_ids for e in encoded], dtype=np.int64)
+            feed["token_type_ids"] = stack(2)
         output = self._session.run(None, feed)[0]
         _log.info(
             "encoder ran n=%d in %.3fs peak_rss=%.0fMB",
             len(inputs), time.monotonic() - started, peak_rss_mb(),
         )
-        return output
+        return EncoderOutput(output=output, attention_mask=mask)
