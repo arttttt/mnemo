@@ -15,16 +15,19 @@ _FORMAT = "%(asctime)s %(levelname)s %(name)s [%(threadName)s] %(message)s"
 
 
 def configure_logging() -> None:
-    """Route the `mnemo` logger tree to stderr at MNEMO_LOG_LEVEL (default INFO).
+    """Route the `mnemo` and `llmkit` logger trees to stderr at MNEMO_LOG_LEVEL (default INFO).
 
     Idempotent: re-calling only refreshes the level (the handler is added once).
-    `propagate` is disabled so each record is emitted once by our handler, not
-    again by the root/uvicorn configuration.
+    `propagate` is disabled so each record is emitted once by our handler, not again by
+    the root/uvicorn configuration. `llmkit` is mnemo's inference package, so its load/run
+    logs (model timing + RSS) surface through here too.
     """
-    logger = logging.getLogger("mnemo")
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(_FORMAT))
-        logger.addHandler(handler)
-    logger.setLevel(os.environ.get("MNEMO_LOG_LEVEL", "INFO").upper())
-    logger.propagate = False
+    level = os.environ.get("MNEMO_LOG_LEVEL", "INFO").upper()
+    for name in ("mnemo", "llmkit"):
+        logger = logging.getLogger(name)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter(_FORMAT))
+            logger.addHandler(handler)
+        logger.setLevel(level)
+        logger.propagate = False

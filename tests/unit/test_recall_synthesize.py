@@ -1,8 +1,6 @@
 """Synthesized recall — a generator turns the grouped bundle into a query-focused summary."""
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
@@ -11,10 +9,6 @@ from mnemo.domain.memory import Memory
 
 class _EchoGenerator:
     """A deterministic stand-in: asserts the prompt was built, returns a fixed summary."""
-
-    @contextmanager
-    def session(self):
-        yield self
 
     def generate(self, prompt, *, max_tokens):
         assert "auth jwt rotation" in prompt            # the gathered memory reached the prompt
@@ -43,10 +37,6 @@ class _RecordingGenerator:
 
     def __init__(self) -> None:
         self.max_tokens: int | None = None
-
-    @contextmanager
-    def session(self):
-        yield self
 
     def generate(self, prompt, *, max_tokens):
         self.max_tokens = max_tokens

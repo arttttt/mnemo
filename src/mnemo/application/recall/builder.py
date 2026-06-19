@@ -8,10 +8,11 @@ model is configured).
 """
 from __future__ import annotations
 
+from llmkit.ports.generator import Generator
+from llmkit.ports.reranker import Reranker
+
 from mnemo.application.pipeline.pipeline import Pipeline
-from mnemo.application.ports.generator import GeneratorPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.reranker import RerankerPort
 from mnemo.application.recall.assemble_stage import AssembleStage
 from mnemo.application.recall.bundle import RECALL, RecallBundle
 from mnemo.application.recall.gather_stage import GatherStage
@@ -23,8 +24,8 @@ from mnemo.application.recall.synthesize_stage import SynthesizeStage
 def build_recall_pipeline(
     repository: MemoryRepositoryPort,
     *,
-    reranker: RerankerPort | None = None,
-    generator: GeneratorPort | None = None,
+    reranker: Reranker | None = None,
+    generator: Generator | None = None,
     top_k: int = 20,
     max_tokens: int = 512,
 ) -> Pipeline[RecallRequest, RecallBundle]:

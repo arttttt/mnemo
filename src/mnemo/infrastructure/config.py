@@ -29,7 +29,7 @@ class Config:
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
     # Recall pipeline models — EXAMPLE defaults for the test pipeline; replace after the
     # benchmark picks the finalists. Set any to "off" to drop that stage.
-    reranker: str = "jinaai/jina-reranker-v2-base-multilingual"  # MNEMO_RERANKER: fastembed id / "off"
+    reranker: str = "jinaai/jina-reranker-v2-base-multilingual"  # MNEMO_RERANKER: ONNX cross-encoder repo / "off"
     generator: str = "Qwen/Qwen2.5-3B-Instruct-GGUF"             # MNEMO_GENERATOR: HF GGUF repo / path / "off"
     generator_file: str = "*q4_k_m.gguf"                         # MNEMO_GENERATOR_FILE: GGUF glob in the repo
     rerank_top_k: int = 20                                       # how many candidates the reranker keeps
