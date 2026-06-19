@@ -1,4 +1,4 @@
-"""Real PplxEmbedder — fetches the int8 model and runs it (heavy + networked)."""
+"""Real pplx embedder, built through composition/llmkit — fetches the int8 model and runs it."""
 import pytest
 
 pytestmark = pytest.mark.heavy
@@ -8,9 +8,17 @@ def test_pplx_embedder_encodes_and_ranks(tmp_path):
     pytest.importorskip("onnxruntime")
     pytest.importorskip("tokenizers")
     pytest.importorskip("huggingface_hub")
-    from mnemo.adapters.embedding.pplx_embedder import PplxEmbedder
+    from mnemo.infrastructure.composition import _build_embedder
+    from mnemo.infrastructure.config import Config
 
-    embedder = PplxEmbedder(models_dir=str(tmp_path))
+    config = Config(
+        data_dir=str(tmp_path),
+        embedder="pplx",
+        store="memory",
+        store_path=str(tmp_path / "memory.json"),
+        models_dir=str(tmp_path),
+    )
+    embedder = _build_embedder(config)
     assert embedder.dim == 1024
     assert embedder.max_input == 2048
 
