@@ -20,7 +20,7 @@ def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     writers, per_writer = 8, 10
 
     def write(w):

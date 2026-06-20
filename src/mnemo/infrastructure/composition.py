@@ -8,6 +8,7 @@ from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingSched
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.application.ports.session_provider import SessionProvider
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
@@ -24,7 +25,7 @@ def build_container(
 ) -> Container:
     config = config or Config.from_env()
     embedder = _build_embedder(config)
-    repository = _build_repository(config, embedder.dim)
+    repository, projects = _build_store(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
     # Embedding is computed inline by default (CLI / offline). The service swaps in the
     # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
@@ -34,6 +35,7 @@ def build_container(
         embedder=embedder,
         repository=repository,
         embedding_queue=repository,
+        projects=projects,
         scheduler=scheduler,
         remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider),
         search=SearchMemoryUseCaseImpl(repository, embedder),
@@ -81,16 +83,30 @@ def _build_embedder(config: Config) -> TextEmbedder:
     raise ValueError(f"unknown embedder: {name!r}")
 
 
-def _build_repository(config: Config, dim: int) -> MemoryRepository:
+def _build_store(
+    config: Config, dim: int
+) -> tuple[MemoryRepository, ProjectRepository]:
+    """Build the memory store and the project registry together — for SQLite they
+    SHARE one connection (same DB, one writer) so the FK cascade is atomic."""
     if config.store == "memory":
+        from mnemo.adapters.store.in_memory_project_repository import (
+            InMemoryProjectRepositoryImpl,
+        )
         from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-        return InMemoryRepositoryImpl(path=config.store_path)
+        return InMemoryRepositoryImpl(path=config.store_path), InMemoryProjectRepositoryImpl()
     if config.store == "sqlite":
+        from mnemo.adapters.store.sqlite_connections import SqliteConnections
+        from mnemo.adapters.store.sqlite_project_repository import (
+            SqliteProjectRepositoryImpl,
+        )
         from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-        # dim up front lets a pending (vector-less) first write create the schema.
-        return SqliteRepositoryImpl(path=config.sqlite_path, dim=dim)
+        # Build the registry first so `projects` exists before the memories schema that
+        # references it; both share the one connection.
+        conns = SqliteConnections(config.sqlite_path)
+        projects = SqliteProjectRepositoryImpl(conns)
+        return SqliteRepositoryImpl(conns, dim), projects
     raise ValueError(f"unknown store: {config.store!r}")
 
 

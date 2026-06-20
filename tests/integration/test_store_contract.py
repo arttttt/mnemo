@@ -33,7 +33,7 @@ def _sqlite(tmp_path):
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     # dim up front so a pending (vector-less) write can create the schema.
-    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(
@@ -249,7 +249,7 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     pending = Memory.create("handleAuthCallback pending fix", project="api")
     repo.add(pending)  # no vector
 
@@ -262,7 +262,7 @@ def test_sqlite_hybrid_finds_exact_token(tmp_path):
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 

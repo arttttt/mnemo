@@ -22,7 +22,7 @@ def _sqlite(tmp_path):
 
     # The store now requires its dimension from config and creates the schema
     # eagerly; match the HashEmbedder this suite stores vectors with.
-    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(

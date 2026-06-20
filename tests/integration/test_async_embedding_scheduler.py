@@ -13,7 +13,7 @@ def _repo(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 def _wait(predicate, timeout=3.0):

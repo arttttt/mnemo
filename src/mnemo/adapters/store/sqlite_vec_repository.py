@@ -127,13 +127,14 @@ _FTS_REBUILD = "INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"
 
 
 class SqliteRepositoryImpl:
-    def __init__(self, path: str, dim: int) -> None:
-        # The embedding dimension comes from config (the embedder) — the repository
-        # does not learn or cache it. It is used once here to create the schema; the
-        # live dimension thereafter is read from the schema itself (see _current_dim).
-        self._conns = SqliteConnections(path)
-        self._read = SqlReadExecutor(self._conns)
-        self._write = SqlWriteExecutor(self._conns)
+    def __init__(self, connections: SqliteConnections, dim: int) -> None:
+        # The connection resource is INJECTED so the project registry can share the same
+        # DB (one writer, one lock) — required for the FK cascade to run atomically.
+        # The embedding dimension comes from config (the embedder) — the repository does
+        # not learn or cache it. It is used once here to create the schema; the live
+        # dimension thereafter is read from the schema itself (see _current_dim).
+        self._read = SqlReadExecutor(connections)
+        self._write = SqlWriteExecutor(connections)
         # Ensure the schema EAGERLY at construction (= service/CLI startup): the links
         # table (dimension-independent) plus the memories table at `dim` if it is
         # absent. After this the store is always ready, so no method needs an
@@ -141,6 +142,13 @@ class SqliteRepositoryImpl:
         # store at a different dimension is left untouched here — `set_dimension`
         # (reindex) migrates it explicitly.
         self._write.execute(lambda conn: self._ensure_schema(conn, dim))
+
+    @classmethod
+    def open(cls, path: str, dim: int) -> "SqliteRepositoryImpl":
+        """Build a store that owns its connection — for standalone CLI/tests. The
+        composition root instead injects a SHARED SqliteConnections so the project
+        registry lives in the same DB."""
+        return cls(SqliteConnections(path), dim)
 
     def _ensure_schema(self, conn: sqlite3.Connection, dim: int) -> None:
         self._create_links_schema(conn)

@@ -33,7 +33,7 @@ def _sqlite(tmp_path, dim):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=dim)
+    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=dim)
 
 
 @pytest.fixture(params=["in_memory", "sqlite"])
