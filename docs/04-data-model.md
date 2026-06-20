@@ -136,13 +136,35 @@ validity model (transaction‑time + valid‑time, point‑in‑time queries, re
 **post‑MVP** item, to be done *in full* (not half‑measures). The schema stays forward‑compatible: the four
 timestamps are added later as nullable fields, no breaking migration. See [10-roadmap.md](10-roadmap.md).
 
+## Projects (the registry)
+
+A **project is a first‑class registered entity**, not just a slug carried on each memory — so a typo'd slug
+can't silently spawn an invisible phantom project.
+
+- **Table `projects`:** `slug` (PK, = the id reused on every memory; a rename is a cheap `UPDATE`), `description`
+  (nullable), `created_at`. A separate aggregate from the memory store (its own repository), sharing one SQLite
+  connection so the cascade below is atomic.
+- **Foreign keys + `ON DELETE CASCADE`** (the integrity mechanism): `memories.project → projects(slug)` and
+  `links.{source_id,target_id} → memories(id)`. So a memory can only be written for a **registered** project
+  (the gate becomes a DB invariant), and `delete_project` is a single `DELETE FROM projects` that the DB
+  cascades projects → memories → links in one transaction. `PRAGMA foreign_keys=ON` on every connection.
+- **The gate (application layer):** a `scope="project"` `remember`/`search`/`browse` for an **unknown** project
+  raises an error carrying near‑match candidates (difflib over the registered slugs) — recover from a typo or
+  `create_project`. `global`/`all` are exempt (global is a scope, not a project). A registered‑but‑empty project
+  still returns an empty result, not an error.
+- **Reserved global sentinel:** a `__global__` row is seeded into `projects` (so global memories satisfy the FK),
+  but it is exempt from the gate and hidden from `list_projects` — global stays "not a project" behaviorally.
+- **Surface:** `create_project` (the only way to add one; re‑create errors), `update_project` (set/change the
+  description — the seam for semantic tier‑2 near‑match later), `list_projects`, `delete_project`. See
+  [05-mcp-api.md](05-mcp-api.md).
+
 ## Deletion
 
-Hard delete only — no soft‑delete/inactivation. All three are available to **both the agent and the CLI**:
+Hard delete only — no soft‑delete/inactivation. All are available to **both the agent and the CLI**:
 - `delete(ids)` — remove specific memories.
-- `clear(project)` — remove all memories of one project; `clear(scope="global")` removes the global memories
-  (stored under a reserved sentinel project, so they need the scope rather than a slug).
-- `purge()` — remove everything.
+- `delete_project(name)` — remove a project and **all its memories** (and their links) in one FK cascade. This is
+  the unit of bulk deletion; there is no per‑project `clear`.
+- `purge()` — remove everything: memories, links, and the project registry (the `__global__` sentinel is re‑seeded).
 
 Superseding is separate: it keeps history via `status: superseded`; deletion physically removes records.
 

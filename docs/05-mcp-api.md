@@ -67,15 +67,29 @@ browse(scope="all", tags=["feedback"])           # a category across every proje
 - No `query`, no ranking: hits are ordered by recency, so there is **no `score`**.
 - `BrowseHit = {id, type, scope, project, content, related_files, created_at}` (a `MemoryHit` without `score`).
 
-### Deletion — `delete` / `clear` / `purge`
+### Projects — `create_project` / `update_project` / `list_projects` / `delete_project`
+A project is a **registered entity**, not just a slug on a memory: you must create it before writing to it, so a
+typo can't silently spawn an invisible phantom project. `remember`/`search`/`browse` on an unknown `project` raise
+an error carrying **near‑match suggestions**, so you can fix the slug or create it.
+```python
+create_project("checkout-api", description="payments + checkout")  # the only way to add a project
+update_project("checkout-api", "new description")                  # set/change the description
+list_projects()                                                    # the registered projects (global is not one)
+delete_project("checkout-api")                                     # delete it AND all its memories (cascade)
+```
+- `create_project(name, description?) -> {slug, description, created_at}`. Re‑creating an existing slug **errors** (use `update_project` to change it).
+- `update_project(name, description) -> {...}`. The only way to set/change a description; errors (with near‑match) on an unknown slug.
+- `list_projects() -> [{slug, description, created_at}]`, newest first; the reserved global scope is excluded.
+- `delete_project(name) -> {slug, description, created_at}` (the project removed). Deletes the project and, via the store's `ON DELETE CASCADE`, **all its memories and their links — atomically**. Errors (with near‑match) on an unknown slug.
+
+### Deletion — `delete` / `delete_project` / `purge`
 Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.
 ```python
-delete(ids=["..."])     # remove specific memories
-clear(project="x")      # remove all memories of one project
-clear(scope="global")   # remove the global memories (no project — scope is authoritative)
-purge()                 # remove everything
+delete(ids=["..."])         # remove specific memories
+delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
+purge()                     # remove everything: memories, links, and the project registry
 ```
-Superseding (evolution) is separate and keeps history; deletion physically removes records.
+A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records.
 
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
@@ -86,10 +100,11 @@ mnemo consolidate [--project P]      # run background consolidation now (Phase 3
 mnemo doctor                         # health: store/embedder/disk/warnings
 mnemo export / import                # portability (Phase 4)
 ```
-(`delete` / `clear` / `purge` are also available as CLI commands.)
+(`delete` / `delete-project` / `purge`, and the project tools `create-project` / `update-project` / `list-projects`, are also available as CLI commands.)
 
 ## Design notes
 - One write verb, two read verbs (`search` by meaning, `browse` by filter), plus deletion — type/scope/filters are parameters. (`recall` is post‑MVP.)
+- Projects are **registered first‑class entities** (`create_project`/`update_project`/`list_projects`/`delete_project`); writing to or reading an unknown project is a hard error with near‑match suggestions, so a typo can't create a phantom project. `delete_project` deletes the project and its memories in one DB cascade.
 - `search` defaults to **hybrid** (dense + lexical) so exact matches (function names, error codes) aren't missed.
 - `remember` is fast and idempotent by `hash` / `topic_key`.
 - Cross‑project search is a `scope="all"` flag, not a separate tool.
