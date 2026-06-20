@@ -8,6 +8,7 @@ residency manager (an embedder is often resident).
 from __future__ import annotations
 
 from llmkit.lifecycle.manager import ResidencyManager
+from llmkit.ports.tokenizer import Tokenizer
 from llmkit.runtime.onnx_encoder import EncoderOutput, OnnxEncoderRuntime
 from llmkit.types import Vector
 
@@ -16,12 +17,14 @@ class OnnxEmbedder:
     def __init__(
         self,
         manager: ResidencyManager[OnnxEncoderRuntime],
+        tokenizer: Tokenizer,
         *,
         dim: int,
         max_input: int,
         normalize: bool = True,
     ) -> None:
         self._manager = manager
+        self._tokenizer = tokenizer
         self._dim = dim
         self._max_input = max_input
         self._normalize = normalize
@@ -35,12 +38,12 @@ class OnnxEmbedder:
         return self._max_input
 
     def count_tokens(self, text: str) -> int:
-        with self._manager.use() as runtime:
-            return runtime.count_tokens(text)
+        return self._tokenizer.count(text)  # tokenizer-only — never leases a session
 
     def encode(self, text: str) -> Vector:
+        encodings = self._tokenizer.encode_batch([text])
         with self._manager.use() as runtime:
-            result = runtime.forward([text])
+            result = runtime.run(encodings)
         return self._pool(result)
 
     def _pool(self, result: EncoderOutput) -> Vector:

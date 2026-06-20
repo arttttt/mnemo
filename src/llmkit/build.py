@@ -14,6 +14,7 @@ from llmkit.lifecycle.manager import ResidencyManager
 from llmkit.ports.embedder import Embedder
 from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
+from llmkit.runtime.hf_tokenizer import HfTokenizer
 from llmkit.runtime.llama_cpp import GgufSource, LlamaCppRuntime
 from llmkit.runtime.onnx_encoder import OnnxEncoderRuntime, OnnxSource
 
@@ -25,17 +26,24 @@ def _onnx_manager(config: ModelConfig) -> ResidencyManager[OnnxEncoderRuntime]:
     return ResidencyManager(runtime, config.residency)
 
 
+def _onnx_tokenizer(config: ModelConfig) -> HfTokenizer:
+    if not isinstance(config.source, OnnxSource):
+        raise ValueError("an ONNX-encoder capability needs an OnnxSource")
+    return HfTokenizer(config.source, cache_dir=config.cache_dir)
+
+
 def build_embedder(config: ModelConfig, *, dim: int, normalize: bool = True) -> Embedder:
     source = config.source
     if not isinstance(source, OnnxSource):
         raise ValueError("an embedder needs an OnnxSource")
     return OnnxEmbedder(
-        _onnx_manager(config), dim=dim, max_input=source.max_input, normalize=normalize
+        _onnx_manager(config), _onnx_tokenizer(config),
+        dim=dim, max_input=source.max_input, normalize=normalize,
     )
 
 
 def build_reranker(config: ModelConfig) -> Reranker:
-    return OnnxReranker(_onnx_manager(config))
+    return OnnxReranker(_onnx_manager(config), _onnx_tokenizer(config))
 
 
 def build_generator(config: ModelConfig) -> Generator:
