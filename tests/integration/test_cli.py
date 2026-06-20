@@ -206,6 +206,14 @@ def test_cli_create_project_then_store(tmp_path, monkeypatch):
     assert stored.exit_code == 0, stored.output
 
 
+def test_cli_create_project_rejects_a_bad_slug(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["create-project", "Bad Slug"])  # spaces + uppercase
+    assert result.exit_code != 0
+    assert "kebab-case" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_delete_project_cascades(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "doomed note", "--project", "api"])

@@ -97,6 +97,14 @@ def test_mcp_delete_project_cascades(tmp_path):
     assert _call(mcp, "search", {"query": "doomed", "scope": "all"}) == []
 
 
+def test_mcp_create_project_rejects_a_bad_slug(tmp_path):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError):
+        _call(mcp, "create_project", {"name": "Bad Slug"})  # spaces + uppercase
+
+
 def test_mcp_update_and_list_projects(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})

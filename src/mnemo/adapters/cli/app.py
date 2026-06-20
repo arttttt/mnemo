@@ -288,7 +288,10 @@ def create_project(
     ),
 ) -> None:
     """Register a new project. Writing to an unregistered project is rejected."""
-    project = build_container().create_project.execute(name, description)
+    try:
+        project = build_container().create_project.execute(name, description)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc))
     typer.echo(json.dumps(asdict(project)))
 
 
