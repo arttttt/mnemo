@@ -36,7 +36,7 @@ def restore_mnemo_logger():
 
 
 def test_attaches_handler_defaults_to_info_and_stops_propagation(
-    restore_mnemo_logger, monkeypatch
+    restore_mnemo_logger, restore_threading_excepthook, monkeypatch
 ):
     monkeypatch.delenv("MNEMO_LOG_LEVEL", raising=False)
     logger = restore_mnemo_logger
@@ -48,7 +48,9 @@ def test_attaches_handler_defaults_to_info_and_stops_propagation(
     assert logger.propagate is False     # emitted once by our handler, not again via root
 
 
-def test_is_idempotent_and_honours_env_level(restore_mnemo_logger, monkeypatch):
+def test_is_idempotent_and_honours_env_level(
+    restore_mnemo_logger, restore_threading_excepthook, monkeypatch
+):
     monkeypatch.setenv("MNEMO_LOG_LEVEL", "DEBUG")
     logger = restore_mnemo_logger
 
