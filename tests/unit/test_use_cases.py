@@ -292,42 +292,12 @@ def test_delete_project_unknown_is_rejected_with_candidates():
     assert "api" in exc.value.candidates
 
 
-def test_delete_clear_purge():
+def test_delete_and_purge():
     repo, remember, _, deletion, *_ = _wiring()
     a = remember.execute(content="one", project="api")
     remember.execute(content="two", project="api")
-    remember.execute(content="three", project="other")
 
     assert deletion.delete([a.id]).deleted == 1
-    assert deletion.clear("api").deleted == 1
-    assert {m.project for m in repo.list_all()} == {"other"}
+    assert {m.content for m in repo.list_all()} == {"two"}
     assert deletion.purge().deleted == 1
     assert repo.list_all() == []
-
-
-def test_clear_scope_global_targets_globals_and_spares_projects():
-    # Globals live under the GLOBAL_PROJECT sentinel, unreachable by a project slug;
-    # scope='global' clears exactly them and leaves project memories intact.
-    repo, remember, _, deletion, *_ = _wiring()
-    remember.execute(content="a project note", project="api")
-    remember.execute(content="a global rule", scope="global", type="rule")
-
-    assert deletion.clear(scope="global").deleted == 1
-    assert {m.content for m in repo.list_all()} == {"a project note"}
-
-
-def test_clear_scope_project_spares_globals():
-    repo, remember, _, deletion, *_ = _wiring()
-    remember.execute(content="a project note", project="api")
-    remember.execute(content="a global rule", scope="global", type="rule")
-
-    assert deletion.clear("api").deleted == 1  # positional project, scope defaults to project
-    assert {m.content for m in repo.list_all()} == {"a global rule"}
-
-
-def test_clear_enforces_the_scope_project_contract():
-    _, _, _, deletion, *_ = _wiring()
-    with pytest.raises(ValueError):
-        deletion.clear(scope="project")          # project scope needs a project
-    with pytest.raises(ValueError):
-        deletion.clear("api", scope="global")    # project + global is contradictory

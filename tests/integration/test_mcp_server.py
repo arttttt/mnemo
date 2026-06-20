@@ -28,7 +28,7 @@ def _tools(tmp_path):
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
     assert {
-        "remember", "search", "browse", "delete", "clear", "purge",
+        "remember", "search", "browse", "delete", "purge",
         "create_project", "delete_project",
     } <= set(_tools(tmp_path))
 
@@ -59,7 +59,6 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["search"] == ["query"]
     assert required["browse"] == []  # query-less: every param is optional
     assert required["delete"] == ["ids"]
-    assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
     assert required["create_project"] == ["name"]
     assert required["delete_project"] == ["name"]
@@ -195,22 +194,11 @@ def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
     assert "scope='global'" in str(exc.value)
 
 
-def test_mcp_clear_and_purge(tmp_path):
+def test_mcp_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "create_project", {"name": "other"})
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
     _call(mcp, "remember", {"content": "beta", "project": "other"})
 
-    assert json.loads(_call(mcp, "clear", {"project": "api"})[0])["deleted"] == 1
-    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 1
-
-
-def test_mcp_clear_scope_global_targets_globals(tmp_path):
-    mcp = build_mcp(_container(tmp_path))
-    _call(mcp, "create_project", {"name": "api"})
-    _call(mcp, "remember", {"content": "a project note", "project": "api"})
-    _call(mcp, "remember", {"content": "a global rule", "scope": "global", "type": "rule"})
-
-    deleted = json.loads(_call(mcp, "clear", {"scope": "global"})[0])["deleted"]
-    assert deleted == 1  # only the global memory, no project param needed
+    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 2

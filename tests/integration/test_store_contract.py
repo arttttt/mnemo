@@ -288,15 +288,13 @@ def test_find_active_by_topic_key(open_repo, embedder):
     assert repo.find_active_by_topic_key("absent/key", "api") is None
 
 
-def test_delete_clear_purge(open_repo, embedder):
+def test_delete_and_purge(open_repo, embedder):
     repo = open_repo()
     one = _store(repo, embedder, "one", project="api")
     _store(repo, embedder, "two", project="api")
-    _store(repo, embedder, "three", project="other")
 
     assert repo.delete([one.id]) == 1
-    assert repo.delete_by_project("api") == 1
-    assert {m.project for m in repo.list_all()} == {"other"}
+    assert {m.content for m in repo.list_all()} == {"two"}
     assert repo.delete_all() == 1
     assert repo.list_all() == []
 

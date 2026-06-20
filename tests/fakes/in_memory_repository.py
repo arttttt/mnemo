@@ -136,9 +136,6 @@ class InMemoryRepositoryImpl:
         targets = set(ids)
         return self._remove(lambda memory: memory.id in targets)
 
-    def delete_by_project(self, project: str) -> int:
-        return self._remove(lambda memory: memory.project == project)
-
     def delete_all(self) -> int:
         removed = len(self._items)
         self._items = []

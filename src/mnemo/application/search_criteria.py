@@ -41,7 +41,7 @@ class SearchCriteria:
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)  # naive input is taken as UTC
             object.__setattr__(self, "created_after", parsed.astimezone(timezone.utc).isoformat())
-        # The scope↔project contract, shared with browse and clear (one source of truth).
+        # The scope↔project contract, shared with browse (one source of truth).
         validate_scope_project(self.scope, self.project)
 
     def matches(self, memory: Memory) -> bool:

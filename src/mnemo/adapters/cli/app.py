@@ -305,26 +305,6 @@ def delete_project(
 
 
 @app.command()
-def clear(
-    project: Optional[str] = typer.Argument(
-        None, help="Project whose memories to delete. Omit and use --scope global to clear global memories."
-    ),
-    scope: str = typer.Option(
-        "project",
-        "--scope",
-        "-s",
-        help="'project' (delete one project's memories; needs a project) or 'global' (delete the global memories).",
-    ),
-) -> None:
-    """Permanently delete a project's memories, or all global memories."""
-    try:
-        result = build_container().delete.clear(project, scope=scope)
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(result)))
-
-
-@app.command()
 def purge() -> None:
     """Permanently delete ALL memories."""
     result = build_container().delete.purge()

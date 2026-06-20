@@ -398,13 +398,6 @@ class SqliteRepositoryImpl:
             ).rowcount
         )
 
-    def delete_by_project(self, project: str) -> int:
-        return self._write.execute(
-            lambda conn: conn.execute(
-                "DELETE FROM memories WHERE project = ?", (project,)
-            ).rowcount
-        )
-
     def delete_all(self) -> int:
         def work(conn: sqlite3.Connection) -> int:
             conn.execute("DELETE FROM links")

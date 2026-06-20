@@ -111,7 +111,7 @@ def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
     assert memory_id not in miss.stdout
 
 
-def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
+def test_cli_delete_purge_and_stats(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
     one = json.loads(runner.invoke(app, ["store", "one", "--project", "api"]).stdout)["id"]
@@ -122,28 +122,8 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     assert stats["total"] == 3
     assert stats["pending"] == 0  # the CLI embeds inline (sync scheduler), so nothing pending
     assert json.loads(runner.invoke(app, ["delete", one]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["clear", "api"]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 1
+    assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 2
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
-
-
-def test_cli_clear_scope_global_targets_globals(tmp_path, monkeypatch):
-    runner, app = _runner_and_app(tmp_path, monkeypatch)
-    runner.invoke(app, ["store", "proj note", "--project", "api"])
-    runner.invoke(app, ["store", "global rule", "--scope", "global", "--type", "rule"])
-
-    cleared = runner.invoke(app, ["clear", "--scope", "global"])
-    assert cleared.exit_code == 0, cleared.output
-    assert json.loads(cleared.stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1  # project note survives
-
-
-def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
-    runner, app = _runner_and_app(tmp_path, monkeypatch)
-    result = runner.invoke(app, ["clear"])  # --scope defaults to 'project', no project given
-    assert result.exit_code != 0
-    assert "project" in result.output
-    assert "Traceback" not in result.output
 
 
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
