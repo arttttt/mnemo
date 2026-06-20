@@ -58,6 +58,20 @@ def _store(repo, embedder, content, **kwargs):
     return memory
 
 
+def _supersede(repo, embedder, prior):
+    """Drive `prior` into the superseded state via the production supersede path
+    (a test helper — the store exposes no test-only 'mark superseded' shortcut)."""
+    successor = Memory.create(
+        f"successor of {prior.content}", project=prior.project, topic_key="evolved"
+    )
+    successor.supersedes = prior.id
+    link = Link.supersedes(
+        source_id=successor.id, target_id=prior.id, provenance="evolved"
+    )
+    repo.supersede(successor, link, embedder.encode(successor.content))
+    return successor
+
+
 def test_add_and_find_active_by_hash(open_repo, embedder):
     repo = open_repo()
     memory = _store(repo, embedder, "durable note", type="decision", project="api")
@@ -86,7 +100,7 @@ def test_find_active_by_hash_ignores_superseded(open_repo, embedder):
     otherwise re-storing the content would return a dead id and never re-create it."""
     repo = open_repo()
     memory = _store(repo, embedder, "evolving note", project="api")
-    repo.mark_superseded(memory.id)
+    _supersede(repo, embedder, memory)
 
     assert repo.find_active_by_hash(memory.hash, "api") is None
 
@@ -276,15 +290,6 @@ def test_find_active_by_topic_key(open_repo, embedder):
     assert found is not None and found.id == memory.id
     assert repo.find_active_by_topic_key("auth/model", "other") is None
     assert repo.find_active_by_topic_key("absent/key", "api") is None
-
-
-def test_mark_superseded_sets_status(open_repo, embedder):
-    repo = open_repo()
-    memory = _store(repo, embedder, "old version", project="api")
-
-    repo.mark_superseded(memory.id)
-    status_by_id = {m.id: m.status for m in repo.list_all()}
-    assert status_by_id[memory.id] == "superseded"
 
 
 def test_delete_clear_purge(open_repo, embedder):

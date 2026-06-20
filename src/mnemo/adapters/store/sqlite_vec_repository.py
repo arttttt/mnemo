@@ -34,6 +34,7 @@ from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
+from mnemo.domain.generators import now
 from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
@@ -380,9 +381,6 @@ class SqliteVecMemoryRepository:
         )
         return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
-    def mark_superseded(self, memory_id: str) -> None:
-        self._write.execute(lambda conn: self._mark_superseded(conn, memory_id))
-
     def delete(self, ids: list[str]) -> int:
         if not self._ready or not ids:
             return 0
@@ -451,14 +449,15 @@ class SqliteVecMemoryRepository:
 
     # --- internals (pure SQL over a given connection; no transaction concern) ---
 
-    def _mark_superseded(self, conn: sqlite3.Connection, memory_id: str) -> None:
-        memory = self._read_one(conn, "id = ?", (memory_id,))
-        if memory is None:
-            return
-        memory.mark_superseded()
+    @staticmethod
+    def _mark_superseded(conn: sqlite3.Connection, memory_id: str) -> None:
+        # Persist the supersede transition with a direct UPDATE: no Memory is
+        # reconstructed and none is mutated. The status vocabulary already lives in this
+        # adapter (the `status = 'active'` retrieval filter); `updated_at` is bumped as
+        # the domain transition does. A no-op if the id is gone.
         conn.execute(
-            "UPDATE memories SET status = ?, updated_at = ? WHERE id = ?",
-            (memory.status, memory.updated_at, memory_id),
+            "UPDATE memories SET status = 'superseded', updated_at = ? WHERE id = ?",
+            (now(), memory_id),
         )
 
     @staticmethod

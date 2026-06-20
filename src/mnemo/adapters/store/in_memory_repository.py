@@ -38,13 +38,15 @@ class InMemoryMemoryRepository:
         snapshot is restored on any failure so the contract test sees the same
         rollback on both backends. The caller owns the relationship (sets
         `memory.supersedes`, builds `link`); this only persists it."""
-        items_before = copy.deepcopy(self._items)
-        links_before = copy.deepcopy(self._links)
+        items_before = list(self._items)
+        links_before = list(self._links)
         try:
-            for stored, _vector in self._items:
-                if stored.id == memory.supersedes:
-                    stored.mark_superseded()
-                    break
+            # Replace the prior with a superseded COPY — the stored entity is never
+            # mutated, so a shallow snapshot is enough to roll back.
+            self._items = [
+                (self._superseded(stored), v) if stored.id == memory.supersedes else (stored, v)
+                for stored, v in self._items
+            ]
             self._items.append((memory, list(vector) if vector is not None else None))
             self._insert_link(link)
             self._persist()
@@ -53,6 +55,14 @@ class InMemoryMemoryRepository:
             self._links = links_before
             self._persist()
             raise
+
+    @staticmethod
+    def _superseded(memory: Memory) -> Memory:
+        """A superseded COPY of `memory`: reuse the domain transition without mutating
+        the stored entity (the value-store analogue of an UPDATE)."""
+        replaced = copy.deepcopy(memory)
+        replaced.mark_superseded()
+        return replaced
 
     def set_vector(self, memory_id: str, vector: Vector) -> None:
         for index, (memory, _) in enumerate(self._items):
@@ -132,13 +142,6 @@ class InMemoryMemoryRepository:
         ]
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[: request.limit]
-
-    def mark_superseded(self, memory_id: str) -> None:
-        for memory, _ in self._items:
-            if memory.id == memory_id:
-                memory.mark_superseded()
-                break
-        self._persist()
 
     def delete(self, ids: list[str]) -> int:
         targets = set(ids)
