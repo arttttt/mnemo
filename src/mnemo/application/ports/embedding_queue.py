@@ -2,8 +2,8 @@
 
 A memory with no vector is a pending job. This is the slice the embedding
 schedulers and reindex depend on — distinct from the memory CRUD a use case needs.
-One store implementation realizes this alongside MemoryRepository and
-LinkGraph, but each consumer depends only on the facet it uses.
+One store implementation realizes this alongside MemoryRepository, but each
+consumer depends only on the facet it uses.
 """
 from __future__ import annotations
 

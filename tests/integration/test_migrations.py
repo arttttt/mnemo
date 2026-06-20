@@ -23,9 +23,8 @@ from mnemo.adapters.store.sqlite_vec_repository import (
     _TRIGGER_STATEMENTS,
     _create_table_sql,
 )
-from mnemo.domain.link_type import LinkType
 from mnemo.domain.memory import Memory
-from mnemo.infrastructure.migrations import add_project_foreign_keys
+from mnemo.infrastructure.migrations import add_project_foreign_keys, drop_links_table
 
 _DIM = 256
 # The pre-FK memories DDL = today's schema with the project foreign key stripped.
@@ -69,8 +68,8 @@ def _build_pre_fk_store(path, embedder):
     _insert_memory(conn, embedder, "m-global", "always confirm destructive ops", "__global__", scope="global")
     conn.execute(
         "INSERT INTO links (source_id, target_id, type, provenance, created_at)"
-        " VALUES ('m-api', 'm-other', ?, 'topic', ?)",
-        (LinkType.SUPERSEDES.value, _TS),
+        " VALUES ('m-api', 'm-other', 'supersedes', 'topic', ?)",
+        (_TS,),
     )
     conn.close()
 
@@ -94,8 +93,6 @@ def test_migration_adds_fks_seeds_registry_and_preserves_data(tmp_path):
     assert {m.id for m in repo.list_all()} == {"m-api", "m-other", "m-global"}
     assert repo.pending_count() == 0
     assert repo.has_vector("m-api") is True
-    # link preserved
-    assert [link.target_id for link in repo.links_for("m-api")] == ["m-other"]
     # FTS index was rebuilt — a still-stored token is lexically findable
     from mnemo.application.retrieval import Retrieval
     from mnemo.application.search_criteria import SearchCriteria
@@ -125,9 +122,8 @@ def test_migration_cascades_after_upgrade(tmp_path):
     projects = SqliteProjectRepositoryImpl(conns)
     repo = SqliteRepositoryImpl(conns, _DIM)
 
-    projects.delete("api")  # the new FK cascades: api's memory + its link go away
+    projects.delete("api")  # the new FK cascades: api's memories go away
     assert {m.id for m in repo.list_all()} == {"m-other", "m-global"}
-    assert repo.links_for("m-other") == []
 
 
 def test_migration_is_idempotent(tmp_path):
@@ -140,3 +136,20 @@ def test_migration_is_idempotent(tmp_path):
 
 def test_migration_noop_when_store_absent(tmp_path):
     assert add_project_foreign_keys(str(tmp_path / "does-not-exist.db")) is False
+
+
+def test_drop_links_table_removes_it_and_is_idempotent(tmp_path):
+    path = str(tmp_path / "memory.db")
+    _build_pre_fk_store(path, HashEmbedder(dim=_DIM))  # has a links table
+
+    assert drop_links_table(path) is True  # dropped
+
+    conn = sqlite3.connect(path)
+    present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='links'"
+    ).fetchone()
+    conn.close()
+    assert present is None
+
+    assert drop_links_table(path) is False  # idempotent no-op
+    assert drop_links_table(str(tmp_path / "absent.db")) is False  # no store → no-op

@@ -35,7 +35,7 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
   lexical index → enqueue embed** (the vector is computed off the hot path — see
   [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation)). Near‑similar memories are
   **not** suppressed here (see [04-data-model.md](04-data-model.md)).
-- Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already **active in the same project/scope** — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the edge lives in `links`).
+- Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already **active in the same project/scope** — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the prior is marked superseded, recorded in the `supersedes` column).
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
 
@@ -80,14 +80,14 @@ delete_project("checkout-api")                                     # delete it A
 - `create_project(name, description?) -> {slug, description, created_at}`. Re‑creating an existing slug **errors** (use `update_project` to change it).
 - `update_project(name, description) -> {...}`. The only way to set/change a description; errors (with near‑match) on an unknown slug.
 - `list_projects() -> [{slug, description, created_at}]`, newest first; the reserved global scope is excluded.
-- `delete_project(name) -> {slug, description, created_at}` (the project removed). Deletes the project and, via the store's `ON DELETE CASCADE`, **all its memories and their links — atomically**. Errors (with near‑match) on an unknown slug.
+- `delete_project(name) -> {slug, description, created_at}` (the project removed). Deletes the project and, via the store's `ON DELETE CASCADE`, **all its memories — atomically**. Errors (with near‑match) on an unknown slug.
 
 ### Deletion — `delete` / `delete_project` / `purge`
 Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.
 ```python
 delete(ids=["..."])         # remove specific memories
 delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
-purge()                     # remove everything: memories, links, and the project registry
+purge()                     # remove everything: memories and the project registry
 ```
 A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records.
 

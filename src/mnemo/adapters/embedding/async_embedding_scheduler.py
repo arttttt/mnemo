@@ -61,21 +61,23 @@ class AsyncEmbeddingScheduler:
         """Block until all pending work is embedded (or timeout) — used before idle-exit.
 
         Assumes writes have stopped (the idle monitor only drains once no connector is
-        alive), so the work set only shrinks. The pending DB scan runs OUTSIDE the lock so
-        it never blocks the workers; only the in-memory counters are read under it.
+        alive), so the work set only shrinks. "Idle" — nothing in flight, no retry
+        pending, and nothing left claimable — is read as ONE snapshot under the lock: a
+        worker claiming an item flips in-flight and claimable together under this same
+        lock, so reading the two halves at different instants could observe the stale "not
+        in flight" with the fresh "not claimable" and return with a worker still running.
+        The `_first_claimable()` DB scan therefore runs while holding the lock — fine for
+        drain (idle-exit, writes stopped, a tiny backlog), and it never blocks the hot path.
         """
         deadline = time.monotonic() + timeout
         while True:
             with self._cond:
                 busy = self._in_flight > 0 or self._has_pending_retry()
-            # `_first_claimable()` does the DB scan; membership/get on the shared sets are
-            # GIL-atomic, so calling it without the lock is safe (and never blocks a worker).
-            if not busy and self._first_claimable() is None:
-                return
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return
-            with self._cond:
+                if not busy and self._first_claimable() is None:
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
                 self._cond.wait(min(0.1, remaining))  # bounded re-check of the DB predicate
 
     def stop(self) -> None:

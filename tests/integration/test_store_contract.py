@@ -6,7 +6,6 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
-from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 from tests.support.sqlite_store import open_store
 
@@ -51,10 +50,7 @@ def _supersede(repo, embedder, prior):
         f"successor of {prior.content}", project=prior.project, topic_key="evolved"
     )
     successor.supersedes = prior.id
-    link = Link.supersedes(
-        source_id=successor.id, target_id=prior.id, provenance="evolved"
-    )
-    repo.supersede(successor, link, embedder.encode(successor.content))
+    repo.supersede(successor, embedder.encode(successor.content))
     return successor
 
 
@@ -240,19 +236,18 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     assert any(hit.memory.id == pending.id for hit in hits)
 
 
-def test_sqlite_deleting_a_project_cascades_its_memories_and_links(tmp_path):
+def test_sqlite_deleting_a_project_cascades_its_memories(tmp_path):
     """The FK cascade is the whole delete_project mechanism: removing the project row
-    atomically removes its memories (memories.project FK) and their edges (links FK)."""
+    atomically removes its memories (memories.project FK)."""
     embedder = HashEmbedder()
     repo, registry = open_store(tmp_path, embedder.dim, projects=("api", "other"))
     first = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
-    second = _supersede(repo, embedder, first)  # a memory + a supersedes edge in `api`
+    _supersede(repo, embedder, first)  # a second memory in `api` (a supersede chain)
     kept = _store(repo, embedder, "kept elsewhere", project="other")
 
-    registry.delete("api")  # DELETE FROM projects -> cascades memories -> cascades links
+    registry.delete("api")  # DELETE FROM projects -> cascades the api memories
 
     assert {m.id for m in repo.list_all()} == {kept.id}  # only the other project survives
-    assert repo.links_for(second.id) == []  # the edge cascaded away with its endpoints
 
 
 def test_sqlite_memory_for_an_unregistered_project_is_rejected(tmp_path):
@@ -311,52 +306,41 @@ def test_delete_and_purge(open_repo, embedder):
 
 
 def _supersede_inputs(repo, embedder):
-    """A stored prior + a successor/link wired the way the use case does it."""
+    """A stored prior + a successor wired the way the use case does it."""
     prior = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
     successor = Memory.create("auth model v2", project="api", topic_key="auth/model")
     successor.supersedes = prior.id
-    link = Link.supersedes(
-        source_id=successor.id, target_id=prior.id, provenance="auth/model"
-    )
-    return prior, successor, link
+    return prior, successor
 
 
-def test_supersede_marks_prior_inserts_successor_and_links(open_repo, embedder):
+def test_supersede_marks_prior_and_inserts_successor(open_repo, embedder):
     repo = open_repo()
-    prior, successor, link = _supersede_inputs(repo, embedder)
+    prior, successor = _supersede_inputs(repo, embedder)
 
-    repo.supersede(successor, link, embedder.encode(successor.content))
+    repo.supersede(successor, embedder.encode(successor.content))
 
     active = repo.find_active_by_topic_key("auth/model", "api")
     assert active is not None and active.id == successor.id
     by_id = {m.id: m for m in repo.list_all()}
     assert by_id[prior.id].status == "superseded"
     assert by_id[successor.id].status == "active"
-    assert by_id[successor.id].supersedes == prior.id
-    edges = repo.links_for(successor.id)
-    assert len(edges) == 1
-    assert (edges[0].source_id, edges[0].target_id, edges[0].provenance) == (
-        successor.id,
-        prior.id,
-        "auth/model",
-    )
+    assert by_id[successor.id].supersedes == prior.id  # the chain lives in this column
 
 
 def test_supersede_is_atomic_on_failure(open_repo, embedder, monkeypatch):
     repo = open_repo()
-    prior, successor, link = _supersede_inputs(repo, embedder)
+    prior, successor = _supersede_inputs(repo, embedder)
 
     def boom(*args, **kwargs):
-        raise RuntimeError("link write failed mid-supersede")
+        raise RuntimeError("insert failed mid-supersede")
 
-    monkeypatch.setattr(repo, "_insert_link", boom)
+    monkeypatch.setattr(repo, "_insert_memory", boom)
 
     with pytest.raises(RuntimeError):
-        repo.supersede(successor, link, embedder.encode(successor.content))
+        repo.supersede(successor, embedder.encode(successor.content))
 
-    # Nothing applied: the prior is still the active record, the successor was never
-    # inserted, and no edge exists — the whole unit rolled back.
+    # Nothing applied: the prior is still the active record and the successor was never
+    # inserted — the mark-superseded + insert rolled back together.
     active = repo.find_active_by_topic_key("auth/model", "api")
     assert active is not None and active.id == prior.id
     assert {m.id for m in repo.list_all()} == {prior.id}
-    assert repo.links_for(prior.id) == []
