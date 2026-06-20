@@ -1,10 +1,15 @@
 """Focus recall — reranks the gathered memories by relevance to the query, keeps top-K."""
 from __future__ import annotations
 
-from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
+import pytest
+
+pytest.importorskip("sqlite_vec")
+
+from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 
 class _KeywordReranker:
@@ -15,15 +20,16 @@ class _KeywordReranker:
         return [float(len(words & set(doc.lower().split()))) for doc in documents]
 
 
-def _repo_with(*memories: Memory) -> InMemoryRepositoryImpl:
-    repo = InMemoryRepositoryImpl()
+def _repo_with(tmp_path, *memories: Memory):
+    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api",))
     for memory in memories:
         repo.add(memory)
     return repo
 
 
-def test_query_reranks_gathered_by_relevance_and_trims_to_top_k():
+def test_query_reranks_gathered_by_relevance_and_trims_to_top_k(tmp_path):
     repo = _repo_with(
+        tmp_path,
         Memory.create("auth jwt rotation decision", type="decision", project="api"),
         Memory.create("logging format change", type="decision", project="api"),
         Memory.create("auth session cookie note", type="working-notes", project="api"),

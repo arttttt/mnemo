@@ -1,10 +1,15 @@
 """Synthesized recall — a generator turns the grouped bundle into a query-focused summary."""
 from __future__ import annotations
 
-from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
+import pytest
+
+pytest.importorskip("sqlite_vec")
+
+from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 
 class _EchoGenerator:
@@ -16,15 +21,15 @@ class _EchoGenerator:
         return "  auth uses jwt rotation  "             # whitespace proves the stage strips it
 
 
-def _repo_with(*memories: Memory) -> InMemoryRepositoryImpl:
-    repo = InMemoryRepositoryImpl()
+def _repo_with(tmp_path, *memories: Memory):
+    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api",))
     for memory in memories:
         repo.add(memory)
     return repo
 
 
-def test_generator_fills_a_query_focused_summary_alongside_the_grouping():
-    repo = _repo_with(Memory.create("auth jwt rotation", type="decision", project="api"))
+def test_generator_fills_a_query_focused_summary_alongside_the_grouping(tmp_path):
+    repo = _repo_with(tmp_path, Memory.create("auth jwt rotation", type="decision", project="api"))
     pipeline = build_recall_pipeline(repo, generator=_EchoGenerator())
     bundle = pipeline.run(RecallRequest(project="api", query="auth"))
 
@@ -43,8 +48,8 @@ class _RecordingGenerator:
         return "summary"
 
 
-def test_max_tokens_threads_through_to_the_generator():
-    repo = _repo_with(Memory.create("auth jwt rotation", type="decision", project="api"))
+def test_max_tokens_threads_through_to_the_generator(tmp_path):
+    repo = _repo_with(tmp_path, Memory.create("auth jwt rotation", type="decision", project="api"))
     generator = _RecordingGenerator()
     pipeline = build_recall_pipeline(repo, generator=generator, max_tokens=123)
     pipeline.run(RecallRequest(project="api", query="auth"))

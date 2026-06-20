@@ -7,21 +7,25 @@ from __future__ import annotations
 
 import pytest
 
-from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
+pytest.importorskip("sqlite_vec")
+
+from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 
-def _repo_with(*memories: Memory) -> InMemoryRepositoryImpl:
-    repo = InMemoryRepositoryImpl()  # pure in-memory, no persistence
+def _repo_with(tmp_path, *memories: Memory):
+    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api", "other"))
     for memory in memories:
         repo.add(memory)  # no vector — the browse path does not need one
     return repo
 
 
-def test_gathers_a_projects_memory_grouped_by_type():
+def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
     repo = _repo_with(
+        tmp_path,
         Memory.create("use jwt", type="decision", project="api"),
         Memory.create("fixed the race", type="debug", project="api"),
         Memory.create("auth adr", type="decision", project="api"),
@@ -37,8 +41,9 @@ def test_gathers_a_projects_memory_grouped_by_type():
     assert len(by_type["debug"].memories) == 1
 
 
-def test_scopes_to_the_project_but_includes_global_memories():
+def test_scopes_to_the_project_but_includes_global_memories(tmp_path):
     repo = _repo_with(
+        tmp_path,
         Memory.create("api decision", type="decision", project="api"),
         Memory.create("other project", type="decision", project="other"),
         Memory.create("a global rule", type="rule", scope="global"),
@@ -49,9 +54,10 @@ def test_scopes_to_the_project_but_includes_global_memories():
     assert contents == {"api decision", "a global rule"}  # 'other' excluded, global kept
 
 
-def test_limit_caps_the_number_of_gathered_memories():
+def test_limit_caps_the_number_of_gathered_memories(tmp_path):
     repo = _repo_with(
-        *[Memory.create(f"note {i}", type="working-notes", project="api") for i in range(5)]
+        tmp_path,
+        *[Memory.create(f"note {i}", type="working-notes", project="api") for i in range(5)],
     )
     bundle = build_recall_pipeline(repo).run(RecallRequest(project="api", query="notes", limit=2))
     assert bundle.total == 2
