@@ -33,6 +33,7 @@ def build_container(
         config=config,
         embedder=embedder,
         repository=repository,
+        embedding_queue=repository,
         scheduler=scheduler,
         remember=RememberMemory(repository, scheduler, embedder, session_provider),
         search=SearchMemory(repository, embedder),

@@ -16,7 +16,7 @@ import threading
 import time
 
 from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.embedding_queue import EmbeddingQueuePort
 
 _log = logging.getLogger("mnemo.embed")
 
@@ -30,7 +30,7 @@ class AsyncEmbeddingScheduler:
     def __init__(
         self,
         embedder: EmbedderPort,
-        repository: MemoryRepositoryPort,
+        repository: EmbeddingQueuePort,
         *,
         workers: int = 1,
         queue_max: int = 256,

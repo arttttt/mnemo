@@ -8,8 +8,8 @@ vectors to pending, then each is scheduled for re-embedding.
 from __future__ import annotations
 
 from mnemo.application.ports.embedder import EmbedderPort
+from mnemo.application.ports.embedding_queue import EmbeddingQueuePort
 from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 
 _REINDEX_PAGE = 256  # rows fetched per scan while draining the pending set
 
@@ -17,7 +17,7 @@ _REINDEX_PAGE = 256  # rows fetched per scan while draining the pending set
 class ReindexMemories:
     def __init__(
         self,
-        repository: MemoryRepositoryPort,
+        repository: EmbeddingQueuePort,
         embedder: EmbedderPort,
         scheduler: EmbeddingSchedulerPort,
     ) -> None:

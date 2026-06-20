@@ -224,7 +224,7 @@ def stats() -> None:
     typer.echo(json.dumps(
         {
             "total": len(memories),
-            "pending": container.repository.pending_count(),
+            "pending": container.embedding_queue.pending_count(),
             "by_type": dict(by_type),
         },
         indent=2,
@@ -261,7 +261,7 @@ def reindex(
     # case a live connector respawned it mid-run). It respawns on demand with the new state.
     stopped_before = stop_service(config)
     count = ReindexMemories(
-        container.repository, container.embedder, container.scheduler
+        container.embedding_queue, container.embedder, container.scheduler
     ).execute()
     stopped_after = stop_service(config)
     typer.echo(json.dumps(

@@ -40,7 +40,7 @@ def main() -> None:
     # is automatic — the workers drain the DB's pending rows on start.
     scheduler = AsyncEmbeddingScheduler(
         container.embedder,
-        container.repository,
+        container.embedding_queue,
         workers=config.embed_workers,
         queue_max=config.embed_queue_max,
         max_retries=config.embed_max_retries,

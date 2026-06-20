@@ -1,4 +1,5 @@
-"""SQLite + sqlite-vec + FTS5 store behind MemoryRepositoryPort.
+"""SQLite + sqlite-vec + FTS5 store — realizes the memory store ports
+(MemoryRepositoryPort + EmbeddingQueuePort + LinkGraphPort) over one DB.
 
 One embedded file. The embedding is a ``BLOB`` column on the ``memories`` row,
 ranked by the ``vec_distance_cosine`` scalar over a ``WHERE``-filtered scan (no

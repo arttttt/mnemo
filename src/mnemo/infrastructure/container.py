@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from mnemo.application.ports.embedder import EmbedderPort
+from mnemo.application.ports.embedding_queue import EmbeddingQueuePort
 from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.use_cases.interfaces.browse_memory import BrowseMemoryUseCase
@@ -19,6 +20,7 @@ class Container:
     config: Config
     embedder: EmbedderPort
     repository: MemoryRepositoryPort
+    embedding_queue: EmbeddingQueuePort  # same store object, the deferred-embedding facet
     scheduler: EmbeddingSchedulerPort
     remember: RememberMemoryUseCase
     search: SearchMemoryUseCase
