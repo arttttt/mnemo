@@ -17,10 +17,10 @@ _ALL = SearchCriteria(scope="all")
 
 def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     writers, per_writer = 8, 10
 
     def write(w):

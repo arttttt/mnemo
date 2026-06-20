@@ -53,7 +53,7 @@ def test_build_embedder_forwards_configured_model(monkeypatch):
 
 def test_build_container_wires_the_sqlite_backend(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     config = Config(
         data_dir=str(tmp_path),
@@ -63,7 +63,7 @@ def test_build_container_wires_the_sqlite_backend(tmp_path):
         sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
-    assert isinstance(container.repository, SqliteVecMemoryRepository)
+    assert isinstance(container.repository, SqliteRepositoryImpl)
 
     stored = container.remember.execute(content="wired on sqlite", project="api")
     hits = container.search.execute(query="wired on sqlite", project="api")

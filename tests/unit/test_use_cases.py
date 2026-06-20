@@ -3,21 +3,21 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
-from mnemo.application.use_cases.browse_memory import BrowseMemory
-from mnemo.application.use_cases.delete_memory import DeleteMemory
-from mnemo.application.use_cases.remember_memory import RememberMemory
-from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
+from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
+from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 
 
 def _wiring():
-    repo = InMemoryMemoryRepository()
+    repo = InMemoryRepositoryImpl()
     embedder = HashEmbedder()
     return (
         repo,
-        RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider()),
-        SearchMemory(repo, embedder),
-        DeleteMemory(repo),
+        RememberMemoryUseCaseImpl(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider()),
+        SearchMemoryUseCaseImpl(repo, embedder),
+        DeleteMemoryUseCaseImpl(repo),
     )
 
 
@@ -55,7 +55,7 @@ def test_project_scoped_search_without_a_project_errors():
 
 def test_browse_lists_newest_first_without_a_query():
     repo, remember, _, _ = _wiring()
-    browse = BrowseMemory(repo)
+    browse = BrowseMemoryUseCaseImpl(repo)
     a = remember.execute(content="alpha", project="api")
     b = remember.execute(content="beta", project="api")
 
@@ -68,7 +68,7 @@ def test_browse_lists_newest_first_without_a_query():
 
 def test_browse_inherits_the_scope_project_guard():
     repo, _, _, _ = _wiring()
-    browse = BrowseMemory(repo)
+    browse = BrowseMemoryUseCaseImpl(repo)
     with pytest.raises(ValueError):
         browse.execute()  # scope defaults to 'project' with no project
 
@@ -222,18 +222,18 @@ def test_distinct_runs_get_distinct_session_ids():
 
 
 def test_over_window_content_is_rejected_not_truncated():
-    repo = InMemoryMemoryRepository()
+    repo = InMemoryRepositoryImpl()
     embedder = HashEmbedder(max_input=5)  # window of 5 tokens
-    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
+    remember = RememberMemoryUseCaseImpl(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
     with pytest.raises(ValueError):
         remember.execute(content="one two three four five six seven", project="api")
     assert repo.list_all() == []  # nothing stored on reject
 
 
 def test_within_window_content_is_stored():
-    repo = InMemoryMemoryRepository()
+    repo = InMemoryRepositoryImpl()
     embedder = HashEmbedder(max_input=5)
-    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
+    remember = RememberMemoryUseCaseImpl(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
     stored = remember.execute(content="one two three", project="api")
     assert stored.id
     assert len(repo.list_all()) == 1

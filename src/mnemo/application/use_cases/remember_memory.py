@@ -6,10 +6,10 @@ docs/03-architecture.md (deferred embedding).
 """
 from __future__ import annotations
 
-from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.session_provider import SessionProviderPort
-from mnemo.application.ports.token_window import TokenWindowPort
+from mnemo.application.ports.embedding_scheduler import EmbeddingScheduler
+from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.ports.session_provider import SessionProvider
+from mnemo.application.ports.token_window import TokenWindow
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
@@ -19,13 +19,13 @@ from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
 
 
-class RememberMemory:
+class RememberMemoryUseCaseImpl:
     def __init__(
         self,
-        repository: MemoryRepositoryPort,
-        scheduler: EmbeddingSchedulerPort,
-        token_window: TokenWindowPort,
-        session_provider: SessionProviderPort,
+        repository: MemoryRepository,
+        scheduler: EmbeddingScheduler,
+        token_window: TokenWindow,
+        session_provider: SessionProvider,
     ) -> None:
         self._repository = repository
         self._scheduler = scheduler

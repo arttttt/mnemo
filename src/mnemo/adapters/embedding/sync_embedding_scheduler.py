@@ -5,12 +5,12 @@ offline tests.
 """
 from __future__ import annotations
 
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.embedding_queue import EmbeddingQueuePort
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.embedding_queue import EmbeddingQueue
 
 
 class SyncEmbeddingScheduler:
-    def __init__(self, embedder: EmbedderPort, repository: EmbeddingQueuePort) -> None:
+    def __init__(self, embedder: TextEmbedder, repository: EmbeddingQueue) -> None:
         self._embedder = embedder
         self._repository = repository
 

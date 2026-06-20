@@ -11,18 +11,18 @@ from mnemo.domain.memory import Memory
 
 
 def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
 
 
 def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     # The store now requires its dimension from config and creates the schema
     # eagerly; match the HashEmbedder this suite stores vectors with.
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(

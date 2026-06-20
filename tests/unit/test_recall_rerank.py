@@ -1,7 +1,7 @@
 """Focus recall — reranks the gathered memories by relevance to the query, keeps top-K."""
 from __future__ import annotations
 
-from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
@@ -15,8 +15,8 @@ class _KeywordReranker:
         return [float(len(words & set(doc.lower().split()))) for doc in documents]
 
 
-def _repo_with(*memories: Memory) -> InMemoryMemoryRepository:
-    repo = InMemoryMemoryRepository()
+def _repo_with(*memories: Memory) -> InMemoryRepositoryImpl:
+    repo = InMemoryRepositoryImpl()
     for memory in memories:
         repo.add(memory)
     return repo

@@ -1,7 +1,7 @@
 """Port: persistence and retrieval for memories (the memory aggregate).
 
-The deferred-embedding queue (EmbeddingQueuePort) and the link graph
-(LinkGraphPort) are SEPARATE ports — one store implementation realizes all three
+The deferred-embedding queue (EmbeddingQueue) and the link graph
+(LinkGraph) are SEPARATE ports — one store implementation realizes all three
 facets, but each consumer depends only on the slice it needs.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 
-class MemoryRepositoryPort(Protocol):
+class MemoryRepository(Protocol):
     def add(self, memory: Memory, vector: Vector | None = None) -> None:
         """Persist a memory. `vector=None` stores it **pending** (lexically searchable
         via FTS5, absent from dense search) until the embedding lands — see deferred

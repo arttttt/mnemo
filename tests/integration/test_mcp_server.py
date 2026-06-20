@@ -87,11 +87,11 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
     from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-    from mnemo.application.use_cases.remember_memory import RememberMemory
+    from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 
     container = _container(tmp_path)
     embedder = HashEmbedder(max_input=3)
-    container.remember = RememberMemory(
+    container.remember = RememberMemoryUseCaseImpl(
         container.repository,
         SyncEmbeddingScheduler(embedder, container.repository),
         embedder,

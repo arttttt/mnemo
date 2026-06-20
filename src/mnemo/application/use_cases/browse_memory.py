@@ -6,15 +6,15 @@ recency) ordered by recency, distinct from the semantic `search`. Builds a
 """
 from __future__ import annotations
 
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.results.browse_result import BrowseResult
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory_type import MemoryType
 
 
-class BrowseMemory:
-    def __init__(self, repository: MemoryRepositoryPort) -> None:
+class BrowseMemoryUseCaseImpl:
+    def __init__(self, repository: MemoryRepository) -> None:
         self._repository = repository
 
     def execute(

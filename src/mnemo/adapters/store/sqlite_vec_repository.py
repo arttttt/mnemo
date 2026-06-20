@@ -1,5 +1,5 @@
 """SQLite + sqlite-vec + FTS5 store — realizes the memory store ports
-(MemoryRepositoryPort + EmbeddingQueuePort + LinkGraphPort) over one DB.
+(MemoryRepository + EmbeddingQueue + LinkGraph) over one DB.
 
 One embedded file. The embedding is a ``BLOB`` column on the ``memories`` row,
 ranked by the ``vec_distance_cosine`` scalar over a ``WHERE``-filtered scan (no
@@ -126,7 +126,7 @@ _TRIGGER_STATEMENTS = (
 _FTS_REBUILD = "INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"
 
 
-class SqliteVecMemoryRepository:
+class SqliteRepositoryImpl:
     def __init__(self, path: str, dim: int) -> None:
         # The embedding dimension comes from config (the embedder) — the repository
         # does not learn or cache it. It is used once here to create the schema; the

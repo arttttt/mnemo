@@ -7,5 +7,5 @@ now, an async one defers to a background worker (docs/03-architecture.md).
 from typing import Protocol
 
 
-class EmbeddingSchedulerPort(Protocol):
+class EmbeddingScheduler(Protocol):
     def schedule(self, memory_id: str) -> None: ...

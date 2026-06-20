@@ -1,4 +1,4 @@
-"""One contract, run against every MemoryRepositoryPort backend.
+"""One contract, run against every MemoryRepository backend.
 
 The in-memory and SQLite (`sqlite-vec` + FTS5) backends both run always — they
 are offline and light (`sqlite-vec` is a small extension, skipped gracefully if
@@ -23,17 +23,17 @@ def _hits(repo, embedder, text, criteria, limit=5):
 
 
 def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
 
 
 def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     # dim up front so a pending (vector-less) write can create the schema.
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(
@@ -246,10 +246,10 @@ def test_missing_id_methods_are_safe(open_repo, embedder):
 def test_sqlite_pending_is_lexically_searchable(tmp_path):
     """A pending memory (no vector) must still be findable via the FTS5 lexical leg."""
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     pending = Memory.create("handleAuthCallback pending fix", project="api")
     repo.add(pending)  # no vector
 
@@ -259,10 +259,10 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
 
 def test_sqlite_hybrid_finds_exact_token(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo = SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 

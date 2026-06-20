@@ -1,7 +1,7 @@
 """In-memory repository: brute-force cosine + optional JSON persistence.
 
 The offline/test backend (the SQLite store is the real one). It implements
-MemoryRepositoryPort structurally.
+MemoryRepository structurally.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 
-class InMemoryMemoryRepository:
+class InMemoryRepositoryImpl:
     def __init__(self, path: str | None = None) -> None:
         self._path = Path(path) if path else None
         self._items: list[tuple[Memory, Vector | None]] = []

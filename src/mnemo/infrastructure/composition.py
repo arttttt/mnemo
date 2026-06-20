@@ -6,21 +6,21 @@ from llmkit.ports.reranker import Reranker
 
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.session_provider import SessionProviderPort
-from mnemo.application.use_cases.browse_memory import BrowseMemory
-from mnemo.application.use_cases.delete_memory import DeleteMemory
-from mnemo.application.use_cases.recall_project import RecallProject
-from mnemo.application.use_cases.remember_memory import RememberMemory
-from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.ports.session_provider import SessionProvider
+from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
+from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
+from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
+from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
 
 
 def build_container(
     config: Config | None = None,
-    session_provider: SessionProviderPort | None = None,
+    session_provider: SessionProvider | None = None,
 ) -> Container:
     config = config or Config.from_env()
     embedder = _build_embedder(config)
@@ -35,21 +35,21 @@ def build_container(
         repository=repository,
         embedding_queue=repository,
         scheduler=scheduler,
-        remember=RememberMemory(repository, scheduler, embedder, session_provider),
-        search=SearchMemory(repository, embedder),
-        browse=BrowseMemory(repository),
-        recall=RecallProject(
+        remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider),
+        search=SearchMemoryUseCaseImpl(repository, embedder),
+        browse=BrowseMemoryUseCaseImpl(repository),
+        recall=RecallProjectUseCaseImpl(
             repository,
             reranker=_build_reranker(config),
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,
             generator_max_tokens=config.generator_max_tokens,
         ),
-        delete=DeleteMemory(repository),
+        delete=DeleteMemoryUseCaseImpl(repository),
     )
 
 
-def _build_embedder(config: Config) -> EmbedderPort:
+def _build_embedder(config: Config) -> TextEmbedder:
     name = config.embedder
     if name == "hash":
         from mnemo.adapters.embedding.hash_embedder import HashEmbedder
@@ -81,16 +81,16 @@ def _build_embedder(config: Config) -> EmbedderPort:
     raise ValueError(f"unknown embedder: {name!r}")
 
 
-def _build_repository(config: Config, dim: int) -> MemoryRepositoryPort:
+def _build_repository(config: Config, dim: int) -> MemoryRepository:
     if config.store == "memory":
-        from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+        from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-        return InMemoryMemoryRepository(path=config.store_path)
+        return InMemoryRepositoryImpl(path=config.store_path)
     if config.store == "sqlite":
-        from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+        from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
         # dim up front lets a pending (vector-less) first write create the schema.
-        return SqliteVecMemoryRepository(path=config.sqlite_path, dim=dim)
+        return SqliteRepositoryImpl(path=config.sqlite_path, dim=dim)
     raise ValueError(f"unknown store: {config.store!r}")
 
 

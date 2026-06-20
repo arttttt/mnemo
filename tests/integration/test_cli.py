@@ -142,14 +142,14 @@ def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeyp
 
 
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
     from mnemo.domain.memory import Memory
 
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "embedded note", "--project", "api"])  # CLI embeds inline
 
     # Inject a vector-less (pending) memory into the same store file.
-    repo = InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    repo = InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
     repo.add(Memory.create("not embedded yet", project="api"))  # no vector → pending
 
     stats = json.loads(runner.invoke(app, ["stats"]).stdout)

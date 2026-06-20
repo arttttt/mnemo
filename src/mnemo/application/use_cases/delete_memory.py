@@ -1,14 +1,14 @@
 """Hard deletion: specific ids, a whole project, the global memories, or everything."""
 from __future__ import annotations
 
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.results.deletion_result import DeletionResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import GLOBAL_PROJECT
 
 
-class DeleteMemory:
-    def __init__(self, repository: MemoryRepositoryPort) -> None:
+class DeleteMemoryUseCaseImpl:
+    def __init__(self, repository: MemoryRepository) -> None:
         self._repository = repository
 
     def delete(self, ids: list[str]) -> DeletionResult:

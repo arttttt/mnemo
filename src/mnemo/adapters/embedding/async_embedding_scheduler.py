@@ -15,8 +15,8 @@ import logging
 import threading
 import time
 
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.embedding_queue import EmbeddingQueuePort
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.embedding_queue import EmbeddingQueue
 
 _log = logging.getLogger("mnemo.embed")
 
@@ -29,8 +29,8 @@ _RETRY_BACKOFF_MAX = 30.0
 class AsyncEmbeddingScheduler:
     def __init__(
         self,
-        embedder: EmbedderPort,
-        repository: EmbeddingQueuePort,
+        embedder: TextEmbedder,
+        repository: EmbeddingQueue,
         *,
         workers: int = 1,
         queue_max: int = 256,

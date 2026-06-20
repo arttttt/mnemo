@@ -2,8 +2,8 @@
 
 A memory with no vector is a pending job. This is the slice the embedding
 schedulers and reindex depend on — distinct from the memory CRUD a use case needs.
-One store implementation realizes this alongside MemoryRepositoryPort and
-LinkGraphPort, but each consumer depends only on the facet it uses.
+One store implementation realizes this alongside MemoryRepository and
+LinkGraph, but each consumer depends only on the facet it uses.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Protocol
 from mnemo.application.types import Vector
 
 
-class EmbeddingQueuePort(Protocol):
+class EmbeddingQueue(Protocol):
     def set_vector(self, memory_id: str, vector: Vector) -> None:
         """Attach the embedding to an existing record (upsert; no-op if id is gone)."""
         ...

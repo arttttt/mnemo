@@ -7,13 +7,13 @@ from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.use_cases.reindex_memories import ReindexMemories
-from mnemo.application.use_cases.remember_memory import RememberMemory
-from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
+from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.domain.memory import Memory
 
 
 def _remember(repo, embedder, content, **kwargs):
-    use_case = RememberMemory(
+    use_case = RememberMemoryUseCaseImpl(
         repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider()
     )
     return use_case.execute(content=content, project="api", **kwargs)
@@ -24,16 +24,16 @@ def _reindex(repo, embedder):
 
 
 def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
 
 
 def _sqlite(tmp_path, dim):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=dim)
+    return SqliteRepositoryImpl(path=str(tmp_path / "memory.db"), dim=dim)
 
 
 @pytest.fixture(params=["in_memory", "sqlite"])
@@ -62,7 +62,7 @@ def test_reindex_switches_dimension_and_reembeds_all(repo):
     links = repo.links_for(second.id)
     assert len(links) == 1 and links[0].target_id == first.id
     # search works at the new dimension (a 128-dim store would reject a 256-dim vector)
-    hits = SearchMemory(repo, new).execute(query="redis cache", scope="all")
+    hits = SearchMemoryUseCaseImpl(repo, new).execute(query="redis cache", scope="all")
     assert any(hit.id == other.id for hit in hits)
 
 
@@ -122,7 +122,7 @@ def test_sqlite_set_dimension_is_atomic_on_failure(tmp_path, monkeypatch):
     assert repo._current_dim() == 256  # dimension unchanged — the swap rolled back
     assert {m.id for m in repo.list_all()} == {m.id for m in kept}  # no rows lost
     # still fully queryable: the original table + FTS survived the rollback
-    hits = SearchMemory(repo, embedder).execute(query="beta note", scope="all")
+    hits = SearchMemoryUseCaseImpl(repo, embedder).execute(query="beta note", scope="all")
     assert any(hit.id == kept[1].id for hit in hits)
 
 
@@ -136,7 +136,7 @@ def test_sqlite_set_dimension_rebuilds_fts(tmp_path):
     repo.set_dimension(128)  # everything back to pending; FTS rebuilt against the swap
     assert repo.pending_count() == 1  # not re-embedded → dense leg cannot surface it
 
-    hits = SearchMemory(repo, HashEmbedder(dim=128)).execute(query="zzqqx", scope="all")
+    hits = SearchMemoryUseCaseImpl(repo, HashEmbedder(dim=128)).execute(query="zzqqx", scope="all")
     assert any("zzqqx" in hit.content for hit in hits)
 
 

@@ -20,7 +20,7 @@ from mnemo.adapters.mcp.idle_monitor import IdleMonitor
 from mnemo.adapters.mcp.run_paths import connectors_dir, run_dir
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.adapters.session.meta_session_provider import MetaSessionProvider
-from mnemo.application.use_cases.remember_memory import RememberMemory
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.logging_config import configure_logging
@@ -46,7 +46,7 @@ def main() -> None:
         max_retries=config.embed_max_retries,
     )
     container.scheduler = scheduler
-    container.remember = RememberMemory(
+    container.remember = RememberMemoryUseCaseImpl(
         container.repository, scheduler, container.embedder, session_provider
     )
     scheduler.start()
