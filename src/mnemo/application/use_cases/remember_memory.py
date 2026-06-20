@@ -9,6 +9,7 @@ from __future__ import annotations
 from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
 from mnemo.application.ports.memory_repository import MemoryRepositoryPort
 from mnemo.application.ports.session_provider import SessionProviderPort
+from mnemo.application.ports.token_window import TokenWindowPort
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
@@ -23,10 +24,12 @@ class RememberMemory:
         self,
         repository: MemoryRepositoryPort,
         scheduler: EmbeddingSchedulerPort,
+        token_window: TokenWindowPort,
         session_provider: SessionProviderPort,
     ) -> None:
         self._repository = repository
         self._scheduler = scheduler
+        self._token_window = token_window
         self._session_provider = session_provider
 
     def execute(
@@ -58,11 +61,11 @@ class RememberMemory:
         # token window. Reject with an explicit error (never truncate, never auto-split)
         # so the caller — already an LLM — can split it deliberately. The token count is
         # cheap and stays on the hot path; only the encode is deferred.
-        tokens = self._scheduler.count_tokens(memory.content)
-        if tokens > self._scheduler.max_input:
+        tokens = self._token_window.count_tokens(memory.content)
+        if tokens > self._token_window.max_input:
             raise ValueError(
                 f"content is {tokens} tokens, over the embedder's window of "
-                f"{self._scheduler.max_input}; split it into smaller, focused memories"
+                f"{self._token_window.max_input}; split it into smaller, focused memories"
             )
 
         # Exact duplicate: identical normalized content already ACTIVE in this same

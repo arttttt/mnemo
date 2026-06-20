@@ -14,7 +14,7 @@ from mnemo.domain.memory import Memory
 
 def _remember(repo, embedder, content, **kwargs):
     use_case = RememberMemory(
-        repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider()
+        repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider()
     )
     return use_case.execute(content=content, project="api", **kwargs)
 

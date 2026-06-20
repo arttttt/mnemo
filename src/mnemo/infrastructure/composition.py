@@ -34,7 +34,7 @@ def build_container(
         embedder=embedder,
         repository=repository,
         scheduler=scheduler,
-        remember=RememberMemory(repository, scheduler, session_provider),
+        remember=RememberMemory(repository, scheduler, embedder, session_provider),
         search=SearchMemory(repository, embedder),
         browse=BrowseMemory(repository),
         recall=RecallProject(

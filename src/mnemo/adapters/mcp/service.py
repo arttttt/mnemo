@@ -46,7 +46,9 @@ def main() -> None:
         max_retries=config.embed_max_retries,
     )
     container.scheduler = scheduler
-    container.remember = RememberMemory(container.repository, scheduler, session_provider)
+    container.remember = RememberMemory(
+        container.repository, scheduler, container.embedder, session_provider
+    )
     scheduler.start()
     _log.info(
         "service up: embedder=%s dim=%d workers=%d on %s:%d (encode runs on the embed worker, off the write path)",

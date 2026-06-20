@@ -15,7 +15,7 @@ def _wiring():
     embedder = HashEmbedder()
     return (
         repo,
-        RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider()),
+        RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider()),
         SearchMemory(repo, embedder),
         DeleteMemory(repo),
     )
@@ -224,7 +224,7 @@ def test_distinct_runs_get_distinct_session_ids():
 def test_over_window_content_is_rejected_not_truncated():
     repo = InMemoryMemoryRepository()
     embedder = HashEmbedder(max_input=5)  # window of 5 tokens
-    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider())
+    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
     with pytest.raises(ValueError):
         remember.execute(content="one two three four five six seven", project="api")
     assert repo.list_all() == []  # nothing stored on reject
@@ -233,7 +233,7 @@ def test_over_window_content_is_rejected_not_truncated():
 def test_within_window_content_is_stored():
     repo = InMemoryMemoryRepository()
     embedder = HashEmbedder(max_input=5)
-    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider())
+    remember = RememberMemory(repo, SyncEmbeddingScheduler(embedder, repo), embedder, InProcessSessionProvider())
     stored = remember.execute(content="one two three", project="api")
     assert stored.id
     assert len(repo.list_all()) == 1

@@ -25,9 +25,3 @@ def test_schedule_embeds_inline():
 def test_schedule_on_missing_id_is_noop():
     _, _, scheduler = _setup()
     scheduler.schedule("does-not-exist")  # deleted before embedding — no raise
-
-
-def test_window_methods_delegate_to_embedder():
-    _, embedder, scheduler = _setup()
-    assert scheduler.max_input == embedder.max_input
-    assert scheduler.count_tokens("one two three") == embedder.count_tokens("one two three")

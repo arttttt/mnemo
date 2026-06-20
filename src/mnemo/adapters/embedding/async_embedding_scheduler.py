@@ -52,14 +52,6 @@ class AsyncEmbeddingScheduler:
             for i in range(max(1, workers))
         ]
 
-    # --- window-check delegation (the use case rejects oversize before insert) ---
-    @property
-    def max_input(self) -> int:
-        return self._embedder.max_input
-
-    def count_tokens(self, text: str) -> int:
-        return self._embedder.count_tokens(text)
-
     # --- lifecycle ---
     def start(self) -> None:
         for thread in self._threads:

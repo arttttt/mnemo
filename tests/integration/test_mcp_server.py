@@ -94,6 +94,7 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     container.remember = RememberMemory(
         container.repository,
         SyncEmbeddingScheduler(embedder, container.repository),
+        embedder,
         InProcessSessionProvider(),
     )
     mcp = build_mcp(container)
