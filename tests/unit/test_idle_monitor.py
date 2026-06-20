@@ -21,6 +21,20 @@ class _Probe:
         return value
 
 
+class _FlakyProbe:
+    """Raises on the first live_count() call, then reports empty — to prove a probe error
+    does not kill the monitor thread."""
+
+    def __init__(self):
+        self._calls = 0
+
+    def live_count(self) -> int:
+        self._calls += 1
+        if self._calls == 1:
+            raise OSError("probe boom")
+        return 0
+
+
 def _start(monitor: IdleMonitor) -> threading.Thread:
     thread = threading.Thread(target=monitor.run, daemon=True)
     thread.start()
@@ -53,4 +67,12 @@ def test_a_returning_connector_cancels_the_grace():
     thread = _start(monitor)
     assert not fired.wait(0.4)
     monitor.stop()
+    thread.join(1.0)
+
+
+def test_monitor_survives_a_probe_error_and_still_idle_exits():
+    fired = threading.Event()
+    monitor = IdleMonitor(_FlakyProbe(), on_idle=fired.set, grace_seconds=0.05, interval_seconds=0.01)
+    thread = _start(monitor)
+    assert fired.wait(2.0)  # the first-tick probe error did not kill the monitor
     thread.join(1.0)

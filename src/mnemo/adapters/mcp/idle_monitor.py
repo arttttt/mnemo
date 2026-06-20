@@ -10,11 +10,14 @@ that no connector ever uses also exits after the grace period.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Callable
 
 from mnemo.adapters.mcp.liveness_probe import LivenessProbe
+
+_log = logging.getLogger("mnemo.idle")
 
 
 class IdleMonitor:
@@ -34,14 +37,31 @@ class IdleMonitor:
     def run(self) -> None:
         empty_since: float | None = time.monotonic()  # boot == "last one left"
         while not self._stop.wait(self._interval):
-            if self._liveness.live_count() > 0:
+            try:
+                live = self._liveness.live_count()
+            except Exception:  # the probe self-handles, but never let it kill the monitor
+                _log.warning(
+                    "idle monitor: liveness probe raised; assuming live this tick", exc_info=True
+                )
+                empty_since = None  # assume live -> don't advance toward idle-exit
+                continue
+            if live > 0:
                 empty_since = None
                 continue
             if empty_since is None:
                 empty_since = time.monotonic()
             elif time.monotonic() - empty_since >= self._grace:
-                self._on_idle()
+                self._fire_idle()
                 return
+
+    def _fire_idle(self) -> None:
+        # The grace elapsed with a trustworthy zero -> we have DECIDED to exit. A failure in
+        # the shutdown callback must not abort that into a silent hang; log and return so the
+        # process still tears down (the callback drives os._exit).
+        try:
+            self._on_idle()
+        except Exception:
+            _log.error("idle monitor: shutdown callback failed", exc_info=True)
 
     def stop(self) -> None:
         self._stop.set()
