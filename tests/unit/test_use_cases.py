@@ -3,8 +3,8 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-from mnemo.adapters.store.in_memory_project_repository import InMemoryProjectRepositoryImpl
-from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+from tests.fakes.in_memory_project_repository import InMemoryProjectRepositoryImpl
+from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.project_gate import ProjectGate, UnknownProject
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl

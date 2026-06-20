@@ -1,16 +1,8 @@
-"""Project registry contract, run against every backend (in-memory + SQLite)."""
+"""Project registry contract, exercised against the SQLite backend (the sole store)."""
 import pytest
 
 from mnemo.domain.constants import GLOBAL_PROJECT
 from mnemo.domain.project import Project
-
-
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_project_repository import (
-        InMemoryProjectRepositoryImpl,
-    )
-
-    return InMemoryProjectRepositoryImpl()
 
 
 def _sqlite(tmp_path):
@@ -23,9 +15,9 @@ def _sqlite(tmp_path):
     return SqliteProjectRepositoryImpl(SqliteConnections(str(tmp_path / "memory.db")))
 
 
-@pytest.fixture(params=[_in_memory, _sqlite], ids=["in_memory", "sqlite"])
-def projects(request, tmp_path):
-    return request.param(tmp_path)
+@pytest.fixture
+def projects(tmp_path):
+    return _sqlite(tmp_path)
 
 
 def test_create_then_exists_and_get(projects):

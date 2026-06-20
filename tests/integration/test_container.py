@@ -1,13 +1,16 @@
+import pytest
+
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
+
+pytest.importorskip("sqlite_vec")
 
 
 def test_container_wires_working_use_cases(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
-        store="memory",
-        store_path=str(tmp_path / "memory.json"),
+        sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
 
@@ -23,8 +26,7 @@ def test_container_stamps_one_session_id_through_the_wiring(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
-        store="memory",
-        store_path=str(tmp_path / "memory.json"),
+        sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
 

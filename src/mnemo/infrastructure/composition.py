@@ -90,40 +90,19 @@ def _build_embedder(config: Config) -> TextEmbedder:
 def _build_store(
     config: Config, dim: int
 ) -> tuple[MemoryRepository, ProjectRepository]:
-    """Build the memory store and the project registry together — for SQLite they
-    SHARE one connection (same DB, one writer) so the FK cascade is atomic."""
-    if config.store == "memory":
-        from pathlib import Path
+    """Build the memory store and the project registry together. They SHARE one
+    connection (same DB, one writer) so the FK cascade is atomic."""
+    from mnemo.adapters.store.sqlite_connections import SqliteConnections
+    from mnemo.adapters.store.sqlite_project_repository import (
+        SqliteProjectRepositoryImpl,
+    )
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-        from mnemo.adapters.store.in_memory_project_repository import (
-            InMemoryProjectRepositoryImpl,
-        )
-        from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
-
-        # The registry persists to a sibling JSON so it survives a restart like the
-        # memory store does (SQLite keeps both in one DB).
-        projects_path = (
-            str(Path(config.store_path).with_name("projects.json"))
-            if config.store_path
-            else None
-        )
-        return (
-            InMemoryRepositoryImpl(path=config.store_path),
-            InMemoryProjectRepositoryImpl(path=projects_path),
-        )
-    if config.store == "sqlite":
-        from mnemo.adapters.store.sqlite_connections import SqliteConnections
-        from mnemo.adapters.store.sqlite_project_repository import (
-            SqliteProjectRepositoryImpl,
-        )
-        from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
-
-        # Build the registry first so `projects` exists before the memories schema that
-        # references it; both share the one connection.
-        conns = SqliteConnections(config.sqlite_path)
-        projects = SqliteProjectRepositoryImpl(conns)
-        return SqliteRepositoryImpl(conns, dim), projects
-    raise ValueError(f"unknown store: {config.store!r}")
+    # Build the registry first so `projects` exists before the memories schema that
+    # references it; both share the one connection.
+    conns = SqliteConnections(config.sqlite_path)
+    projects = SqliteProjectRepositoryImpl(conns)
+    return SqliteRepositoryImpl(conns, dim), projects
 
 
 def _build_reranker(config: Config) -> Reranker | None:

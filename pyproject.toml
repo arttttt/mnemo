@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.2.0",
     "typer>=0.12.0",
-    "sqlite-vec>=0.1.6",       # default store: vector search inside SQLite (FTS5 is built in)
+    "sqlite-vec>=0.1.6",       # the store: vector search inside SQLite (FTS5 is built in)
 ]
 
 [project.optional-dependencies]
@@ -38,7 +38,7 @@ build-backend = "hatchling.build"
 packages = ["src/mnemo", "src/llmkit"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]  # "." so tests can import shared doubles from tests/fakes
 testpaths = ["tests"]
 addopts = "-m 'not heavy'"
 markers = [

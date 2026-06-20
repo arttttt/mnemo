@@ -6,17 +6,16 @@ testing = pytest.importorskip("typer.testing")
 
 
 def _runner_and_app(tmp_path, monkeypatch):
+    pytest.importorskip("sqlite_vec")
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
-    monkeypatch.setenv("MNEMO_STORE", "memory")
     monkeypatch.setenv("MNEMO_RERANKER", "off")    # keep tests offline: no model download
     monkeypatch.setenv("MNEMO_GENERATOR", "off")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
     from mnemo.infrastructure.composition import build_container
 
     # The gate requires registered projects; pre-register the ones these tests use.
-    # Persisted to projects.json, so each CLI invocation's fresh container sees them.
+    # Persisted in the SQLite store, so each CLI invocation's fresh container sees them.
     container = build_container()
     for slug in ("api", "other"):
         container.create_project.execute(slug)
@@ -148,14 +147,15 @@ def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeyp
 
 
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
-    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+    from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
     from mnemo.domain.memory import Memory
 
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "embedded note", "--project", "api"])  # CLI embeds inline
 
     # Inject a vector-less (pending) memory into the same store file.
-    repo = InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
     repo.add(Memory.create("not embedded yet", project="api"))  # no vector → pending
 
     stats = json.loads(runner.invoke(app, ["stats"]).stdout)

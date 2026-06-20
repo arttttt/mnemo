@@ -1,8 +1,5 @@
-"""One contract, run against every MemoryRepository backend.
-
-The in-memory and SQLite (`sqlite-vec` + FTS5) backends both run always — they
-are offline and light (`sqlite-vec` is a small extension, skipped gracefully if
-absent).
+"""The MemoryRepository contract, exercised against the SQLite (`sqlite-vec` +
+FTS5) backend — the sole store. Offline and light; skipped where `sqlite-vec` is absent.
 """
 import pytest
 
@@ -22,12 +19,6 @@ def _hits(repo, embedder, text, criteria, limit=5):
     )
 
 
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
-
-    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
-
-
 def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
@@ -36,15 +27,10 @@ def _sqlite(tmp_path):
     return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
-@pytest.fixture(
-    params=[
-        pytest.param(_in_memory, id="in_memory"),
-        pytest.param(_sqlite, id="sqlite"),
-    ]
-)
-def open_repo(request, tmp_path):
+@pytest.fixture
+def open_repo(tmp_path):
     """Return a zero-arg factory that (re)opens a repo at one fixed location."""
-    return lambda: request.param(tmp_path)
+    return lambda: _sqlite(tmp_path)
 
 
 @pytest.fixture

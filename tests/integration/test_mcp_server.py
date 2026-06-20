@@ -4,6 +4,7 @@ import json
 import pytest
 
 pytest.importorskip("mcp")
+pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.domain.memory_type import MemoryType
@@ -15,8 +16,7 @@ def _container(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
-        store="memory",
-        store_path=str(tmp_path / "memory.json"),
+        sqlite_path=str(tmp_path / "memory.db"),
     )
     return build_container(config)
 

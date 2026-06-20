@@ -6,7 +6,7 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-from mnemo.adapters.store.in_memory_project_repository import InMemoryProjectRepositoryImpl
+from tests.fakes.in_memory_project_repository import InMemoryProjectRepositoryImpl
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.reindex_memories import ReindexMemories
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
@@ -39,12 +39,6 @@ def _reindex(repo, embedder):
     return ReindexMemories(repo, embedder, SyncEmbeddingScheduler(embedder, repo)).execute()
 
 
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
-
-    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
-
-
 def _sqlite(tmp_path, dim):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
@@ -52,9 +46,9 @@ def _sqlite(tmp_path, dim):
     return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=dim)
 
 
-@pytest.fixture(params=["in_memory", "sqlite"])
-def repo(request, tmp_path):
-    return _in_memory(tmp_path) if request.param == "in_memory" else _sqlite(tmp_path, dim=256)
+@pytest.fixture
+def repo(tmp_path):
+    return _sqlite(tmp_path, dim=256)
 
 
 def test_reindex_switches_dimension_and_reembeds_all(repo):
@@ -158,10 +152,9 @@ def test_sqlite_set_dimension_rebuilds_fts(tmp_path):
 
 def test_cli_reindex(tmp_path, monkeypatch):
     testing = pytest.importorskip("typer.testing")
+    pytest.importorskip("sqlite_vec")
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
-    monkeypatch.setenv("MNEMO_STORE", "memory")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
 
     runner = testing.CliRunner()

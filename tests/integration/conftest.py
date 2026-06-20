@@ -36,11 +36,10 @@ def _wait_until_listening(proc, host: str, port: int, timeout: float = 20.0) -> 
 
 
 def service_env(host: str, port: int, data_dir) -> dict:
-    """Env for a `mnemo-service` / `mnemo-mcp` subprocess (offline backends)."""
+    """Env for a `mnemo-service` / `mnemo-mcp` subprocess (offline: SQLite + hash embedder)."""
     return {
         **os.environ,
         "PYTHONPATH": str(_SRC),
-        "MNEMO_STORE": "memory",
         "MNEMO_EMBEDDER": "hash",
         "MNEMO_DATA_DIR": str(data_dir),
         "MNEMO_HOST": host,
@@ -56,6 +55,7 @@ def service(tmp_path):
     """
     pytest.importorskip("mcp")
     pytest.importorskip("uvicorn")
+    pytest.importorskip("sqlite_vec")
     host, port = "127.0.0.1", free_port()
     proc = subprocess.Popen(
         [sys.executable, "-c", "from mnemo.adapters.mcp.service import main; main()"],

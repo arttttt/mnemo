@@ -1,6 +1,6 @@
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
-from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.domain.memory import Memory
 
 

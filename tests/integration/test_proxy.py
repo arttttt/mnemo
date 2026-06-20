@@ -12,6 +12,7 @@ import pytest
 
 pytest.importorskip("mcp")
 pytest.importorskip("uvicorn")
+pytest.importorskip("sqlite_vec")
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 
@@ -88,9 +89,10 @@ async def _proxy_writes(host: str, port: int, data_dir, contents: list[str]) -> 
 
 
 def test_each_proxy_run_stamps_its_own_session_id(service, tmp_path):
-    import json
-
     import anyio
+
+    from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     host, port = service
 
@@ -100,8 +102,8 @@ def test_each_proxy_run_stamps_its_own_session_id(service, tmp_path):
     # A second, separate proxy run → its own session id.
     anyio.run(_proxy_writes, host, port, tmp_path, ["b1 via proxy two"])
 
-    rows = json.loads((tmp_path / "memory.json").read_text())["memories"]
-    session_id = {row["memory"]["content"]: row["memory"]["session_id"] for row in rows}
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    session_id = {m.content: m.session_id for m in repo.list_all()}
     assert session_id["a1 via proxy one"] == session_id["a2 via proxy one"]  # one run = one id
     assert session_id["b1 via proxy two"] != session_id["a1 via proxy one"]  # other agent = other id
     assert all(session_id.values())  # the service stamped the proxy-supplied id (not null)
@@ -120,7 +122,6 @@ def test_proxy_spawns_the_service_when_down(free_tcp_port, tmp_path):
     env = {
         **os.environ,
         "PYTHONPATH": str(_SRC),
-        "MNEMO_STORE": "memory",  # propagates to the service the proxy spawns
         "MNEMO_EMBEDDER": "hash",
         "MNEMO_DATA_DIR": str(data_dir),
         "MNEMO_HOST": host,
@@ -173,7 +174,6 @@ def test_proxy_reconnects_after_the_service_is_killed(free_tcp_port, tmp_path):
     env = {
         **os.environ,
         "PYTHONPATH": str(_SRC),
-        "MNEMO_STORE": "memory",
         "MNEMO_EMBEDDER": "hash",
         "MNEMO_DATA_DIR": str(data_dir),
         "MNEMO_HOST": host,

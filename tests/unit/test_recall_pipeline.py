@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory

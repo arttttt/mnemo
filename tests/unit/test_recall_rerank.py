@@ -1,7 +1,7 @@
 """Focus recall — reranks the gathered memories by relevance to the query, keeps top-K."""
 from __future__ import annotations
 
-from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
+from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory

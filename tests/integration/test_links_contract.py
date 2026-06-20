@@ -1,7 +1,4 @@
-"""Typed-links contract, run against every links-capable backend.
-
-Both the in-memory and SQLite backends implement the `links` table.
-"""
+"""Typed-links contract, exercised against the SQLite backend (the sole store)."""
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
@@ -10,30 +7,19 @@ from mnemo.domain.link_type import LinkType
 from mnemo.domain.memory import Memory
 
 
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
-
-    return InMemoryRepositoryImpl(path=str(tmp_path / "memory.json"))
-
-
 def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-    # The store now requires its dimension from config and creates the schema
-    # eagerly; match the HashEmbedder this suite stores vectors with.
+    # The store requires its dimension from config and creates the schema eagerly;
+    # match the HashEmbedder this suite stores vectors with.
     return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
-@pytest.fixture(
-    params=[
-        pytest.param(_in_memory, id="in_memory"),
-        pytest.param(_sqlite, id="sqlite"),
-    ]
-)
-def open_repo(request, tmp_path):
+@pytest.fixture
+def open_repo(tmp_path):
     """Return a zero-arg factory that (re)opens a repo at one fixed location."""
-    return lambda: request.param(tmp_path)
+    return lambda: _sqlite(tmp_path)
 
 
 def test_link_is_retrievable_from_both_endpoints(open_repo):

@@ -14,8 +14,6 @@ def test_pplx_embedder_encodes_and_ranks(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="pplx",
-        store="memory",
-        store_path=str(tmp_path / "memory.json"),
         models_dir=str(tmp_path),
     )
     embedder = _build_embedder(config)
