@@ -86,12 +86,13 @@ raw per‑channel similarity + rank, and/or normalise to a documented [0,1]. Res
 actually uses as a threshold.
 
 ### Graph navigation at the MCP surface (`get` / `neighbors`)
-**Why:** memory is densely linked (`[[topic_key]]` wikilinks) and a typed `links` table now exists in storage
-(`add_link` / `links_for`), but there is no way to *traverse* it from the tools — reaching a linked memory means
-another semantic search and hope. The graph lives in the data, not the interface.
-**What:** add `get(id | topic_key)` (exact fetch, including the supersede chain) and `neighbors(id)` (the typed
-edges out/in, single hop — not multi‑hop inference) MCP tools that read the existing `links` table. Pure
-interface, no new storage; stays within the deterministic typed‑edge graph (not a knowledge graph).
+**Why:** memory is densely linked (`[[topic_key]]` wikilinks), but there is no way to *traverse* relationships
+from the tools — reaching a linked memory means another semantic search and hope.
+**What:** add `get(id | topic_key)` (exact fetch, including the supersede chain — which lives in the `supersedes`
+column) and `neighbors(id)` (typed edges out/in, single hop — not multi‑hop inference) MCP tools. A typed `links`
+table existed once but was **removed** (it was write‑only — no reader), so this item **reintroduces** the typed
+edge store (and the `supersedes` column may fold into it) when there is finally a consumer. Deterministic
+typed‑edge graph, not a knowledge graph.
 
 ### Query‑less browse / list mode — **shipped**
 **Why:** `search` requires a `query`, so "all `type=decision` in this project, newest first" can't be expressed

@@ -125,7 +125,7 @@ embedding‑neighbour scan, no LLM.
 
 - A changed fact/decision → a new record; the writer signals it by **reusing the same `topic_key`** (or an
   explicit `supersede`). In response the system *mechanically* marks the old record `status: superseded` and
-  links them (`supersedes` = old id). This is bookkeeping, not a judgement. Recoverable; nothing is deleted.
+  points the successor at it (`supersedes` = old id). This is bookkeeping, not a judgement. Recoverable; nothing is deleted.
 - **No automatic staleness.** The background consolidation worker may only *flag* likely contradictions for
   review — it never marks a memory stale by itself. The human or coding‑agent decides, via `delete` (smarter
   review tooling for flagged contradictions is **post‑MVP**). Exact revision UX is still **TBD**.
@@ -145,10 +145,10 @@ can't silently spawn an invisible phantom project.
 - **Table `projects`:** `slug` (PK, = the id reused on every memory; a rename is a cheap `UPDATE`), `description`
   (nullable), `created_at`. A separate aggregate from the memory store (its own repository), sharing one SQLite
   connection so the cascade below is atomic.
-- **Foreign keys + `ON DELETE CASCADE`** (the integrity mechanism): `memories.project → projects(slug)` and
-  `links.{source_id,target_id} → memories(id)`. So a memory can only be written for a **registered** project
-  (the gate becomes a DB invariant), and `delete_project` is a single `DELETE FROM projects` that the DB
-  cascades projects → memories → links in one transaction. `PRAGMA foreign_keys=ON` on every connection.
+- **Foreign key + `ON DELETE CASCADE`** (the integrity mechanism): `memories.project → projects(slug)`. So a
+  memory can only be written for a **registered** project (the gate becomes a DB invariant), and `delete_project`
+  is a single `DELETE FROM projects` that the DB cascades projects → memories in one transaction.
+  `PRAGMA foreign_keys=ON` on every connection.
 - **The gate (application layer):** a `scope="project"` `remember`/`search`/`browse` for an **unknown** project
   raises an error carrying near‑match candidates (difflib over the registered slugs) — recover from a typo or
   `create_project`. `global`/`all` are exempt (global is a scope, not a project). A registered‑but‑empty project
@@ -163,9 +163,14 @@ can't silently spawn an invisible phantom project.
 
 Hard delete only — no soft‑delete/inactivation. All are available to **both the agent and the CLI**:
 - `delete(ids)` — remove specific memories.
-- `delete_project(name)` — remove a project and **all its memories** (and their links) in one FK cascade. This is
+- `delete_project(name)` — remove a project and **all its memories** in one FK cascade. This is
   the unit of bulk deletion; there is no per‑project `clear`.
-- `purge()` — remove everything: memories, links, and the project registry (the `__global__` sentinel is re‑seeded).
+- `purge()` — remove everything: memories and the project registry (the `__global__` sentinel is re‑seeded).
+
+`delete(ids)` keeps any surviving **supersede chain** consistent: deleting the active head of a `topic_key`
+promotes the newest surviving version to active, and deleting an interior version splices the `supersedes`
+pointer around it — so a delete never strands a topic with history but no live record, nor leaves a dangling
+pointer. (The supersede chain is encoded solely by the `supersedes` column; there is no separate links table.)
 
 Superseding is separate: it keeps history via `status: superseded`; deletion physically removes records.
 
@@ -177,7 +182,7 @@ Superseding is separate: it keeps history via `status: superseded`; deletion phy
 
 ## Storage
 
-- Embedded: **SQLite** (`sqlite-vec` for dense vectors + FTS5 for lexical, fused by RRF; relational core for metadata/edges/transactions). One backend only — no mixing stores.
+- Embedded: **SQLite** (`sqlite-vec` for dense vectors + FTS5 for lexical, fused by RRF; relational core for metadata/transactions). One backend only — no mixing stores.
 - **One set of tables for all projects** (cross‑project search is cheap); `project`/`scope` are columns.
 - Data directory: `~/.mnemo/data/` — one SQLite file = the whole state (backup/move = copy the file).
 - Engine choice and rationale — in [09-tech-stack.md](09-tech-stack.md) and [adr/0001-storage-engine.md](adr/0001-storage-engine.md).
