@@ -187,6 +187,23 @@ class SqliteVecMemoryRepository:
         if created:
             self._ready = True
 
+    def supersede(
+        self, memory: Memory, link: Link, vector: Vector | None = None
+    ) -> None:
+        """Persist a supersede in ONE transaction — mark the prior (`memory.supersedes`)
+        superseded, insert the successor, write the supersedes edge — so a crash can
+        never leave the topic_key without an active record, or a successor without its
+        edge. The caller owns the relationship (sets `memory.supersedes`, builds
+        `link`); this only persists it atomically. The schema is assumed to exist (a
+        supersede always replaces an existing row)."""
+
+        def work(conn: sqlite3.Connection) -> None:
+            self._mark_superseded(conn, memory.supersedes)
+            conn.execute(_INSERT_MEMORY, self._row(memory, vector))
+            self._insert_link(conn, link)
+
+        self._write.execute(work)
+
     def set_dimension(self, new_dim: int) -> None:
         """Rebuild the store at a new embedding dimension (e.g. switching embedders).
 

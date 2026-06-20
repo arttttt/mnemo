@@ -9,6 +9,7 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 _ALL = SearchCriteria(scope="all")
@@ -297,3 +298,55 @@ def test_delete_clear_purge(open_repo, embedder):
     assert {m.project for m in repo.list_all()} == {"other"}
     assert repo.delete_all() == 1
     assert repo.list_all() == []
+
+
+def _supersede_inputs(repo, embedder):
+    """A stored prior + a successor/link wired the way the use case does it."""
+    prior = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
+    successor = Memory.create("auth model v2", project="api", topic_key="auth/model")
+    successor.supersedes = prior.id
+    link = Link.supersedes(
+        source_id=successor.id, target_id=prior.id, provenance="auth/model"
+    )
+    return prior, successor, link
+
+
+def test_supersede_marks_prior_inserts_successor_and_links(open_repo, embedder):
+    repo = open_repo()
+    prior, successor, link = _supersede_inputs(repo, embedder)
+
+    repo.supersede(successor, link, embedder.encode(successor.content))
+
+    active = repo.find_active_by_topic_key("auth/model", "api")
+    assert active is not None and active.id == successor.id
+    by_id = {m.id: m for m in repo.list_all()}
+    assert by_id[prior.id].status == "superseded"
+    assert by_id[successor.id].status == "active"
+    assert by_id[successor.id].supersedes == prior.id
+    edges = repo.links_for(successor.id)
+    assert len(edges) == 1
+    assert (edges[0].source_id, edges[0].target_id, edges[0].provenance) == (
+        successor.id,
+        prior.id,
+        "auth/model",
+    )
+
+
+def test_supersede_is_atomic_on_failure(open_repo, embedder, monkeypatch):
+    repo = open_repo()
+    prior, successor, link = _supersede_inputs(repo, embedder)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("link write failed mid-supersede")
+
+    monkeypatch.setattr(repo, "_insert_link", boom)
+
+    with pytest.raises(RuntimeError):
+        repo.supersede(successor, link, embedder.encode(successor.content))
+
+    # Nothing applied: the prior is still the active record, the successor was never
+    # inserted, and no edge exists — the whole unit rolled back.
+    active = repo.find_active_by_topic_key("auth/model", "api")
+    assert active is not None and active.id == prior.id
+    assert {m.id for m in repo.list_all()} == {prior.id}
+    assert repo.links_for(prior.id) == []

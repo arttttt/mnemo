@@ -17,6 +17,17 @@ class MemoryRepositoryPort(Protocol):
         embedding in docs/03-architecture.md."""
         ...
 
+    def supersede(
+        self, memory: Memory, link: Link, vector: Vector | None = None
+    ) -> None:
+        """Atomically persist a supersede: mark `memory.supersedes` (the prior record)
+        superseded, persist `memory` (the successor), and write `link` (the supersedes
+        edge) — all or nothing. The CALLER owns the relationship (sets
+        `memory.supersedes` and builds `link`); the repository only persists it, so a
+        crash can never leave the topic_key with no active record, or a successor with
+        no provenance edge. `vector=None` stores the successor **pending**, like `add`."""
+        ...
+
     # --- deferred embedding (the DB is the durable embed queue) ---
     def set_vector(self, memory_id: str, vector: Vector) -> None:
         """Attach the embedding to an existing record (upsert; no-op if id is gone)."""
