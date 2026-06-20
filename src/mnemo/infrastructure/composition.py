@@ -10,7 +10,9 @@ from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.application.ports.session_provider import SessionProvider
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
+from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
 from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
@@ -30,6 +32,7 @@ def build_container(
     # Embedding is computed inline by default (CLI / offline). The service swaps in the
     # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
     scheduler = SyncEmbeddingScheduler(embedder, repository)
+    gate = ProjectGate(projects)
     return Container(
         config=config,
         embedder=embedder,
@@ -37,9 +40,9 @@ def build_container(
         embedding_queue=repository,
         projects=projects,
         scheduler=scheduler,
-        remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider),
-        search=SearchMemoryUseCaseImpl(repository, embedder),
-        browse=BrowseMemoryUseCaseImpl(repository),
+        remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider, gate),
+        search=SearchMemoryUseCaseImpl(repository, embedder, gate),
+        browse=BrowseMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(
             repository,
             reranker=_build_reranker(config),
@@ -48,6 +51,7 @@ def build_container(
             generator_max_tokens=config.generator_max_tokens,
         ),
         delete=DeleteMemoryUseCaseImpl(repository),
+        create_project=CreateProjectUseCaseImpl(projects),
     )
 
 
@@ -89,12 +93,24 @@ def _build_store(
     """Build the memory store and the project registry together — for SQLite they
     SHARE one connection (same DB, one writer) so the FK cascade is atomic."""
     if config.store == "memory":
+        from pathlib import Path
+
         from mnemo.adapters.store.in_memory_project_repository import (
             InMemoryProjectRepositoryImpl,
         )
         from mnemo.adapters.store.in_memory_repository import InMemoryRepositoryImpl
 
-        return InMemoryRepositoryImpl(path=config.store_path), InMemoryProjectRepositoryImpl()
+        # The registry persists to a sibling JSON so it survives a restart like the
+        # memory store does (SQLite keeps both in one DB).
+        projects_path = (
+            str(Path(config.store_path).with_name("projects.json"))
+            if config.store_path
+            else None
+        )
+        return (
+            InMemoryRepositoryImpl(path=config.store_path),
+            InMemoryProjectRepositoryImpl(path=projects_path),
+        )
     if config.store == "sqlite":
         from mnemo.adapters.store.sqlite_connections import SqliteConnections
         from mnemo.adapters.store.sqlite_project_repository import (

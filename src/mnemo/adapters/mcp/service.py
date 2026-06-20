@@ -20,6 +20,7 @@ from mnemo.adapters.mcp.idle_monitor import IdleMonitor
 from mnemo.adapters.mcp.run_paths import connectors_dir, run_dir
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.adapters.session.meta_session_provider import MetaSessionProvider
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
@@ -47,7 +48,8 @@ def main() -> None:
     )
     container.scheduler = scheduler
     container.remember = RememberMemoryUseCaseImpl(
-        container.repository, scheduler, container.embedder, session_provider
+        container.repository, scheduler, container.embedder, session_provider,
+        ProjectGate(container.projects),
     )
     scheduler.start()
     _log.info(

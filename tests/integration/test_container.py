@@ -11,6 +11,7 @@ def test_container_wires_working_use_cases(tmp_path):
     )
     container = build_container(config)
 
+    container.create_project.execute("api")
     stored = container.remember.execute(content="wired note", project="api")
     hits = container.search.execute(query="wired note", project="api")
     assert any(hit.id == stored.id for hit in hits)
@@ -27,6 +28,8 @@ def test_container_stamps_one_session_id_through_the_wiring(tmp_path):
     )
     container = build_container(config)
 
+    container.create_project.execute("api")
+    container.create_project.execute("svc")
     first = container.remember.execute(content="one", project="api")
     second = container.remember.execute(content="two", project="svc")  # different project, same run
 

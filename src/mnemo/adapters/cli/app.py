@@ -280,6 +280,18 @@ def delete(
 
 
 @app.command()
+def create_project(
+    name: str = typer.Argument(..., help="Project slug (the id; reused on every memory)."),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="What this project is (optional)."
+    ),
+) -> None:
+    """Register a new project. Writing to an unregistered project is rejected."""
+    project = build_container().create_project.execute(name, description)
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
 def clear(
     project: Optional[str] = typer.Argument(
         None, help="Project whose memories to delete. Omit and use --scope global to clear global memories."

@@ -27,7 +27,9 @@ def _tools(tmp_path):
 
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
-    assert {"remember", "search", "browse", "delete", "clear", "purge"} <= set(_tools(tmp_path))
+    assert {
+        "remember", "search", "browse", "delete", "clear", "purge", "create_project"
+    } <= set(_tools(tmp_path))
 
 
 def test_remember_advertises_allowed_types(tmp_path):
@@ -58,6 +60,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["delete"] == ["ids"]
     assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
+    assert required["create_project"] == ["name"]
 
 
 def _call(mcp, name, args):
@@ -68,6 +71,7 @@ def _call(mcp, name, args):
 
 def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
     stored = json.loads(
         _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
     )
@@ -87,15 +91,18 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
     from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+    from mnemo.application.project_gate import ProjectGate
     from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 
     container = _container(tmp_path)
+    container.create_project.execute("api")
     embedder = HashEmbedder(max_input=3)
     container.remember = RememberMemoryUseCaseImpl(
         container.repository,
         SyncEmbeddingScheduler(embedder, container.repository),
         embedder,
         InProcessSessionProvider(),
+        ProjectGate(container.projects),
     )
     mcp = build_mcp(container)
 
@@ -134,6 +141,7 @@ def test_mcp_browse_lists_memories_without_a_query(tmp_path):
     """The browse tool is callable via call_tool and returns recency-ordered hits
     that carry no score (no relevance ranking)."""
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
     a = json.loads(_call(mcp, "remember", {"content": "alpha", "type": "decision", "project": "api"})[0])
     b = json.loads(_call(mcp, "remember", {"content": "beta", "project": "api"})[0])
 
@@ -176,6 +184,8 @@ def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
 
 def test_mcp_clear_and_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "create_project", {"name": "other"})
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
     _call(mcp, "remember", {"content": "beta", "project": "other"})
 
@@ -185,6 +195,7 @@ def test_mcp_clear_and_purge(tmp_path):
 
 def test_mcp_clear_scope_global_targets_globals(tmp_path):
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "remember", {"content": "a project note", "project": "api"})
     _call(mcp, "remember", {"content": "a global rule", "scope": "global", "type": "rule"})
 

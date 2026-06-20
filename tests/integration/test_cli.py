@@ -13,7 +13,13 @@ def _runner_and_app(tmp_path, monkeypatch):
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
+    from mnemo.infrastructure.composition import build_container
 
+    # The gate requires registered projects; pre-register the ones these tests use.
+    # Persisted to projects.json, so each CLI invocation's fresh container sees them.
+    container = build_container()
+    for slug in ("api", "other"):
+        container.create_project.execute(slug)
     return testing.CliRunner(), app
 
 
@@ -207,3 +213,14 @@ def test_cli_recall_reports_missing_model_dep_without_a_traceback(tmp_path, monk
     assert result.exit_code == 1
     assert "llama-cpp-python" in result.output
     assert "Traceback" not in result.output
+
+
+def test_cli_create_project_then_store(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    created = runner.invoke(app, ["create-project", "newproj", "--description", "a new one"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.stdout)["slug"] == "newproj"
+
+    # A write to the freshly-registered project now passes the gate.
+    stored = runner.invoke(app, ["store", "note in newproj", "--project", "newproj"])
+    assert stored.exit_code == 0, stored.output

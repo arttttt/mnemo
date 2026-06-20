@@ -9,6 +9,7 @@ from mnemo.application.ports.embedding_scheduler import EmbeddingScheduler
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.application.use_cases.interfaces.browse_memory import BrowseMemoryUseCase
+from mnemo.application.use_cases.interfaces.create_project import CreateProjectUseCase
 from mnemo.application.use_cases.interfaces.delete_memory import DeleteMemoryUseCase
 from mnemo.application.use_cases.interfaces.recall_project import RecallProjectUseCase
 from mnemo.application.use_cases.interfaces.remember_memory import RememberMemoryUseCase
@@ -29,3 +30,4 @@ class Container:
     browse: BrowseMemoryUseCase
     recall: RecallProjectUseCase
     delete: DeleteMemoryUseCase
+    create_project: CreateProjectUseCase

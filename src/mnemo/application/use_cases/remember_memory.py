@@ -10,6 +10,7 @@ from mnemo.application.ports.embedding_scheduler import EmbeddingScheduler
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.session_provider import SessionProvider
 from mnemo.application.ports.token_window import TokenWindow
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
@@ -26,11 +27,13 @@ class RememberMemoryUseCaseImpl:
         scheduler: EmbeddingScheduler,
         token_window: TokenWindow,
         session_provider: SessionProvider,
+        gate: ProjectGate,
     ) -> None:
         self._repository = repository
         self._scheduler = scheduler
         self._token_window = token_window
         self._session_provider = session_provider
+        self._gate = gate
 
     def execute(
         self,
@@ -47,6 +50,9 @@ class RememberMemoryUseCaseImpl:
         # name its project (else it is silently unreachable by a project search), and a
         # global write must not carry one (scope is authoritative).
         validate_scope_project(scope, project)
+        # A project-scoped write must target a REGISTERED project (else a typo'd slug
+        # would create an invisible phantom project). global/all are exempt.
+        self._gate.check(scope, project)
         memory = Memory.create(
             content=content,
             type=type,

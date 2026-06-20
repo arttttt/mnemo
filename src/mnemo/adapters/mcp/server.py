@@ -218,4 +218,21 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """Permanently delete ALL memories. Returns {deleted}."""
         return asdict(container.delete.purge())
 
+    @mcp.tool()
+    def create_project(
+        name: Annotated[
+            str,
+            Field(description="Project slug in kebab-case — the id, reused on every memory."),
+        ],
+        description: Annotated[
+            str,
+            Field(description="What this project is (optional)."),
+        ] = None,
+    ) -> dict:
+        """Register a new project. Writing to or searching an unregistered project is
+        rejected (with near-match suggestions), so create it first. Errors if the slug
+        already exists. Returns {slug, description, created_at}.
+        """
+        return asdict(container.create_project.execute(name, description))
+
     return mcp

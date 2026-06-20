@@ -65,6 +65,7 @@ def test_build_container_wires_the_sqlite_backend(tmp_path):
     container = build_container(config)
     assert isinstance(container.repository, SqliteRepositoryImpl)
 
+    container.create_project.execute("api")
     stored = container.remember.execute(content="wired on sqlite", project="api")
     hits = container.search.execute(query="wired on sqlite", project="api")
     assert any(hit.id == stored.id for hit in hits)

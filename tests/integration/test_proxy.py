@@ -53,6 +53,7 @@ def test_proxy_forwards_agent_calls_to_the_service(service, tmp_path):
                 tools = {tool.name for tool in (await session.list_tools()).tools}
                 assert {"remember", "search"} <= tools
 
+                await session.call_tool("create_project", {"name": "api"})
                 stored = await session.call_tool(
                     "remember", {"content": "redis via the proxy", "project": "api"}
                 )
@@ -62,6 +63,16 @@ def test_proxy_forwards_agent_calls_to_the_service(service, tmp_path):
                 assert "redis via the proxy" in _text(hits)
 
     anyio.run(flow)
+
+
+async def _proxy_create_project(host: str, port: int, data_dir, slug: str) -> None:
+    from mcp.client.session import ClientSession
+    from mcp.client.stdio import stdio_client
+
+    async with stdio_client(_proxy_params(host, port, data_dir)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            await session.call_tool("create_project", {"name": slug})
 
 
 async def _proxy_writes(host: str, port: int, data_dir, contents: list[str]) -> None:
@@ -83,6 +94,7 @@ def test_each_proxy_run_stamps_its_own_session_id(service, tmp_path):
 
     host, port = service
 
+    anyio.run(_proxy_create_project, host, port, tmp_path, "api")  # register once for both runs
     # One proxy run (one agent) writes twice → those memories share its session id.
     anyio.run(_proxy_writes, host, port, tmp_path, ["a1 via proxy one", "a2 via proxy one"])
     # A second, separate proxy run → its own session id.
@@ -127,6 +139,7 @@ def test_proxy_spawns_the_service_when_down(free_tcp_port, tmp_path):
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
+                await session.call_tool("create_project", {"name": "api"})
                 stored = await session.call_tool(
                     "remember", {"content": "spawned by the proxy", "project": "api"}
                 )
@@ -196,6 +209,9 @@ def test_proxy_reconnects_after_the_service_is_killed(free_tcp_port, tmp_path):
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
+                # Registered before the kill; it must survive the respawn (persisted),
+                # just as memories do — else the post-respawn write would hit the gate.
+                await session.call_tool("create_project", {"name": "api"})
                 first = await session.call_tool(
                     "remember", {"content": "before the kill", "project": "api"}
                 )
