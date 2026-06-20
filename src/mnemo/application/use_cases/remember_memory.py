@@ -14,7 +14,6 @@ from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
-from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
@@ -99,14 +98,11 @@ class RememberMemoryUseCaseImpl:
         # (docs/04-data-model.md).
         if prior is not None:
             # Establish the relationship HERE (application layer owns it): the successor
-            # supersedes the prior, and the typed edge records it with provenance = the
-            # topic_key that drove the upsert. The repository then persists all of it in
-            # one transaction, so a crash can never strand the topic_key or drop the edge.
+            # supersedes the prior (recorded in the `supersedes` column). The repository
+            # persists the mark + insert in one transaction, so a crash can never strand
+            # the topic_key with no active record.
             memory.supersedes = prior.id
-            link = Link.supersedes(
-                source_id=memory.id, target_id=prior.id, provenance=memory.topic_key
-            )
-            self._repository.supersede(memory, link)
+            self._repository.supersede(memory)
             status = "superseded"
         else:
             self._repository.add(memory)

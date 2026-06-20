@@ -1,5 +1,5 @@
 """SQLite + sqlite-vec + FTS5 store — realizes the memory store ports
-(MemoryRepository + EmbeddingQueue + LinkGraph) over one DB.
+(MemoryRepository + EmbeddingQueue) over one DB.
 
 One embedded file. The embedding is a ``BLOB`` column on the ``memories`` row,
 ranked by the ``vec_distance_cosine`` scalar over a ``WHERE``-filtered scan (no
@@ -30,7 +30,6 @@ import sqlite3
 from sqlite_vec import serialize_float32
 
 from mnemo.adapters.store.executors import SqlReadExecutor, SqlWriteExecutor
-from mnemo.adapters.store.link_serializer import link_from_dict, link_to_dict
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
@@ -40,7 +39,6 @@ from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
 from mnemo.domain.generators import now
-from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 # Payload columns, qualified to the `m` alias so they stay unambiguous when the
@@ -157,25 +155,8 @@ class SqliteRepositoryImpl:
         return cls(SqliteConnections(path), dim)
 
     def _ensure_schema(self, conn: sqlite3.Connection, dim: int) -> None:
-        self._create_links_schema(conn)
         if not self._memories_table_exists(conn):
             self._create_schema(conn, dim)
-
-    @staticmethod
-    def _create_links_schema(conn: sqlite3.Connection) -> None:
-        # Both endpoints foreign-key to memories(id) ON DELETE CASCADE: deleting a
-        # memory drops its edges, so a project-delete cascade (projects -> memories)
-        # carries on to the links with no app-level cleanup. (set_dimension, which
-        # rebuilds the memories table, restores links around that cascade.)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS links ("
-            " source_id TEXT NOT NULL, target_id TEXT NOT NULL, type TEXT NOT NULL,"
-            " provenance TEXT NOT NULL, created_at TEXT NOT NULL,"
-            " PRIMARY KEY (source_id, target_id, type),"
-            " FOREIGN KEY (source_id) REFERENCES memories(id) ON DELETE CASCADE,"
-            " FOREIGN KEY (target_id) REFERENCES memories(id) ON DELETE CASCADE)"
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS links_target ON links(target_id)")
 
     @staticmethod
     def _memories_table_exists(conn: sqlite3.Connection) -> bool:
@@ -190,23 +171,18 @@ class SqliteRepositoryImpl:
         # The schema exists (ensured at construction), so a write is just an insert.
         # `vector=None` stores the row pending (lexically searchable, absent from the
         # dense leg) until set_vector lands.
-        self._write.execute(
-            lambda conn: conn.execute(_INSERT_MEMORY, self._row(memory, vector))
-        )
+        self._write.execute(lambda conn: self._insert_memory(conn, memory, vector))
 
-    def supersede(
-        self, memory: Memory, link: Link, vector: Vector | None = None
-    ) -> None:
+    def supersede(self, memory: Memory, vector: Vector | None = None) -> None:
         """Persist a supersede in ONE transaction — mark the prior (`memory.supersedes`)
-        superseded, insert the successor, write the supersedes edge — so a crash can
-        never leave the topic_key without an active record, or a successor without its
-        edge. The caller owns the relationship (sets `memory.supersedes`, builds
-        `link`); this only persists it atomically."""
+        superseded and insert the successor — so a crash can never leave the topic_key
+        without an active record. The caller owns the relationship (sets
+        `memory.supersedes`); this only persists it atomically. The supersede link lives
+        in the `supersedes` column itself."""
 
         def work(conn: sqlite3.Connection) -> None:
             self._mark_superseded(conn, memory.supersedes)
-            conn.execute(_INSERT_MEMORY, self._row(memory, vector))
-            self._insert_link(conn, link)
+            self._insert_memory(conn, memory, vector)
 
         self._write.execute(work)
 
@@ -229,27 +205,15 @@ class SqliteRepositoryImpl:
         self._write.execute(lambda conn: self._rebuild_to(conn, new_dim))
 
     def _rebuild_to(self, conn: sqlite3.Connection, new_dim: int) -> None:
-        # DROP TABLE memories below does an implicit, FK-cascading DELETE that also
-        # clears `links` (their endpoints momentarily vanish). The rebuild PRESERVES
-        # memory ids, so snapshot the edges and re-insert them after the swap — net:
-        # links survive the dimension change. All inside the one rebuild transaction.
-        saved_links = conn.execute(
-            "SELECT source_id, target_id, type, provenance, created_at FROM links"
-        ).fetchall()
         conn.execute(_create_table_sql("memories_new", new_dim))
         conn.execute(_COPY_TO_REBUILT)  # snapshot under the writer lock, in-txn
         conn.execute("DROP TRIGGER memories_ai")
         conn.execute("DROP TRIGGER memories_ad")
         conn.execute("DROP TRIGGER memories_au")
         conn.execute("DROP TABLE memories_fts")
-        conn.execute("DROP TABLE memories")  # FK-cascades `links` empty (restored below)
+        conn.execute("DROP TABLE memories")
         conn.execute("ALTER TABLE memories_new RENAME TO memories")
         self._rebuild_indexes_and_fts(conn)
-        conn.executemany(
-            "INSERT INTO links (source_id, target_id, type, provenance, created_at)"
-            " VALUES (?, ?, ?, ?, ?)",
-            [tuple(row) for row in saved_links],
-        )
 
     def _current_dim(self) -> int | None:
         """The dimension baked into the live schema (parsed from its CHECK clause)."""
@@ -390,8 +354,6 @@ class SqliteRepositoryImpl:
         if not ids:
             return 0
         placeholders = ", ".join("?" for _ in ids)
-        # The links FK (ON DELETE CASCADE) drops each deleted memory's edges; no
-        # hand-written link cleanup needed.
         return self._write.execute(
             lambda conn: conn.execute(
                 f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
@@ -400,7 +362,6 @@ class SqliteRepositoryImpl:
 
     def delete_all(self) -> int:
         def work(conn: sqlite3.Connection) -> int:
-            conn.execute("DELETE FROM links")
             (removed,) = conn.execute("SELECT count(*) FROM memories").fetchone()
             conn.execute("DELETE FROM memories")
             return removed
@@ -413,20 +374,12 @@ class SqliteRepositoryImpl:
         )
         return [self._to_memory(row) for row in rows]
 
-    def add_link(self, link: Link) -> None:
-        self._write.execute(lambda conn: self._insert_link(conn, link))
-
-    def links_for(self, memory_id: str) -> list[Link]:
-        rows = self._read.execute(
-            lambda conn: conn.execute(
-                "SELECT source_id, target_id, type, provenance, created_at FROM links"
-                " WHERE source_id = ? OR target_id = ?",
-                (memory_id, memory_id),
-            ).fetchall()
-        )
-        return [link_from_dict(dict(row)) for row in rows]
-
     # --- internals (pure SQL over a given connection; no transaction concern) ---
+
+    def _insert_memory(
+        self, conn: sqlite3.Connection, memory: Memory, vector: Vector | None
+    ) -> None:
+        conn.execute(_INSERT_MEMORY, self._row(memory, vector))
 
     @staticmethod
     def _mark_superseded(conn: sqlite3.Connection, memory_id: str) -> None:
@@ -437,14 +390,6 @@ class SqliteRepositoryImpl:
         conn.execute(
             "UPDATE memories SET status = 'superseded', updated_at = ? WHERE id = ?",
             (now(), memory_id),
-        )
-
-    @staticmethod
-    def _insert_link(conn: sqlite3.Connection, link: Link) -> None:
-        conn.execute(
-            "INSERT OR REPLACE INTO links (source_id, target_id, type, provenance,"
-            " created_at) VALUES (:source_id, :target_id, :type, :provenance, :created_at)",
-            link_to_dict(link),
         )
 
     def _where(self, criteria: SearchCriteria) -> tuple[str, list[str]]:

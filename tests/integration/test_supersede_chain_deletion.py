@@ -1,7 +1,7 @@
 """Deletion vs the supersede / topic_key chain — characterizes the CURRENT bugs.
 
 A topic_key chain is `v1 <- v2 <- v3` (v3 active, v1/v2 superseded): each successor
-carries `supersedes = prior.id` and a typed `Link.supersedes(successor -> prior)`.
+carries `supersedes = prior.id` (the chain's single encoding).
 
 These tests assert the DESIRED behavior and are marked xfail(strict) — they fail on
 today's code (so they "catch" the bugs) while keeping the suite green. When the fix
@@ -12,7 +12,6 @@ import pytest
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
-from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 from tests.support.sqlite_store import open_store
 
@@ -24,8 +23,7 @@ def _supersede(repo, embedder, prior, content):
     """Evolve `prior` via the production supersede path (prior -> superseded, new active)."""
     successor = Memory.create(content, project=_PROJECT, topic_key=_TOPIC)
     successor.supersedes = prior.id
-    link = Link.supersedes(source_id=successor.id, target_id=prior.id, provenance=_TOPIC)
-    repo.supersede(successor, link, embedder.encode(content))
+    repo.supersede(successor, embedder.encode(content))
     return successor
 
 

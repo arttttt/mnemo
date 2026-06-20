@@ -63,9 +63,8 @@ def test_reindex_switches_dimension_and_reembeds_all(store):
     by_id = {memory.id: memory for memory in repo.list_all()}
     assert by_id[other.id].content == "redis cache eviction"
     assert by_id[first.id].topic_key == "auth/model"
-    # the supersede link survived the rebuild
-    links = repo.links_for(second.id)
-    assert len(links) == 1 and links[0].target_id == first.id
+    # the supersede pointer survived the rebuild
+    assert by_id[second.id].supersedes == first.id
     # search works at the new dimension (a 128-dim store would reject a 256-dim vector)
     hits = _search(store, new).execute(query="redis cache", scope="all")
     assert any(hit.id == other.id for hit in hits)

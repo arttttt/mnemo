@@ -1,17 +1,15 @@
-"""One-shot, DISPOSABLE startup migration: add the project/link foreign keys.
+"""One-shot, DISPOSABLE startup migrations, run automatically in `build_container`
+before the store opens (so BOTH the service and the CLI apply them). Idempotent.
 
-The fresh-store schema already declares the FKs (see sqlite_vec_repository), so this
-only upgrades a user's pre-existing **pre-FK** store. It runs automatically before the
-store is opened (in `build_container`, so BOTH the service and the CLI apply it — the
-CLI's gate needs the seeded registry too, not just the service). It is idempotent.
+- ``add_project_foreign_keys``: upgrades a pre-FK store — seeds ``projects`` from the
+  distinct ``project`` values already in ``memories`` (plus the global sentinel), then
+  rebuilds ``memories`` and ``links`` WITH the foreign keys via an atomic copy→swap
+  (the original tables are never the only copy on disk; any failure rolls back intact).
+- ``drop_links_table``: drops the now-unused ``links`` table — the supersede chain
+  lives solely in the ``memories.supersedes`` column; the typed-link graph was removed.
 
-It (1) seeds `projects` from the distinct `project` values already in `memories`
-(plus the reserved global sentinel), then (2) rebuilds `memories` and `links` WITH the
-foreign keys via an atomic copy→swap inside one transaction — the original tables are
-never the only copy on disk, so any failure rolls back to the intact store.
-
-DELETE this module and its call in `build_container` once the live store is migrated
-(per the DB migration policy: a disposable migration, not a permanent runtime check).
+DELETE each migration (and its call in `build_container`) once the live store has it
+applied — disposable, not a permanent runtime check (per the DB migration policy).
 """
 from __future__ import annotations
 
@@ -70,6 +68,29 @@ def add_project_foreign_keys(sqlite_path: str) -> bool:
             return False
         _rebuild_with_fks(conn)
         _log.info("migrated store %s: added project/link foreign keys", sqlite_path)
+        return True
+    finally:
+        conn.close()
+
+
+def drop_links_table(sqlite_path: str) -> bool:
+    """Drop the now-unused ``links`` table. The supersede chain lives solely in the
+    ``memories.supersedes`` column; the typed-link graph was removed (rebuild it when
+    get/neighbours actually needs it). Idempotent; no-op if the store or table is absent.
+    SEPARATE from add_project_foreign_keys — do not fold them together."""
+    if not sqlite_path or not os.path.exists(sqlite_path):
+        return False
+    conn = sqlite3.connect(sqlite_path)
+    conn.isolation_level = None
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)  # the memories CHECK(vec_length(...)) needs the extension
+    conn.enable_load_extension(False)
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        if not _has_table(conn, "links"):
+            return False
+        conn.execute("DROP TABLE links")
+        _log.info("migrated store %s: dropped the unused links table", sqlite_path)
         return True
     finally:
         conn.close()

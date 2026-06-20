@@ -1,8 +1,8 @@
 """Port: persistence and retrieval for memories (the memory aggregate).
 
-The deferred-embedding queue (EmbeddingQueue) and the link graph
-(LinkGraph) are SEPARATE ports — one store implementation realizes all three
-facets, but each consumer depends only on the slice it needs.
+The deferred-embedding queue (EmbeddingQueue) is a SEPARATE port — one store
+implementation realizes both facets, but each consumer depends only on the slice
+it needs.
 """
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from typing import Protocol
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.types import Vector
-from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 
@@ -22,15 +21,12 @@ class MemoryRepository(Protocol):
         embedding in docs/03-architecture.md."""
         ...
 
-    def supersede(
-        self, memory: Memory, link: Link, vector: Vector | None = None
-    ) -> None:
+    def supersede(self, memory: Memory, vector: Vector | None = None) -> None:
         """Atomically persist a supersede: mark `memory.supersedes` (the prior record)
-        superseded, persist `memory` (the successor), and write `link` (the supersedes
-        edge) — all or nothing. The CALLER owns the relationship (sets
-        `memory.supersedes` and builds `link`); the repository only persists it, so a
-        crash can never leave the topic_key with no active record, or a successor with
-        no provenance edge. `vector=None` stores the successor **pending**, like `add`."""
+        superseded and persist `memory` (the successor) — all or nothing. The CALLER
+        owns the relationship (sets `memory.supersedes`); the repository only persists
+        it, so a crash can never leave the topic_key with no active record. `vector=None`
+        stores the successor **pending**, like `add`."""
         ...
 
     def find_active_by_hash(
