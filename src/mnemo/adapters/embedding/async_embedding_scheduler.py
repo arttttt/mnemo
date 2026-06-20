@@ -81,7 +81,11 @@ class AsyncEmbeddingScheduler:
         while True:
             with self._cond:
                 busy = self._in_flight > 0 or self._has_pending_retry()
-                if not busy and self._first_claimable() is None:
+                try:
+                    idle = not busy and self._first_claimable() is None
+                except Exception:  # a store error in the scan — can't confirm idle; wait the deadline
+                    idle = False
+                if idle:
                     return
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
