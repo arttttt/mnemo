@@ -13,6 +13,7 @@ from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImp
 from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.domain.memory import Memory
 from mnemo.domain.project import Project
+from tests.support.sqlite_store import open_store
 
 
 def _gate(*slugs):
@@ -40,10 +41,10 @@ def _reindex(repo, embedder):
 
 
 def _sqlite(tmp_path, dim):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
-
-    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=dim)
+    # Register "api" (the project these tests write to) so memory inserts satisfy the
+    # FK; the gate uses its own fake registry, the DB-level FK uses this one.
+    repo, _ = open_store(tmp_path, dim, projects=("api",))
+    return repo
 
 
 @pytest.fixture

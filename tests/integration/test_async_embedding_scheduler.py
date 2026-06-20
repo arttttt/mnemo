@@ -2,18 +2,16 @@
 import logging
 import time
 
-import pytest
-
 from mnemo.adapters.embedding.async_embedding_scheduler import AsyncEmbeddingScheduler
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 
 def _repo(tmp_path):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
-
-    return SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
+    # "api" registered so the pending writes satisfy the memories.project FK.
+    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api",))
+    return repo
 
 
 def _wait(predicate, timeout=3.0):

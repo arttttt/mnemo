@@ -66,7 +66,13 @@ _INSERT_MEMORY = (
 def _create_table_sql(name: str, dim: int) -> str:
     """The `memories` table at a given name and embedding dimension. The dimension is
     baked into the embedding-column CHECK; `set_dimension` builds a new table at the
-    new dimension and swaps it in atomically."""
+    new dimension and swaps it in atomically.
+
+    `project` foreign-keys to `projects(slug)` ON DELETE CASCADE — so deleting a
+    project atomically deletes its memories (and, via the links FK, their edges),
+    and a memory can only be written for a registered project (NULL = global,
+    which the FK allows). Requires the `projects` table to exist first (the
+    composition root builds the registry before the store)."""
     return (
         f"CREATE TABLE {name} ("
         " id              TEXT PRIMARY KEY,"
@@ -74,7 +80,7 @@ def _create_table_sql(name: str, dim: int) -> str:
         f" embedding       BLOB CHECK(embedding IS NULL OR vec_length(embedding) == {dim}),"
         " type            TEXT NOT NULL,"
         " scope           TEXT NOT NULL,"
-        " project         TEXT,"
+        " project         TEXT REFERENCES projects(slug) ON DELETE CASCADE,"
         " tags            TEXT NOT NULL,"
         " related_files   TEXT NOT NULL,"
         " topic_key       TEXT,"
@@ -157,11 +163,17 @@ class SqliteRepositoryImpl:
 
     @staticmethod
     def _create_links_schema(conn: sqlite3.Connection) -> None:
+        # Both endpoints foreign-key to memories(id) ON DELETE CASCADE: deleting a
+        # memory drops its edges, so a project-delete cascade (projects -> memories)
+        # carries on to the links with no app-level cleanup. (set_dimension, which
+        # rebuilds the memories table, restores links around that cascade.)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS links ("
             " source_id TEXT NOT NULL, target_id TEXT NOT NULL, type TEXT NOT NULL,"
             " provenance TEXT NOT NULL, created_at TEXT NOT NULL,"
-            " PRIMARY KEY (source_id, target_id, type))"
+            " PRIMARY KEY (source_id, target_id, type),"
+            " FOREIGN KEY (source_id) REFERENCES memories(id) ON DELETE CASCADE,"
+            " FOREIGN KEY (target_id) REFERENCES memories(id) ON DELETE CASCADE)"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS links_target ON links(target_id)")
 
@@ -217,15 +229,27 @@ class SqliteRepositoryImpl:
         self._write.execute(lambda conn: self._rebuild_to(conn, new_dim))
 
     def _rebuild_to(self, conn: sqlite3.Connection, new_dim: int) -> None:
+        # DROP TABLE memories below does an implicit, FK-cascading DELETE that also
+        # clears `links` (their endpoints momentarily vanish). The rebuild PRESERVES
+        # memory ids, so snapshot the edges and re-insert them after the swap — net:
+        # links survive the dimension change. All inside the one rebuild transaction.
+        saved_links = conn.execute(
+            "SELECT source_id, target_id, type, provenance, created_at FROM links"
+        ).fetchall()
         conn.execute(_create_table_sql("memories_new", new_dim))
         conn.execute(_COPY_TO_REBUILT)  # snapshot under the writer lock, in-txn
         conn.execute("DROP TRIGGER memories_ai")
         conn.execute("DROP TRIGGER memories_ad")
         conn.execute("DROP TRIGGER memories_au")
         conn.execute("DROP TABLE memories_fts")
-        conn.execute("DROP TABLE memories")
+        conn.execute("DROP TABLE memories")  # FK-cascades `links` empty (restored below)
         conn.execute("ALTER TABLE memories_new RENAME TO memories")
         self._rebuild_indexes_and_fts(conn)
+        conn.executemany(
+            "INSERT INTO links (source_id, target_id, type, provenance, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [tuple(row) for row in saved_links],
+        )
 
     def _current_dim(self) -> int | None:
         """The dimension baked into the live schema (parsed from its CHECK clause)."""
@@ -366,32 +390,20 @@ class SqliteRepositoryImpl:
         if not ids:
             return 0
         placeholders = ", ".join("?" for _ in ids)
-
-        def work(conn: sqlite3.Connection) -> int:
-            conn.execute(
-                f"DELETE FROM links WHERE source_id IN ({placeholders})"
-                f" OR target_id IN ({placeholders})",
-                (*ids, *ids),
-            )
-            return conn.execute(
+        # The links FK (ON DELETE CASCADE) drops each deleted memory's edges; no
+        # hand-written link cleanup needed.
+        return self._write.execute(
+            lambda conn: conn.execute(
                 f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
             ).rowcount
-
-        return self._write.execute(work)
+        )
 
     def delete_by_project(self, project: str) -> int:
-        def work(conn: sqlite3.Connection) -> int:
-            conn.execute(
-                "DELETE FROM links WHERE source_id IN"
-                " (SELECT id FROM memories WHERE project = ?) OR target_id IN"
-                " (SELECT id FROM memories WHERE project = ?)",
-                (project, project),
-            )
-            return conn.execute(
+        return self._write.execute(
+            lambda conn: conn.execute(
                 "DELETE FROM memories WHERE project = ?", (project,)
             ).rowcount
-
-        return self._write.execute(work)
+        )
 
     def delete_all(self) -> int:
         def work(conn: sqlite3.Connection) -> int:

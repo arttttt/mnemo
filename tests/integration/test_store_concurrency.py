@@ -5,22 +5,18 @@ precursor to the full multi-agent service stress).
 """
 import concurrent.futures as cf
 
-import pytest
-
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 _ALL = SearchCriteria(scope="all")
 
 
 def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
-
     embedder = HashEmbedder()
-    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
     writers, per_writer = 8, 10
 
     def write(w):
