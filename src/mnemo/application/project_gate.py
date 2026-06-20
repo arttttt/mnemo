@@ -20,6 +20,18 @@ from mnemo.domain.scope import Scope
 _MAX_CANDIDATES = 5
 
 
+def near_match_candidates(projects: ProjectRepository, slug: str) -> list[str]:
+    """The registered slugs closest to `slug` — TIER-1 near-match (difflib, top-N, no
+    threshold). Used on the error path of the gate and of delete_project so a typo'd
+    slug suggests the real one instead of silently failing."""
+    return difflib.get_close_matches(
+        slug,
+        [registered.slug for registered in projects.list_all()],
+        n=_MAX_CANDIDATES,
+        cutoff=0.0,  # top-N closest, no threshold — recovery beats hiding suggestions
+    )
+
+
 class UnknownProject(Exception):
     """A scope='project' operation named a project not in the registry."""
 
@@ -45,10 +57,4 @@ class ProjectGate:
             return
         if self._projects.exists(project):
             return
-        candidates = difflib.get_close_matches(
-            project,
-            [registered.slug for registered in self._projects.list_all()],
-            n=_MAX_CANDIDATES,
-            cutoff=0.0,  # top-N closest, no threshold — recovery beats hiding suggestions
-        )
-        raise UnknownProject(project, candidates)
+        raise UnknownProject(project, near_match_candidates(self._projects, project))

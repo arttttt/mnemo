@@ -8,6 +8,7 @@ from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.project_gate import ProjectGate, UnknownProject
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
+from mnemo.application.use_cases.delete_project import DeleteProjectUseCaseImpl
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.domain.project import Project
@@ -16,8 +17,9 @@ _TEST_PROJECTS = ("api", "other", "svc-a", "svc-b")
 
 
 def _wiring():
-    """(repo, remember, search, delete, browse, projects). The registry is pre-seeded
-    with the projects these tests use, since the gate now requires registered projects."""
+    """(repo, remember, search, delete, delete_project, browse, projects). The registry
+    is pre-seeded with the projects these tests use, since the gate now requires
+    registered projects."""
     repo = InMemoryRepositoryImpl()
     embedder = HashEmbedder()
     projects = InMemoryProjectRepositoryImpl()
@@ -31,6 +33,7 @@ def _wiring():
         RememberMemoryUseCaseImpl(repo, scheduler, embedder, session, gate),
         SearchMemoryUseCaseImpl(repo, embedder, gate),
         DeleteMemoryUseCaseImpl(repo),
+        DeleteProjectUseCaseImpl(projects),
         BrowseMemoryUseCaseImpl(repo, gate),
         projects,
     )
@@ -82,7 +85,7 @@ def test_search_unknown_project_is_rejected():
 
 
 def test_browse_lists_newest_first_without_a_query():
-    _, remember, _, _, browse, _ = _wiring()
+    _, remember, _, _, _, browse, _ = _wiring()
     a = remember.execute(content="alpha", project="api")
     b = remember.execute(content="beta", project="api")
 
@@ -275,6 +278,20 @@ def test_within_window_content_is_stored():
     assert len(repo.list_all()) == 1
 
 
+def test_delete_project_removes_it_from_the_registry():
+    *_, delete_project, _, projects = _wiring()
+    deleted = delete_project.execute("api")
+    assert deleted.slug == "api"
+    assert projects.exists("api") is False  # cascade of its memories is a store-level concern
+
+
+def test_delete_project_unknown_is_rejected_with_candidates():
+    *_, delete_project, _, _ = _wiring()
+    with pytest.raises(UnknownProject) as exc:
+        delete_project.execute("ap")  # a typo of the registered "api"
+    assert "api" in exc.value.candidates
+
+
 def test_delete_clear_purge():
     repo, remember, _, deletion, *_ = _wiring()
     a = remember.execute(content="one", project="api")
@@ -309,7 +326,7 @@ def test_clear_scope_project_spares_globals():
 
 
 def test_clear_enforces_the_scope_project_contract():
-    *_, deletion, _, _ = _wiring()
+    _, _, _, deletion, *_ = _wiring()
     with pytest.raises(ValueError):
         deletion.clear(scope="project")          # project scope needs a project
     with pytest.raises(ValueError):

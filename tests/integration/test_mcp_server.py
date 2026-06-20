@@ -28,7 +28,8 @@ def _tools(tmp_path):
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
     assert {
-        "remember", "search", "browse", "delete", "clear", "purge", "create_project"
+        "remember", "search", "browse", "delete", "clear", "purge",
+        "create_project", "delete_project",
     } <= set(_tools(tmp_path))
 
 
@@ -61,6 +62,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
     assert required["create_project"] == ["name"]
+    assert required["delete_project"] == ["name"]
 
 
 def _call(mcp, name, args):
@@ -81,6 +83,17 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
 
     assert json.loads(_call(mcp, "delete", {"ids": [stored["id"]]})[0])["deleted"] == 1
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
+
+
+def test_mcp_delete_project_cascades(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "doomed via mcp", "project": "api"})
+
+    deleted = json.loads(_call(mcp, "delete_project", {"name": "api"})[0])
+    assert deleted["slug"] == "api"
+    # its memory cascaded away — a cross-project search no longer finds it
+    assert _call(mcp, "search", {"query": "doomed", "scope": "all"}) == []
 
 
 def test_mcp_remember_rejects_over_window_content(tmp_path):

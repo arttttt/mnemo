@@ -10,6 +10,7 @@ from typing import Optional
 
 import typer
 
+from mnemo.application.project_gate import UnknownProject
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.logging_config import configure_logging
@@ -288,6 +289,18 @@ def create_project(
 ) -> None:
     """Register a new project. Writing to an unregistered project is rejected."""
     project = build_container().create_project.execute(name, description)
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
+def delete_project(
+    name: str = typer.Argument(..., help="Project slug to delete, with all its memories."),
+) -> None:
+    """Permanently delete a project and all its memories (and their links)."""
+    try:
+        project = build_container().delete_project.execute(name)
+    except UnknownProject as exc:
+        raise typer.BadParameter(str(exc))
     typer.echo(json.dumps(asdict(project)))
 
 

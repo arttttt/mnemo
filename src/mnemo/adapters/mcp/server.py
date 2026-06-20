@@ -235,4 +235,17 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """
         return asdict(container.create_project.execute(name, description))
 
+    @mcp.tool()
+    def delete_project(
+        name: Annotated[
+            str,
+            Field(description="Project slug to delete, with ALL its memories."),
+        ],
+    ) -> dict:
+        """Permanently delete a project and EVERYTHING in it — all its memories and
+        their links, in one atomic cascade. Errors (with near-match suggestions) if the
+        slug is unknown. Returns the deleted {slug, description, created_at}.
+        """
+        return asdict(container.delete_project.execute(name))
+
     return mcp

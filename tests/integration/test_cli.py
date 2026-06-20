@@ -224,3 +224,16 @@ def test_cli_create_project_then_store(tmp_path, monkeypatch):
     # A write to the freshly-registered project now passes the gate.
     stored = runner.invoke(app, ["store", "note in newproj", "--project", "newproj"])
     assert stored.exit_code == 0, stored.output
+
+
+def test_cli_delete_project_cascades(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "doomed note", "--project", "api"])
+
+    deleted = runner.invoke(app, ["delete-project", "api"])
+    assert deleted.exit_code == 0, deleted.output
+    assert json.loads(deleted.stdout)["slug"] == "api"
+
+    # the project's memory cascaded away with it
+    found = runner.invoke(app, ["search", "doomed", "--scope", "all"])
+    assert "doomed note" not in found.stdout
