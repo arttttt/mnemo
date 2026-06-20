@@ -61,9 +61,16 @@ class LlamaCppRuntime:
     def unload(self) -> None:
         if self._llama is None:
             return
-        if hasattr(self._llama, "close"):
-            self._llama.close()
-        self._llama = None
+        try:
+            if hasattr(self._llama, "close"):
+                self._llama.close()
+        except Exception:  # noqa: BLE001 — never keep a half-closed handle; drop it regardless
+            _log.warning(
+                "generator close() failed model=%s; dropping the handle anyway",
+                self._source.model, exc_info=True,
+            )
+        finally:
+            self._llama = None  # ALWAYS end unloaded — a later load() re-initialises
         _log.info("generator freed model=%s peak_rss=%.0fMB", self._source.model, peak_rss_mb())
 
     def complete(self, prompt: str, *, max_tokens: int) -> str:
