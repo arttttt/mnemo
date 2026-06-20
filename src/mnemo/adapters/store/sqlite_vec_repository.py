@@ -351,14 +351,63 @@ class SqliteRepositoryImpl:
         return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
     def delete(self, ids: list[str]) -> int:
+        """Delete memories, keeping every surviving supersede chain consistent — in ONE
+        transaction so a crash can't leave a half-healed chain:
+        - SPLICE: a survivor whose `supersedes` points into the deleted set is repointed
+          to its nearest surviving ancestor (no dangling pointer; the lineage stays linked).
+        - AUTO-PROMOTE: if a deleted row was the ACTIVE head of a (topic_key, project),
+          the newest surviving member of that chain becomes active — so the topic_key is
+          never left with history but no live record.
+        (delete_project / purge wipe whole chains via cascade, so neither applies there.)
+        """
         if not ids:
             return 0
-        placeholders = ", ".join("?" for _ in ids)
-        return self._write.execute(
-            lambda conn: conn.execute(
+
+        def work(conn: sqlite3.Connection) -> int:
+            deleted = set(ids)
+            rows = conn.execute(
+                "SELECT id, supersedes, status, topic_key, project, created_at FROM memories"
+            ).fetchall()
+            by_id = {row["id"]: row for row in rows}
+            survivors = [row for row in rows if row["id"] not in deleted]
+
+            # SPLICE: repoint survivors around deleted ancestors (walk to the nearest survivor).
+            for row in survivors:
+                target = row["supersedes"]
+                if target is None or target not in deleted:
+                    continue
+                while target is not None and target in deleted:
+                    target = by_id[target]["supersedes"] if target in by_id else None
+                conn.execute(
+                    "UPDATE memories SET supersedes = ? WHERE id = ?", (target, row["id"])
+                )
+
+            # AUTO-PROMOTE: a (topic_key, project) whose active head is being deleted gets
+            # its newest surviving member promoted to active.
+            orphaned = {
+                (by_id[d]["topic_key"], by_id[d]["project"])
+                for d in deleted
+                if d in by_id and by_id[d]["status"] == "active" and by_id[d]["topic_key"]
+            }
+            for topic_key, project in orphaned:
+                members = [
+                    row for row in survivors
+                    if row["topic_key"] == topic_key and row["project"] == project
+                ]
+                if not members:
+                    continue  # whole chain gone — the topic_key is retired
+                newest = max(members, key=lambda row: row["created_at"])
+                conn.execute(
+                    "UPDATE memories SET status = 'active', updated_at = ? WHERE id = ?",
+                    (now(), newest["id"]),
+                )
+
+            placeholders = ", ".join("?" for _ in ids)
+            return conn.execute(
                 f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
             ).rowcount
-        )
+
+        return self._write.execute(work)
 
     def delete_all(self) -> int:
         def work(conn: sqlite3.Connection) -> int:

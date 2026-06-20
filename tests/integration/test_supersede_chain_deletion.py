@@ -1,11 +1,10 @@
-"""Deletion vs the supersede / topic_key chain — characterizes the CURRENT bugs.
+"""Deletion keeps the supersede / topic_key chain consistent.
 
 A topic_key chain is `v1 <- v2 <- v3` (v3 active, v1/v2 superseded): each successor
 carries `supersedes = prior.id` (the chain's single encoding).
 
-These tests assert the DESIRED behavior and are marked xfail(strict) — they fail on
-today's code (so they "catch" the bugs) while keeping the suite green. When the fix
-lands, drop the xfail markers and they become guards.
+Deleting a member must not strand the chain: deleting the active head promotes the
+prior to active, and deleting an interior node splices the pointer so nothing dangles.
 """
 import pytest
 
@@ -36,12 +35,6 @@ def _chain(repo, embedder):
     return v1, v2, v3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: deleting the active head strands the topic_key — the prior is NOT "
-    "promoted to active, so find_active_by_topic_key returns None and the history "
-    "becomes unreachable / the next upsert silently forks.",
-)
 def test_deleting_active_head_promotes_the_prior(tmp_path):
     embedder = HashEmbedder()
     repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
@@ -54,11 +47,6 @@ def test_deleting_active_head_promotes_the_prior(tmp_path):
     assert active.id == v2.id, "the immediate prior should be promoted to active"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: the `supersedes` column has no FK, so deleting a referenced memory "
-    "leaves a dangling pointer on the survivor (only the links edge cascades).",
-)
 def test_deleting_interior_member_leaves_no_dangling_supersedes(tmp_path):
     embedder = HashEmbedder()
     repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))

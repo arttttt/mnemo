@@ -344,12 +344,6 @@ def test_purge_wipes_memories_and_projects(wiring):
     assert projects.exists("api") is False  # ... including previously-registered projects
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: deleting the active head of a topic_key chain doesn't promote the "
-    "prior, so a later remember with that topic_key forks ('created') instead of "
-    "evolving the surviving history ('superseded').",
-)
 def test_deleting_active_head_then_re_remembering_evolves_not_forks(wiring):
     repo, remember, _, deletion, *_ = wiring
     remember.execute(content="auth v1", project="api", topic_key="auth/model")
