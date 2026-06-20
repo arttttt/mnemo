@@ -35,6 +35,17 @@ def _chain(repo, embedder):
     return v1, v2, v3
 
 
+def _chain5(repo, embedder):
+    """Build v1 <- v2 <- v3 <- v4 <- v5 (v5 active). Returns (v1, v2, v3, v4, v5)."""
+    v1 = Memory.create("auth model v1", project=_PROJECT, topic_key=_TOPIC)
+    repo.add(v1, embedder.encode(v1.content))
+    v2 = _supersede(repo, embedder, v1, "auth model v2")
+    v3 = _supersede(repo, embedder, v2, "auth model v3")
+    v4 = _supersede(repo, embedder, v3, "auth model v4")
+    v5 = _supersede(repo, embedder, v4, "auth model v5")
+    return v1, v2, v3, v4, v5
+
+
 def test_deleting_active_head_promotes_the_prior(tmp_path):
     embedder = HashEmbedder()
     repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
@@ -109,3 +120,36 @@ def test_deleting_the_whole_chain_retires_the_topic_key(tmp_path):
 
     assert repo.find_active_by_topic_key(_TOPIC, _PROJECT) is None
     assert list(repo.list_all()) == []
+
+
+def test_deleting_consecutive_interior_members_splices_across_the_whole_gap(tmp_path):
+    # Several ADJACENT interior nodes deleted at once: the surviving head must repoint past
+    # the entire run in one pass (the splice walk hops v4 -> v3 -> v2 -> v1), not one node.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3, v4, v5 = _chain5(repo, embedder)
+
+    repo.delete([v2.id, v3.id, v4.id])  # three consecutive interior nodes
+
+    by_id = {m.id: m for m in repo.list_all()}
+    assert set(by_id) == {v1.id, v5.id}, "only the root and the head should survive"
+    assert by_id[v5.id].supersedes == v1.id, "the head should splice past the whole deleted run"
+    active = repo.find_active_by_topic_key(_TOPIC, _PROJECT)
+    assert active.id == v5.id, "deleting interior nodes must not move the active head"
+
+
+def test_deleting_alternating_members_splices_each_gap_independently(tmp_path):
+    # Non-adjacent interior deletes ("every other"): each survivor repoints past its own
+    # deleted predecessor, so one delete() performs two independent splices.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3, v4, v5 = _chain5(repo, embedder)
+
+    repo.delete([v2.id, v4.id])  # delete every other interior node
+
+    by_id = {m.id: m for m in repo.list_all()}
+    assert set(by_id) == {v1.id, v3.id, v5.id}
+    assert by_id[v3.id].supersedes == v1.id, "v3 should splice past the deleted v2 to v1"
+    assert by_id[v5.id].supersedes == v3.id, "v5 should splice past the deleted v4 to v3"
+    active = repo.find_active_by_topic_key(_TOPIC, _PROJECT)
+    assert active.id == v5.id
