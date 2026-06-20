@@ -22,6 +22,7 @@ from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
 from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
+from mnemo.infrastructure.migrations import add_project_foreign_keys
 
 
 def build_container(
@@ -29,6 +30,9 @@ def build_container(
     session_provider: SessionProvider | None = None,
 ) -> Container:
     config = config or Config.from_env()
+    # One-shot, idempotent upgrade of a pre-FK store, BEFORE the store opens. Disposable —
+    # remove once the live store is migrated (see infrastructure/migrations.py).
+    add_project_foreign_keys(config.sqlite_path)
     embedder = _build_embedder(config)
     repository, projects = _build_store(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
