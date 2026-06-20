@@ -4,5 +4,5 @@ from __future__ import annotations
 from typing import Protocol
 
 
-class SessionProviderPort(Protocol):
+class SessionProvider(Protocol):
     def current_session_id(self) -> str | None: ...

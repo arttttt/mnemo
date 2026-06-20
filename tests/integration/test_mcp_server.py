@@ -4,6 +4,7 @@ import json
 import pytest
 
 pytest.importorskip("mcp")
+pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.domain.memory_type import MemoryType
@@ -15,8 +16,7 @@ def _container(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
-        store="memory",
-        store_path=str(tmp_path / "memory.json"),
+        sqlite_path=str(tmp_path / "memory.db"),
     )
     return build_container(config)
 
@@ -27,7 +27,10 @@ def _tools(tmp_path):
 
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
-    assert {"remember", "search", "browse", "delete", "clear", "purge"} <= set(_tools(tmp_path))
+    assert {
+        "remember", "search", "browse", "delete", "purge",
+        "create_project", "delete_project", "update_project", "list_projects",
+    } <= set(_tools(tmp_path))
 
 
 def test_remember_advertises_allowed_types(tmp_path):
@@ -56,8 +59,11 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["search"] == ["query"]
     assert required["browse"] == []  # query-less: every param is optional
     assert required["delete"] == ["ids"]
-    assert required["clear"] == []  # project optional (scope='global' needs none)
     assert required["purge"] == []
+    assert required["create_project"] == ["name"]
+    assert required["delete_project"] == ["name"]
+    assert required["update_project"] == ["name", "description"]
+    assert required["list_projects"] == []
 
 
 def _call(mcp, name, args):
@@ -68,6 +74,7 @@ def _call(mcp, name, args):
 
 def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
     stored = json.loads(
         _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
     )
@@ -79,6 +86,37 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
+def test_mcp_delete_project_cascades(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "doomed via mcp", "project": "api"})
+
+    deleted = json.loads(_call(mcp, "delete_project", {"name": "api"})[0])
+    assert deleted["slug"] == "api"
+    # its memory cascaded away — a cross-project search no longer finds it
+    assert _call(mcp, "search", {"query": "doomed", "scope": "all"}) == []
+
+
+def test_mcp_create_project_rejects_a_bad_slug(tmp_path):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    with pytest.raises(ToolError):
+        _call(mcp, "create_project", {"name": "Bad Slug"})  # spaces + uppercase
+
+
+def test_mcp_update_and_list_projects(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "create_project", {"name": "svc"})
+
+    updated = json.loads(_call(mcp, "update_project", {"name": "api", "description": "the API"})[0])
+    assert updated["description"] == "the API"
+
+    listed = {json.loads(p)["slug"] for p in _call(mcp, "list_projects", {})}
+    assert listed == {"api", "svc"}  # __global__ excluded
+
+
 def test_mcp_remember_rejects_over_window_content(tmp_path):
     """An over-window memory surfaces an explicit, actionable tool error — not a
     silent truncation — so the calling agent can split and retry."""
@@ -87,14 +125,18 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
     from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-    from mnemo.application.use_cases.remember_memory import RememberMemory
+    from mnemo.application.project_gate import ProjectGate
+    from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 
     container = _container(tmp_path)
+    container.create_project.execute("api")
     embedder = HashEmbedder(max_input=3)
-    container.remember = RememberMemory(
+    container.remember = RememberMemoryUseCaseImpl(
         container.repository,
         SyncEmbeddingScheduler(embedder, container.repository),
+        embedder,
         InProcessSessionProvider(),
+        ProjectGate(container.projects),
     )
     mcp = build_mcp(container)
 
@@ -133,6 +175,7 @@ def test_mcp_browse_lists_memories_without_a_query(tmp_path):
     """The browse tool is callable via call_tool and returns recency-ordered hits
     that carry no score (no relevance ranking)."""
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
     a = json.loads(_call(mcp, "remember", {"content": "alpha", "type": "decision", "project": "api"})[0])
     b = json.loads(_call(mcp, "remember", {"content": "beta", "project": "api"})[0])
 
@@ -173,19 +216,11 @@ def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
     assert "scope='global'" in str(exc.value)
 
 
-def test_mcp_clear_and_purge(tmp_path):
+def test_mcp_purge(tmp_path):
     mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "create_project", {"name": "other"})
     _call(mcp, "remember", {"content": "alpha", "project": "api"})
     _call(mcp, "remember", {"content": "beta", "project": "other"})
 
-    assert json.loads(_call(mcp, "clear", {"project": "api"})[0])["deleted"] == 1
-    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 1
-
-
-def test_mcp_clear_scope_global_targets_globals(tmp_path):
-    mcp = build_mcp(_container(tmp_path))
-    _call(mcp, "remember", {"content": "a project note", "project": "api"})
-    _call(mcp, "remember", {"content": "a global rule", "scope": "global", "type": "rule"})
-
-    deleted = json.loads(_call(mcp, "clear", {"scope": "global"})[0])["deleted"]
-    assert deleted == 1  # only the global memory, no project param needed
+    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 2

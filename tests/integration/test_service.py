@@ -29,6 +29,7 @@ def test_service_serves_tools_over_http(service):
     host, port = service
     url = f"http://{host}:{port}/mcp"
 
+    anyio.run(_call, url, "create_project", {"name": "api"})
     stored = anyio.run(_call, url, "remember", {"content": "redis caching layer", "project": "api"})
     assert not stored.isError, _text(stored)
 
@@ -45,6 +46,7 @@ def test_several_connections_share_one_service(service):
 
     # One connection writes; a SEPARATE connection reads it back → both are served
     # by the one process (the single shared embedder + store behind them).
+    anyio.run(_call, url, "create_project", {"name": "api"})
     anyio.run(_call, url, "remember", {"content": "jwt rotation policy", "project": "api"})
     hits = anyio.run(_call, url, "search", {"query": "jwt rotation", "scope": "all"})
     assert "jwt rotation policy" in _text(hits)

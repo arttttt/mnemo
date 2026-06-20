@@ -6,9 +6,11 @@ docs/03-architecture.md (deferred embedding).
 """
 from __future__ import annotations
 
-from mnemo.application.ports.embedding_scheduler import EmbeddingSchedulerPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.session_provider import SessionProviderPort
+from mnemo.application.ports.embedding_scheduler import EmbeddingScheduler
+from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.ports.session_provider import SessionProvider
+from mnemo.application.ports.token_window import TokenWindow
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import DEFAULT_TYPE
@@ -18,16 +20,20 @@ from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
 
 
-class RememberMemory:
+class RememberMemoryUseCaseImpl:
     def __init__(
         self,
-        repository: MemoryRepositoryPort,
-        scheduler: EmbeddingSchedulerPort,
-        session_provider: SessionProviderPort,
+        repository: MemoryRepository,
+        scheduler: EmbeddingScheduler,
+        token_window: TokenWindow,
+        session_provider: SessionProvider,
+        gate: ProjectGate,
     ) -> None:
         self._repository = repository
         self._scheduler = scheduler
+        self._token_window = token_window
         self._session_provider = session_provider
+        self._gate = gate
 
     def execute(
         self,
@@ -44,6 +50,9 @@ class RememberMemory:
         # name its project (else it is silently unreachable by a project search), and a
         # global write must not carry one (scope is authoritative).
         validate_scope_project(scope, project)
+        # A project-scoped write must target a REGISTERED project (else a typo'd slug
+        # would create an invisible phantom project). global/all are exempt.
+        self._gate.check(scope, project)
         memory = Memory.create(
             content=content,
             type=type,
@@ -58,11 +67,11 @@ class RememberMemory:
         # token window. Reject with an explicit error (never truncate, never auto-split)
         # so the caller — already an LLM — can split it deliberately. The token count is
         # cheap and stays on the hot path; only the encode is deferred.
-        tokens = self._scheduler.count_tokens(memory.content)
-        if tokens > self._scheduler.max_input:
+        tokens = self._token_window.count_tokens(memory.content)
+        if tokens > self._token_window.max_input:
             raise ValueError(
                 f"content is {tokens} tokens, over the embedder's window of "
-                f"{self._scheduler.max_input}; split it into smaller, focused memories"
+                f"{self._token_window.max_input}; split it into smaller, focused memories"
             )
 
         # Exact duplicate: identical normalized content already ACTIVE in this same

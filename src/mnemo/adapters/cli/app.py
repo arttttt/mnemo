@@ -10,6 +10,7 @@ from typing import Optional
 
 import typer
 
+from mnemo.application.project_gate import UnknownProject
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.logging_config import configure_logging
@@ -224,7 +225,7 @@ def stats() -> None:
     typer.echo(json.dumps(
         {
             "total": len(memories),
-            "pending": container.repository.pending_count(),
+            "pending": container.embedding_queue.pending_count(),
             "by_type": dict(by_type),
         },
         indent=2,
@@ -261,7 +262,7 @@ def reindex(
     # case a live connector respawned it mid-run). It respawns on demand with the new state.
     stopped_before = stop_service(config)
     count = ReindexMemories(
-        container.repository, container.embedder, container.scheduler
+        container.embedding_queue, container.embedder, container.scheduler
     ).execute()
     stopped_after = stop_service(config)
     typer.echo(json.dumps(
@@ -280,23 +281,50 @@ def delete(
 
 
 @app.command()
-def clear(
-    project: Optional[str] = typer.Argument(
-        None, help="Project whose memories to delete. Omit and use --scope global to clear global memories."
-    ),
-    scope: str = typer.Option(
-        "project",
-        "--scope",
-        "-s",
-        help="'project' (delete one project's memories; needs a project) or 'global' (delete the global memories).",
+def create_project(
+    name: str = typer.Argument(..., help="Project slug (the id; reused on every memory)."),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="What this project is (optional)."
     ),
 ) -> None:
-    """Permanently delete a project's memories, or all global memories."""
+    """Register a new project. Writing to an unregistered project is rejected."""
     try:
-        result = build_container().delete.clear(project, scope=scope)
+        project = build_container().create_project.execute(name, description)
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(result)))
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
+def delete_project(
+    name: str = typer.Argument(..., help="Project slug to delete, with all its memories."),
+) -> None:
+    """Permanently delete a project and all its memories (and their links)."""
+    try:
+        project = build_container().delete_project.execute(name)
+    except UnknownProject as exc:
+        raise typer.BadParameter(str(exc))
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
+def update_project(
+    name: str = typer.Argument(..., help="Project slug to update."),
+    description: str = typer.Argument(..., help="New description for the project."),
+) -> None:
+    """Set or change a project's description."""
+    try:
+        project = build_container().update_project.execute(name, description)
+    except UnknownProject as exc:
+        raise typer.BadParameter(str(exc))
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
+def list_projects() -> None:
+    """List the registered projects (newest first)."""
+    projects = build_container().list_projects.execute()
+    typer.echo(json.dumps([asdict(p) for p in projects], indent=2, ensure_ascii=False))
 
 
 @app.command()

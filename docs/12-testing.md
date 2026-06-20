@@ -28,8 +28,8 @@ tests/
 
 ## Principles
 
-- **Fast & offline by default:** unit and most integration tests use the `hash` embedder + in‑memory/JSON store —
-  no network, no heavy deps.
+- **Fast & offline by default:** tests use the `hash` embedder; unit tests inject an in‑memory fake repository,
+  integration tests run against a temp‑file SQLite store — no network, no heavy deps.
 - **Heavy/networked tests are opt‑in:** the real embedder (fastembed) lives behind `@pytest.mark.heavy` and
   are skipped unless explicitly requested.
 - **Ports enable isolation:** because use cases depend on ports, unit tests inject fakes — no MCP/DB needed to test core logic.

@@ -1,4 +1,4 @@
-"""The scope↔project contract, shared by every scoped operation (search, browse, clear).
+"""The scope↔project contract, shared by every scoped operation (search, browse, remember).
 
 `scope='project'` must name a project; `scope='global'`/`'all'` must not — scope is
 authoritative. Enforced in one place so the rule can't drift between callers.

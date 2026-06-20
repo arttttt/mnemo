@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from mnemo.application.pipeline.context import PipelineContext
 from mnemo.application.pipeline.slot import Slot
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.recall.request import RECALL_REQUEST
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
@@ -21,7 +21,7 @@ class GatherStage:
     requires: frozenset[str] = frozenset()
     provides = frozenset({GATHERED.name})
 
-    def __init__(self, repository: MemoryRepositoryPort) -> None:
+    def __init__(self, repository: MemoryRepository) -> None:
         self._repository = repository
 
     def run(self, ctx: PipelineContext) -> PipelineContext:

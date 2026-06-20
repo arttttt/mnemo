@@ -105,7 +105,8 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
   using in‑memory/fake ports (no real MCP/DB/model).
 - **NFR‑24 (MUST).** **Integration tests**, in separate suites, cover each adapter against its real boundary:
   store persistence (round‑trip), embedder, MCP controller, CLI, and the composition root.
-- **NFR‑25 (SHOULD).** Tests run **offline and fast by default** (hash embedder + in‑memory/JSON store). Heavy or
+- **NFR‑25 (SHOULD).** Tests run **offline and fast by default** (hash embedder; in‑memory fake repository for unit
+  tests, temp‑file SQLite for integration). Heavy or
   heavy backends (e.g. fastembed) sit behind an opt‑in marker. Strategy in [12-testing.md](12-testing.md).
 
 ### Version control

@@ -1,8 +1,5 @@
-"""One contract, run against every MemoryRepositoryPort backend.
-
-The in-memory and SQLite (`sqlite-vec` + FTS5) backends both run always — they
-are offline and light (`sqlite-vec` is a small extension, skipped gracefully if
-absent).
+"""The MemoryRepository contract, exercised against the SQLite (`sqlite-vec` +
+FTS5) backend — the sole store. Offline and light; skipped where `sqlite-vec` is absent.
 """
 import pytest
 
@@ -11,6 +8,7 @@ from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
+from tests.support.sqlite_store import open_store
 
 _ALL = SearchCriteria(scope="all")
 
@@ -22,29 +20,17 @@ def _hits(repo, embedder, text, criteria, limit=5):
     )
 
 
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
-
-    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
-
-
 def _sqlite(tmp_path):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    # Register the projects these tests write to so inserts satisfy the FK
+    # (memories.project -> projects.slug). Idempotent, so reopen is fine.
+    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api", "other"))
+    return repo
 
-    # dim up front so a pending (vector-less) write can create the schema.
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
-
-@pytest.fixture(
-    params=[
-        pytest.param(_in_memory, id="in_memory"),
-        pytest.param(_sqlite, id="sqlite"),
-    ]
-)
-def open_repo(request, tmp_path):
+@pytest.fixture
+def open_repo(tmp_path):
     """Return a zero-arg factory that (re)opens a repo at one fixed location."""
-    return lambda: request.param(tmp_path)
+    return lambda: _sqlite(tmp_path)
 
 
 @pytest.fixture
@@ -245,11 +231,8 @@ def test_missing_id_methods_are_safe(open_repo, embedder):
 
 def test_sqlite_pending_is_lexically_searchable(tmp_path):
     """A pending memory (no vector) must still be findable via the FTS5 lexical leg."""
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
-
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
     pending = Memory.create("handleAuthCallback pending fix", project="api")
     repo.add(pending)  # no vector
 
@@ -257,12 +240,46 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     assert any(hit.memory.id == pending.id for hit in hits)
 
 
-def test_sqlite_hybrid_finds_exact_token(tmp_path):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+def test_sqlite_deleting_a_project_cascades_its_memories_and_links(tmp_path):
+    """The FK cascade is the whole delete_project mechanism: removing the project row
+    atomically removes its memories (memories.project FK) and their edges (links FK)."""
+    embedder = HashEmbedder()
+    repo, registry = open_store(tmp_path, embedder.dim, projects=("api", "other"))
+    first = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
+    second = _supersede(repo, embedder, first)  # a memory + a supersedes edge in `api`
+    kept = _store(repo, embedder, "kept elsewhere", project="other")
+
+    registry.delete("api")  # DELETE FROM projects -> cascades memories -> cascades links
+
+    assert {m.id for m in repo.list_all()} == {kept.id}  # only the other project survives
+    assert repo.links_for(second.id) == []  # the edge cascaded away with its endpoints
+
+
+def test_sqlite_memory_for_an_unregistered_project_is_rejected(tmp_path):
+    """The FK also makes the gate a DB invariant: no memory can reference a project
+    that was never registered."""
+    import sqlite3
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
+    with pytest.raises(sqlite3.IntegrityError):
+        repo.add(Memory.create("ghost note", project="ghost"))
+
+
+def test_sqlite_a_global_memory_satisfies_the_fk(tmp_path):
+    """A global memory carries project='__global__' (a seeded sentinel row), so it
+    satisfies memories.project -> projects(slug) even with no real project registered."""
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim)  # only the __global__ sentinel exists
+    rule = Memory.create("always confirm destructive ops", type="rule", scope="global")
+    assert rule.project == "__global__"
+    repo.add(rule, embedder.encode(rule.content))
+    assert {m.id for m in repo.list_all()} == {rule.id}
+
+
+def test_sqlite_hybrid_finds_exact_token(tmp_path):
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 
@@ -282,15 +299,13 @@ def test_find_active_by_topic_key(open_repo, embedder):
     assert repo.find_active_by_topic_key("absent/key", "api") is None
 
 
-def test_delete_clear_purge(open_repo, embedder):
+def test_delete_and_purge(open_repo, embedder):
     repo = open_repo()
     one = _store(repo, embedder, "one", project="api")
     _store(repo, embedder, "two", project="api")
-    _store(repo, embedder, "three", project="other")
 
     assert repo.delete([one.id]) == 1
-    assert repo.delete_by_project("api") == 1
-    assert {m.project for m in repo.list_all()} == {"other"}
+    assert {m.content for m in repo.list_all()} == {"two"}
     assert repo.delete_all() == 1
     assert repo.list_all() == []
 

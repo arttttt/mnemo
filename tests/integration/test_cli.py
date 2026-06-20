@@ -6,14 +6,19 @@ testing = pytest.importorskip("typer.testing")
 
 
 def _runner_and_app(tmp_path, monkeypatch):
+    pytest.importorskip("sqlite_vec")
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
-    monkeypatch.setenv("MNEMO_STORE", "memory")
     monkeypatch.setenv("MNEMO_RERANKER", "off")    # keep tests offline: no model download
     monkeypatch.setenv("MNEMO_GENERATOR", "off")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
+    from mnemo.infrastructure.composition import build_container
 
+    # The gate requires registered projects; pre-register the ones these tests use.
+    # Persisted in the SQLite store, so each CLI invocation's fresh container sees them.
+    container = build_container()
+    for slug in ("api", "other"):
+        container.create_project.execute(slug)
     return testing.CliRunner(), app
 
 
@@ -106,7 +111,7 @@ def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
     assert memory_id not in miss.stdout
 
 
-def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
+def test_cli_delete_purge_and_stats(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
     one = json.loads(runner.invoke(app, ["store", "one", "--project", "api"]).stdout)["id"]
@@ -117,39 +122,20 @@ def test_cli_delete_clear_purge_and_stats(tmp_path, monkeypatch):
     assert stats["total"] == 3
     assert stats["pending"] == 0  # the CLI embeds inline (sync scheduler), so nothing pending
     assert json.loads(runner.invoke(app, ["delete", one]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["clear", "api"]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 1
+    assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 2
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
 
 
-def test_cli_clear_scope_global_targets_globals(tmp_path, monkeypatch):
-    runner, app = _runner_and_app(tmp_path, monkeypatch)
-    runner.invoke(app, ["store", "proj note", "--project", "api"])
-    runner.invoke(app, ["store", "global rule", "--scope", "global", "--type", "rule"])
-
-    cleared = runner.invoke(app, ["clear", "--scope", "global"])
-    assert cleared.exit_code == 0, cleared.output
-    assert json.loads(cleared.stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1  # project note survives
-
-
-def test_cli_clear_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
-    runner, app = _runner_and_app(tmp_path, monkeypatch)
-    result = runner.invoke(app, ["clear"])  # --scope defaults to 'project', no project given
-    assert result.exit_code != 0
-    assert "project" in result.output
-    assert "Traceback" not in result.output
-
-
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+    from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
     from mnemo.domain.memory import Memory
 
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "embedded note", "--project", "api"])  # CLI embeds inline
 
     # Inject a vector-less (pending) memory into the same store file.
-    repo = InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
+    repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
     repo.add(Memory.create("not embedded yet", project="api"))  # no vector → pending
 
     stats = json.loads(runner.invoke(app, ["stats"]).stdout)
@@ -207,3 +193,48 @@ def test_cli_recall_reports_missing_model_dep_without_a_traceback(tmp_path, monk
     assert result.exit_code == 1
     assert "llama-cpp-python" in result.output
     assert "Traceback" not in result.output
+
+
+def test_cli_create_project_then_store(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    created = runner.invoke(app, ["create-project", "newproj", "--description", "a new one"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.stdout)["slug"] == "newproj"
+
+    # A write to the freshly-registered project now passes the gate.
+    stored = runner.invoke(app, ["store", "note in newproj", "--project", "newproj"])
+    assert stored.exit_code == 0, stored.output
+
+
+def test_cli_create_project_rejects_a_bad_slug(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["create-project", "Bad Slug"])  # spaces + uppercase
+    assert result.exit_code != 0
+    assert "kebab-case" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_delete_project_cascades(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "doomed note", "--project", "api"])
+
+    deleted = runner.invoke(app, ["delete-project", "api"])
+    assert deleted.exit_code == 0, deleted.output
+    assert json.loads(deleted.stdout)["slug"] == "api"
+
+    # the project's memory cascaded away with it
+    found = runner.invoke(app, ["search", "doomed", "--scope", "all"])
+    assert "doomed note" not in found.stdout
+
+
+def test_cli_update_and_list_projects(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)  # pre-registers api, other
+
+    updated = runner.invoke(app, ["update-project", "api", "the API service"])
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.stdout)["description"] == "the API service"
+
+    listed = runner.invoke(app, ["list-projects"])
+    assert listed.exit_code == 0, listed.output
+    slugs = {p["slug"] for p in json.loads(listed.stdout)}
+    assert {"api", "other"} <= slugs

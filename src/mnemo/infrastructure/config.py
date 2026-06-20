@@ -10,8 +10,6 @@ from pathlib import Path
 class Config:
     data_dir: str
     embedder: str
-    store: str
-    store_path: str
     embed_model: str | None = None  # concrete fastembed model; None => adapter default
     models_dir: str = ""            # where local models are cached (default ~/.mnemo/models)
     embed_max_tokens: int = 2048    # the embedder's operational window cap (pplx)
@@ -47,10 +45,6 @@ class Config:
                 os.environ.get("MNEMO_MODELS_DIR", "~/.mnemo/models")
             ),
             embed_max_tokens=int(os.environ.get("MNEMO_EMBED_MAX_TOKENS", "2048")),
-            store=os.environ.get("MNEMO_STORE", "sqlite"),
-            store_path=os.environ.get(
-                "MNEMO_STORE_PATH", os.path.join(data_dir, "memory.json")
-            ),
             sqlite_path=os.environ.get(
                 "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
             ),

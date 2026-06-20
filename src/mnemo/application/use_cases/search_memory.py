@@ -1,20 +1,22 @@
 """Retrieve active memories by similarity within a (soft) scope and filters."""
 from __future__ import annotations
 
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.search_result import SearchResult
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory_type import MemoryType
 
 
-class SearchMemory:
+class SearchMemoryUseCaseImpl:
     def __init__(
-        self, repository: MemoryRepositoryPort, embedder: EmbedderPort
+        self, repository: MemoryRepository, embedder: TextEmbedder, gate: ProjectGate
     ) -> None:
         self._repository = repository
         self._embedder = embedder
+        self._gate = gate
 
     def execute(
         self,
@@ -36,6 +38,7 @@ class SearchMemory:
             related_files=tuple(related_files or ()),
             created_after=created_after,
         )
+        self._gate.check(criteria.scope, criteria.project)
         request = Retrieval(
             criteria=criteria,
             limit=limit,

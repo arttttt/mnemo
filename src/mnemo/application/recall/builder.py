@@ -12,7 +12,7 @@ from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
 from mnemo.application.pipeline.pipeline import Pipeline
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.recall.assemble_stage import AssembleStage
 from mnemo.application.recall.bundle import RECALL, RecallBundle
 from mnemo.application.recall.gather_stage import GatherStage
@@ -22,7 +22,7 @@ from mnemo.application.recall.synthesize_stage import SynthesizeStage
 
 
 def build_recall_pipeline(
-    repository: MemoryRepositoryPort,
+    repository: MemoryRepository,
     *,
     reranker: Reranker | None = None,
     generator: Generator | None = None,

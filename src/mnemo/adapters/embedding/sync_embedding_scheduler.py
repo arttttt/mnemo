@@ -1,25 +1,18 @@
 """Embed inline — compute and store the vector immediately.
 
 For the one-shot CLI (the process exits, so there is no worker to defer to) and
-offline tests. The window methods delegate to the embedder.
+offline tests.
 """
 from __future__ import annotations
 
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.embedding_queue import EmbeddingQueue
 
 
 class SyncEmbeddingScheduler:
-    def __init__(self, embedder: EmbedderPort, repository: MemoryRepositoryPort) -> None:
+    def __init__(self, embedder: TextEmbedder, repository: EmbeddingQueue) -> None:
         self._embedder = embedder
         self._repository = repository
-
-    @property
-    def max_input(self) -> int:
-        return self._embedder.max_input
-
-    def count_tokens(self, text: str) -> int:
-        return self._embedder.count_tokens(text)
 
     def schedule(self, memory_id: str) -> None:
         content = self._repository.content_for(memory_id)

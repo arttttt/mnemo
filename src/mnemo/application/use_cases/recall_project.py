@@ -12,16 +12,16 @@ from __future__ import annotations
 from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
+from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.bundle import RecallBundle
 from mnemo.application.recall.request import RecallRequest
 
 
-class RecallProject:
+class RecallProjectUseCaseImpl:
     def __init__(
         self,
-        repository: MemoryRepositoryPort,
+        repository: MemoryRepository,
         *,
         reranker: Reranker | None = None,
         generator: Generator | None = None,

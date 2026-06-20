@@ -6,49 +6,66 @@ from llmkit.ports.reranker import Reranker
 
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
-from mnemo.application.ports.embedder import EmbedderPort
-from mnemo.application.ports.memory_repository import MemoryRepositoryPort
-from mnemo.application.ports.session_provider import SessionProviderPort
-from mnemo.application.use_cases.browse_memory import BrowseMemory
-from mnemo.application.use_cases.delete_memory import DeleteMemory
-from mnemo.application.use_cases.recall_project import RecallProject
-from mnemo.application.use_cases.remember_memory import RememberMemory
-from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.application.ports.embedder import TextEmbedder
+from mnemo.application.ports.memory_repository import MemoryRepository
+from mnemo.application.ports.project_repository import ProjectRepository
+from mnemo.application.ports.session_provider import SessionProvider
+from mnemo.application.project_gate import ProjectGate
+from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
+from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
+from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
+from mnemo.application.use_cases.delete_project import DeleteProjectUseCaseImpl
+from mnemo.application.use_cases.list_projects import ListProjectsUseCaseImpl
+from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
+from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
+from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
 from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
+from mnemo.infrastructure.migrations import add_project_foreign_keys
 
 
 def build_container(
     config: Config | None = None,
-    session_provider: SessionProviderPort | None = None,
+    session_provider: SessionProvider | None = None,
 ) -> Container:
     config = config or Config.from_env()
+    # One-shot, idempotent upgrade of a pre-FK store, BEFORE the store opens. Disposable —
+    # remove once the live store is migrated (see infrastructure/migrations.py).
+    add_project_foreign_keys(config.sqlite_path)
     embedder = _build_embedder(config)
-    repository = _build_repository(config, embedder.dim)
+    repository, projects = _build_store(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()
     # Embedding is computed inline by default (CLI / offline). The service swaps in the
     # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
     scheduler = SyncEmbeddingScheduler(embedder, repository)
+    gate = ProjectGate(projects)
     return Container(
         config=config,
         embedder=embedder,
         repository=repository,
+        embedding_queue=repository,
+        projects=projects,
         scheduler=scheduler,
-        remember=RememberMemory(repository, scheduler, session_provider),
-        search=SearchMemory(repository, embedder),
-        browse=BrowseMemory(repository),
-        recall=RecallProject(
+        remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider, gate),
+        search=SearchMemoryUseCaseImpl(repository, embedder, gate),
+        browse=BrowseMemoryUseCaseImpl(repository, gate),
+        recall=RecallProjectUseCaseImpl(
             repository,
             reranker=_build_reranker(config),
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,
             generator_max_tokens=config.generator_max_tokens,
         ),
-        delete=DeleteMemory(repository),
+        delete=DeleteMemoryUseCaseImpl(repository, projects),
+        create_project=CreateProjectUseCaseImpl(projects),
+        delete_project=DeleteProjectUseCaseImpl(projects),
+        update_project=UpdateProjectUseCaseImpl(projects),
+        list_projects=ListProjectsUseCaseImpl(projects),
     )
 
 
-def _build_embedder(config: Config) -> EmbedderPort:
+def _build_embedder(config: Config) -> TextEmbedder:
     name = config.embedder
     if name == "hash":
         from mnemo.adapters.embedding.hash_embedder import HashEmbedder
@@ -80,17 +97,22 @@ def _build_embedder(config: Config) -> EmbedderPort:
     raise ValueError(f"unknown embedder: {name!r}")
 
 
-def _build_repository(config: Config, dim: int) -> MemoryRepositoryPort:
-    if config.store == "memory":
-        from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+def _build_store(
+    config: Config, dim: int
+) -> tuple[MemoryRepository, ProjectRepository]:
+    """Build the memory store and the project registry together. They SHARE one
+    connection (same DB, one writer) so the FK cascade is atomic."""
+    from mnemo.adapters.store.sqlite_connections import SqliteConnections
+    from mnemo.adapters.store.sqlite_project_repository import (
+        SqliteProjectRepositoryImpl,
+    )
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
-        return InMemoryMemoryRepository(path=config.store_path)
-    if config.store == "sqlite":
-        from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
-
-        # dim up front lets a pending (vector-less) first write create the schema.
-        return SqliteVecMemoryRepository(path=config.sqlite_path, dim=dim)
-    raise ValueError(f"unknown store: {config.store!r}")
+    # Build the registry first so `projects` exists before the memories schema that
+    # references it; both share the one connection.
+    conns = SqliteConnections(config.sqlite_path)
+    projects = SqliteProjectRepositoryImpl(conns)
+    return SqliteRepositoryImpl(conns, dim), projects
 
 
 def _build_reranker(config: Config) -> Reranker | None:

@@ -5,16 +5,14 @@ from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
 
 
-def test_from_env_defaults_to_sqlite(monkeypatch, tmp_path):
-    for var in ("MNEMO_STORE", "MNEMO_SQLITE_PATH", "MNEMO_STORE_PATH", "MNEMO_EMBEDDER"):
+def test_from_env_defaults(monkeypatch, tmp_path):
+    for var in ("MNEMO_SQLITE_PATH", "MNEMO_EMBEDDER"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
 
     config = Config.from_env()
-    assert config.store == "sqlite"
     assert config.embedder == "pplx"  # the default embedder
     assert config.sqlite_path == str(tmp_path / "memory.db")
-    assert config.store_path == str(tmp_path / "memory.json")
 
 
 def test_from_env_reads_embed_model(monkeypatch, tmp_path):
@@ -39,10 +37,7 @@ def test_build_embedder_forwards_configured_model(monkeypatch):
     monkeypatch.setattr(fe, "FastEmbedEmbedder", StubFastEmbed)
 
     def _config(embed_model):
-        return Config(
-            data_dir="/tmp", embedder="fastembed", store="memory",
-            store_path="/tmp/m.json", embed_model=embed_model,
-        )
+        return Config(data_dir="/tmp", embedder="fastembed", embed_model=embed_model)
 
     _build_embedder(_config("BAAI/bge-m3"))
     assert captured["model_name"] == "BAAI/bge-m3"
@@ -53,18 +48,17 @@ def test_build_embedder_forwards_configured_model(monkeypatch):
 
 def test_build_container_wires_the_sqlite_backend(tmp_path):
     pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
-        store="sqlite",
-        store_path=str(tmp_path / "memory.json"),
         sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
-    assert isinstance(container.repository, SqliteVecMemoryRepository)
+    assert isinstance(container.repository, SqliteRepositoryImpl)
 
+    container.create_project.execute("api")
     stored = container.remember.execute(content="wired on sqlite", project="api")
     hits = container.search.execute(query="wired on sqlite", project="api")
     assert any(hit.id == stored.id for hit in hits)

@@ -6,39 +6,50 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from tests.fakes.in_memory_project_repository import InMemoryProjectRepositoryImpl
+from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.reindex_memories import ReindexMemories
-from mnemo.application.use_cases.remember_memory import RememberMemory
-from mnemo.application.use_cases.search_memory import SearchMemory
+from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
+from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.domain.memory import Memory
+from mnemo.domain.project import Project
+from tests.support.sqlite_store import open_store
+
+
+def _gate(*slugs):
+    projects = InMemoryProjectRepositoryImpl()
+    for slug in slugs:
+        projects.create(Project.create(slug))
+    return ProjectGate(projects)
 
 
 def _remember(repo, embedder, content, **kwargs):
-    use_case = RememberMemory(
-        repo, SyncEmbeddingScheduler(embedder, repo), InProcessSessionProvider()
+    use_case = RememberMemoryUseCaseImpl(
+        repo, SyncEmbeddingScheduler(embedder, repo), embedder,
+        InProcessSessionProvider(), _gate("api"),
     )
     return use_case.execute(content=content, project="api", **kwargs)
+
+
+def _search(repo, embedder):
+    # The reindex searches use scope='all', which the gate exempts — an empty registry is fine.
+    return SearchMemoryUseCaseImpl(repo, embedder, _gate())
 
 
 def _reindex(repo, embedder):
     return ReindexMemories(repo, embedder, SyncEmbeddingScheduler(embedder, repo)).execute()
 
 
-def _in_memory(tmp_path):
-    from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
-
-    return InMemoryMemoryRepository(path=str(tmp_path / "memory.json"))
-
-
 def _sqlite(tmp_path, dim):
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
+    # Register "api" (the project these tests write to) so memory inserts satisfy the
+    # FK; the gate uses its own fake registry, the DB-level FK uses this one.
+    repo, _ = open_store(tmp_path, dim, projects=("api",))
+    return repo
 
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=dim)
 
-
-@pytest.fixture(params=["in_memory", "sqlite"])
-def repo(request, tmp_path):
-    return _in_memory(tmp_path) if request.param == "in_memory" else _sqlite(tmp_path, dim=256)
+@pytest.fixture
+def repo(tmp_path):
+    return _sqlite(tmp_path, dim=256)
 
 
 def test_reindex_switches_dimension_and_reembeds_all(repo):
@@ -62,7 +73,7 @@ def test_reindex_switches_dimension_and_reembeds_all(repo):
     links = repo.links_for(second.id)
     assert len(links) == 1 and links[0].target_id == first.id
     # search works at the new dimension (a 128-dim store would reject a 256-dim vector)
-    hits = SearchMemory(repo, new).execute(query="redis cache", scope="all")
+    hits = _search(repo, new).execute(query="redis cache", scope="all")
     assert any(hit.id == other.id for hit in hits)
 
 
@@ -122,7 +133,7 @@ def test_sqlite_set_dimension_is_atomic_on_failure(tmp_path, monkeypatch):
     assert repo._current_dim() == 256  # dimension unchanged — the swap rolled back
     assert {m.id for m in repo.list_all()} == {m.id for m in kept}  # no rows lost
     # still fully queryable: the original table + FTS survived the rollback
-    hits = SearchMemory(repo, embedder).execute(query="beta note", scope="all")
+    hits = _search(repo, embedder).execute(query="beta note", scope="all")
     assert any(hit.id == kept[1].id for hit in hits)
 
 
@@ -136,16 +147,15 @@ def test_sqlite_set_dimension_rebuilds_fts(tmp_path):
     repo.set_dimension(128)  # everything back to pending; FTS rebuilt against the swap
     assert repo.pending_count() == 1  # not re-embedded → dense leg cannot surface it
 
-    hits = SearchMemory(repo, HashEmbedder(dim=128)).execute(query="zzqqx", scope="all")
+    hits = _search(repo, HashEmbedder(dim=128)).execute(query="zzqqx", scope="all")
     assert any("zzqqx" in hit.content for hit in hits)
 
 
 def test_cli_reindex(tmp_path, monkeypatch):
     testing = pytest.importorskip("typer.testing")
+    pytest.importorskip("sqlite_vec")
     monkeypatch.setenv("MNEMO_EMBEDDER", "hash")
-    monkeypatch.setenv("MNEMO_STORE", "memory")
     monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MNEMO_STORE_PATH", str(tmp_path / "memory.json"))
     from mnemo.adapters.cli.app import app
 
     runner = testing.CliRunner()

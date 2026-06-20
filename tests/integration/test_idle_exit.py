@@ -17,6 +17,7 @@ import pytest
 
 pytest.importorskip("mcp")
 pytest.importorskip("uvicorn")
+pytest.importorskip("sqlite_vec")
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 _GRACE = "1"
@@ -41,7 +42,6 @@ def _env(host: str, port: int, data_dir: Path) -> dict:
     return {
         **os.environ,
         "PYTHONPATH": str(_SRC),
-        "MNEMO_STORE": "memory",
         "MNEMO_EMBEDDER": "hash",
         "MNEMO_DATA_DIR": str(data_dir),
         "MNEMO_HOST": host,

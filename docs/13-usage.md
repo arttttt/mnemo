@@ -97,9 +97,7 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 | Variable | Default | Meaning |
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
-| `MNEMO_STORE` | `sqlite` | `sqlite` (default — SQLite + `sqlite-vec` + FTS5) or `memory` (in‑memory/JSON; offline/tests) |
-| `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (the default backend) |
-| `MNEMO_STORE_PATH` | `<data>/memory.json` | JSON store file — used by the `memory` backend |
+| `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (SQLite + `sqlite-vec` + FTS5 — the store) |
 | `MNEMO_EMBEDDER` | `pplx` | `pplx` (default, pplx-embed-v1-0.6b int8) · `fastembed` · `hash` (offline) |
 | `MNEMO_MODELS_DIR` | `~/.mnemo/models` | model cache (pplx → `~/.mnemo/models/pplx`) |
 | `MNEMO_EMBED_MAX_TOKENS` | `2048` | embedder window cap; over it a memory is rejected (split it) |

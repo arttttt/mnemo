@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import pytest
 
-from mnemo.adapters.store.in_memory_repository import InMemoryMemoryRepository
+from tests.fakes.in_memory_repository import InMemoryRepositoryImpl
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
 
 
-def _repo_with(*memories: Memory) -> InMemoryMemoryRepository:
-    repo = InMemoryMemoryRepository()  # pure in-memory, no persistence
+def _repo_with(*memories: Memory) -> InMemoryRepositoryImpl:
+    repo = InMemoryRepositoryImpl()  # pure in-memory, no persistence
     for memory in memories:
         repo.add(memory)  # no vector — the browse path does not need one
     return repo
