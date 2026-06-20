@@ -27,6 +27,11 @@ class ProjectRepository(Protocol):
         """Remove the registry row; the FK cascade removes the project's memories."""
         ...
 
+    def delete_all(self) -> None:
+        """Remove every project (a full reset), then re-seed the reserved global
+        sentinel so the registry is immediately usable again."""
+        ...
+
     def list_all(self) -> list[Project]:
         """Registered projects, newest first. Excludes the reserved global sentinel."""
         ...

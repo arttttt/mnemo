@@ -62,3 +62,13 @@ def test_global_sentinel_is_seeded_but_hidden(projects):
     # The reserved row exists (FK integrity for global memories) but is not a project.
     assert projects.exists(GLOBAL_PROJECT) is True
     assert all(p.slug != GLOBAL_PROJECT for p in projects.list_all())
+
+
+def test_delete_all_wipes_and_reseeds_the_global_sentinel(projects):
+    projects.create(Project.create("first"))
+    projects.create(Project.create("second"))
+
+    projects.delete_all()
+
+    assert projects.list_all() == []                # every real project gone
+    assert projects.exists(GLOBAL_PROJECT) is True  # the sentinel is re-seeded, registry usable

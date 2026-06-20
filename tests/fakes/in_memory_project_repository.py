@@ -37,6 +37,9 @@ class InMemoryProjectRepositoryImpl:
     def delete(self, slug: str) -> None:
         self._projects.pop(slug, None)
 
+    def delete_all(self) -> None:
+        self._projects = {GLOBAL_PROJECT: Project(GLOBAL_PROJECT, None, now())}
+
     def list_all(self) -> list[Project]:
         return [
             project for slug, project in self._projects.items() if slug != GLOBAL_PROJECT

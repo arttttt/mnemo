@@ -71,6 +71,16 @@ class SqliteProjectRepositoryImpl:
             lambda conn: conn.execute("DELETE FROM projects WHERE slug = ?", (slug,))
         )
 
+    def delete_all(self) -> None:
+        def work(conn: sqlite3.Connection) -> None:
+            conn.execute("DELETE FROM projects")  # FK-cascades any remaining memories
+            conn.execute(
+                "INSERT INTO projects (slug, description, created_at) VALUES (?, NULL, ?)",
+                (GLOBAL_PROJECT, now()),  # re-seed the sentinel so the registry stays usable
+            )
+
+        self._write.execute(work)
+
     def list_all(self) -> list[Project]:
         rows = self._read.execute(
             lambda conn: conn.execute(

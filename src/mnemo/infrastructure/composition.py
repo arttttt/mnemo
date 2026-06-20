@@ -53,7 +53,7 @@ def build_container(
             rerank_top_k=config.rerank_top_k,
             generator_max_tokens=config.generator_max_tokens,
         ),
-        delete=DeleteMemoryUseCaseImpl(repository),
+        delete=DeleteMemoryUseCaseImpl(repository, projects),
         create_project=CreateProjectUseCaseImpl(projects),
         delete_project=DeleteProjectUseCaseImpl(projects),
         update_project=UpdateProjectUseCaseImpl(projects),

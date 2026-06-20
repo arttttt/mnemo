@@ -32,7 +32,7 @@ def _wiring():
         repo,
         RememberMemoryUseCaseImpl(repo, scheduler, embedder, session, gate),
         SearchMemoryUseCaseImpl(repo, embedder, gate),
-        DeleteMemoryUseCaseImpl(repo),
+        DeleteMemoryUseCaseImpl(repo, projects),
         DeleteProjectUseCaseImpl(projects),
         BrowseMemoryUseCaseImpl(repo, gate),
         projects,
@@ -331,3 +331,14 @@ def test_delete_and_purge():
     assert {m.content for m in repo.list_all()} == {"two"}
     assert deletion.purge().deleted == 1
     assert repo.list_all() == []
+
+
+def test_purge_wipes_memories_and_projects():
+    repo, remember, _, deletion, _, _, projects = _wiring()
+    remember.execute(content="one", project="api")
+
+    deletion.purge()
+
+    assert repo.list_all() == []
+    assert projects.list_all() == []        # the registry is wiped too (full reset)
+    assert projects.exists("api") is False  # ... including previously-registered projects
