@@ -37,7 +37,8 @@ opt‑in** via `scope="all"` — projects are an organizing dimension you can cr
   WHERE filter `(m.project = ? OR m.scope = 'global')`, excluded from the candidate set, so cross‑cutting
   rules/lessons (global) always surface but unrelated projects never leak in. The project must be named
   explicitly — there is no inferred "current project" — so `scope="project"` without a `project` is **rejected**.
-  A search for a project with no memories returns an empty result (no error — "nothing remembered yet").
+  An **unknown** project (not in the registry) is **rejected** by the gate with near‑match suggestions; a
+  **registered** project with no memories returns an empty result (no error — "nothing remembered yet").
 - `scope="all"` drops the project filter and searches **across all projects** (the cross‑project capability).
 - `scope="global"` returns only global memories. Passing `project` together with `scope in {all, global}` is
   **rejected** (those scopes ignore `project` — `scope` is authoritative — so accepting it would silently drop
