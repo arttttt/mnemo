@@ -1,10 +1,15 @@
 """SQLite connection management: one serialized writer + per-thread readers.
 
+A pure RESOURCE: it owns connections, the writer lock and shutdown — nothing
+else. Driving transactions (BEGIN/COMMIT/ROLLBACK, retry, read snapshots) is the
+SQL executors' job; every connection is opened in manual mode
+(``isolation_level=None``) so the executors, and only they, control transaction
+boundaries — there is no implicit-transaction "legacy" mode anywhere.
+
 SQLite in WAL mode allows a single writer and many concurrent readers. So all
 writes share one writer connection guarded by a lock (serializing them before
 they reach SQLite, avoiding SQLITE_BUSY), while each thread gets its own reader
-connection — readers never block one another or the writer. This keeps the
-repository's query methods free of any connection-management concern.
+connection — readers never block one another or the writer.
 """
 from __future__ import annotations
 
@@ -58,6 +63,9 @@ class SqliteConnections:
 
     def _open(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path, check_same_thread=False)
+        # Manual mode: never auto-open a transaction. The executors own every
+        # BEGIN/COMMIT, so this connection just runs whatever they drive on it.
+        conn.isolation_level = None
         conn.row_factory = sqlite3.Row
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
