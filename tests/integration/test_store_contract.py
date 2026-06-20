@@ -266,6 +266,17 @@ def test_sqlite_memory_for_an_unregistered_project_is_rejected(tmp_path):
         repo.add(Memory.create("ghost note", project="ghost"))
 
 
+def test_sqlite_a_global_memory_satisfies_the_fk(tmp_path):
+    """A global memory carries project='__global__' (a seeded sentinel row), so it
+    satisfies memories.project -> projects(slug) even with no real project registered."""
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim)  # only the __global__ sentinel exists
+    rule = Memory.create("always confirm destructive ops", type="rule", scope="global")
+    assert rule.project == "__global__"
+    repo.add(rule, embedder.encode(rule.content))
+    assert {m.id for m in repo.list_all()} == {rule.id}
+
+
 def test_sqlite_hybrid_finds_exact_token(tmp_path):
     embedder = HashEmbedder()
     repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
