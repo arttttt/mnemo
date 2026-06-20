@@ -20,3 +20,4 @@ class ModelConfig:
     source: ModelSource
     residency: Residency = Transient()
     cache_dir: str | None = None
+    pool_size: int = 1   # independent runtime instances kept behind the residency manager

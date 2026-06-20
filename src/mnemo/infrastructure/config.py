@@ -6,6 +6,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _positive_int(name: str, default: str) -> int:
+    """Parse a MNEMO_* integer that must be >= 1, failing fast with a named error.
+    Used where the value sizes a real resource (e.g. MNEMO_EMBED_WORKERS = the embedder
+    instance-pool size) so a bad value can't silently degrade or oversubscribe RAM."""
+    raw = os.environ.get(name, default)
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}") from None
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value}")
+    return value
+
+
 @dataclass(frozen=True)
 class Config:
     data_dir: str
@@ -57,7 +71,7 @@ class Config:
             service_ready_timeout=float(
                 os.environ.get("MNEMO_SERVICE_READY_TIMEOUT", "120")
             ),
-            embed_workers=int(os.environ.get("MNEMO_EMBED_WORKERS", "1")),
+            embed_workers=_positive_int("MNEMO_EMBED_WORKERS", "1"),
             embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
             embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
             embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),
