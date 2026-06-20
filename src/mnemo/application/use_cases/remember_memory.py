@@ -73,38 +73,37 @@ class RememberMemory:
         if exact is not None:
             return RememberResult(id=exact.id, status="duplicate")
 
-        # Explicit evolution: reusing a topic_key supersedes the prior record (kept as history).
-        superseded_id: str | None = None
+        # Explicit evolution: reusing a topic_key supersedes the prior active record.
+        prior = None
         if memory.topic_key is not None:
             prior = self._repository.find_active_by_topic_key(
                 memory.topic_key, memory.project
             )
-            if prior is not None:
-                self._repository.mark_superseded(prior.id)
-                memory.supersedes = prior.id
-                superseded_id = prior.id
 
         # Provenance: stamp the current run's session id. Only stored memories get one,
         # so a read-only run generates nothing. The agent never sets it.
         memory.session_id = self._session_provider.current_session_id()
 
         # Insert PENDING (no vector) so the write stays cheap and the row is lexically
-        # searchable at once; hand the embedding off to the scheduler (inline or deferred).
-        # Near-similar memories are NOT suppressed here — they coexist; the background
-        # worker may merge/flag genuine duplicates later (docs/04-data-model.md).
-        self._repository.add(memory)
-        self._scheduler.schedule(memory.id)
-
-        # Deterministic typed edge: record the supersede as a link with provenance
-        # (the topic_key that triggered it). Built FOR the agent, never inferred.
-        if superseded_id is not None:
-            self._repository.add_link(
-                Link.supersedes(
-                    source_id=memory.id,
-                    target_id=superseded_id,
-                    provenance=memory.topic_key,
-                )
+        # searchable at once. Near-similar memories are NOT suppressed here — they
+        # coexist; the background worker may merge/flag genuine duplicates later
+        # (docs/04-data-model.md).
+        if prior is not None:
+            # Establish the relationship HERE (application layer owns it): the successor
+            # supersedes the prior, and the typed edge records it with provenance = the
+            # topic_key that drove the upsert. The repository then persists all of it in
+            # one transaction, so a crash can never strand the topic_key or drop the edge.
+            memory.supersedes = prior.id
+            link = Link.supersedes(
+                source_id=memory.id, target_id=prior.id, provenance=memory.topic_key
             )
+            self._repository.supersede(memory, link)
+            status = "superseded"
+        else:
+            self._repository.add(memory)
+            status = "created"
 
-        status = "superseded" if superseded_id is not None else "created"
+        # Hand the embedding off only AFTER the write has committed, so the background
+        # worker (reading via its own connection) is guaranteed to see the pending row.
+        self._scheduler.schedule(memory.id)
         return RememberResult(id=memory.id, status=status)

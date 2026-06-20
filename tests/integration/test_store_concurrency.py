@@ -19,8 +19,8 @@ def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
     embedder = HashEmbedder()
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     writers, per_writer = 8, 10
 
     def write(w):

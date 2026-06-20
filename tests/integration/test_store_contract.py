@@ -9,6 +9,7 @@ import pytest
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
+from mnemo.domain.link import Link
 from mnemo.domain.memory import Memory
 
 _ALL = SearchCriteria(scope="all")
@@ -57,6 +58,20 @@ def _store(repo, embedder, content, **kwargs):
     return memory
 
 
+def _supersede(repo, embedder, prior):
+    """Drive `prior` into the superseded state via the production supersede path
+    (a test helper — the store exposes no test-only 'mark superseded' shortcut)."""
+    successor = Memory.create(
+        f"successor of {prior.content}", project=prior.project, topic_key="evolved"
+    )
+    successor.supersedes = prior.id
+    link = Link.supersedes(
+        source_id=successor.id, target_id=prior.id, provenance="evolved"
+    )
+    repo.supersede(successor, link, embedder.encode(successor.content))
+    return successor
+
+
 def test_add_and_find_active_by_hash(open_repo, embedder):
     repo = open_repo()
     memory = _store(repo, embedder, "durable note", type="decision", project="api")
@@ -85,7 +100,7 @@ def test_find_active_by_hash_ignores_superseded(open_repo, embedder):
     otherwise re-storing the content would return a dead id and never re-create it."""
     repo = open_repo()
     memory = _store(repo, embedder, "evolving note", project="api")
-    repo.mark_superseded(memory.id)
+    _supersede(repo, embedder, memory)
 
     assert repo.find_active_by_hash(memory.hash, "api") is None
 
@@ -242,22 +257,12 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     assert any(hit.memory.id == pending.id for hit in hits)
 
 
-def test_sqlite_pending_first_write_without_dim_errors(tmp_path):
-    """Without a known dimension a vector-less first write cannot create the schema."""
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
-
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))  # no dim
-    with pytest.raises(ValueError):
-        repo.add(Memory.create("pending with no dim", project="api"))
-
-
 def test_sqlite_hybrid_finds_exact_token(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 
@@ -277,15 +282,6 @@ def test_find_active_by_topic_key(open_repo, embedder):
     assert repo.find_active_by_topic_key("absent/key", "api") is None
 
 
-def test_mark_superseded_sets_status(open_repo, embedder):
-    repo = open_repo()
-    memory = _store(repo, embedder, "old version", project="api")
-
-    repo.mark_superseded(memory.id)
-    status_by_id = {m.id: m.status for m in repo.list_all()}
-    assert status_by_id[memory.id] == "superseded"
-
-
 def test_delete_clear_purge(open_repo, embedder):
     repo = open_repo()
     one = _store(repo, embedder, "one", project="api")
@@ -297,3 +293,55 @@ def test_delete_clear_purge(open_repo, embedder):
     assert {m.project for m in repo.list_all()} == {"other"}
     assert repo.delete_all() == 1
     assert repo.list_all() == []
+
+
+def _supersede_inputs(repo, embedder):
+    """A stored prior + a successor/link wired the way the use case does it."""
+    prior = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
+    successor = Memory.create("auth model v2", project="api", topic_key="auth/model")
+    successor.supersedes = prior.id
+    link = Link.supersedes(
+        source_id=successor.id, target_id=prior.id, provenance="auth/model"
+    )
+    return prior, successor, link
+
+
+def test_supersede_marks_prior_inserts_successor_and_links(open_repo, embedder):
+    repo = open_repo()
+    prior, successor, link = _supersede_inputs(repo, embedder)
+
+    repo.supersede(successor, link, embedder.encode(successor.content))
+
+    active = repo.find_active_by_topic_key("auth/model", "api")
+    assert active is not None and active.id == successor.id
+    by_id = {m.id: m for m in repo.list_all()}
+    assert by_id[prior.id].status == "superseded"
+    assert by_id[successor.id].status == "active"
+    assert by_id[successor.id].supersedes == prior.id
+    edges = repo.links_for(successor.id)
+    assert len(edges) == 1
+    assert (edges[0].source_id, edges[0].target_id, edges[0].provenance) == (
+        successor.id,
+        prior.id,
+        "auth/model",
+    )
+
+
+def test_supersede_is_atomic_on_failure(open_repo, embedder, monkeypatch):
+    repo = open_repo()
+    prior, successor, link = _supersede_inputs(repo, embedder)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("link write failed mid-supersede")
+
+    monkeypatch.setattr(repo, "_insert_link", boom)
+
+    with pytest.raises(RuntimeError):
+        repo.supersede(successor, link, embedder.encode(successor.content))
+
+    # Nothing applied: the prior is still the active record, the successor was never
+    # inserted, and no edge exists — the whole unit rolled back.
+    active = repo.find_active_by_topic_key("auth/model", "api")
+    assert active is not None and active.id == prior.id
+    assert {m.id for m in repo.list_all()} == {prior.id}
+    assert repo.links_for(prior.id) == []

@@ -106,8 +106,9 @@ def test_re_remembering_superseded_content_creates_a_fresh_row():
     # Re-storing content that was superseded must write a new, retrievable row — not
     # return the dead (superseded) id and silently store nothing.
     repo, remember, search, _ = _wiring()
-    first = remember.execute(content="reborn note", project="api")
-    repo.mark_superseded(first.id)
+    first = remember.execute(content="reborn note", project="api", topic_key="reborn")
+    # A topic_key upsert supersedes `first` — the production path to a superseded row.
+    remember.execute(content="a newer take", project="api", topic_key="reborn")
 
     second = remember.execute(content="reborn note", project="api")
     assert second.status == "created"

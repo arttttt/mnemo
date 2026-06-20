@@ -5,6 +5,7 @@ MemoryRepositoryPort structurally.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -28,6 +29,40 @@ class InMemoryMemoryRepository:
     def add(self, memory: Memory, vector: Vector | None = None) -> None:
         self._items.append((memory, list(vector) if vector is not None else None))
         self._persist()
+
+    def supersede(
+        self, memory: Memory, link: Link, vector: Vector | None = None
+    ) -> None:
+        """All-or-nothing supersede, mirroring the SQLite backend's transaction. The
+        real atomicity guarantee belongs to the SQLite store; here a deep-copied
+        snapshot is restored on any failure so the contract test sees the same
+        rollback on both backends. The caller owns the relationship (sets
+        `memory.supersedes`, builds `link`); this only persists it."""
+        items_before = list(self._items)
+        links_before = list(self._links)
+        try:
+            # Replace the prior with a superseded COPY — the stored entity is never
+            # mutated, so a shallow snapshot is enough to roll back.
+            self._items = [
+                (self._superseded(stored), v) if stored.id == memory.supersedes else (stored, v)
+                for stored, v in self._items
+            ]
+            self._items.append((memory, list(vector) if vector is not None else None))
+            self._insert_link(link)
+            self._persist()
+        except BaseException:
+            self._items = items_before
+            self._links = links_before
+            self._persist()
+            raise
+
+    @staticmethod
+    def _superseded(memory: Memory) -> Memory:
+        """A superseded COPY of `memory`: reuse the domain transition without mutating
+        the stored entity (the value-store analogue of an UPDATE)."""
+        replaced = copy.deepcopy(memory)
+        replaced.mark_superseded()
+        return replaced
 
     def set_vector(self, memory_id: str, vector: Vector) -> None:
         for index, (memory, _) in enumerate(self._items):
@@ -108,13 +143,6 @@ class InMemoryMemoryRepository:
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[: request.limit]
 
-    def mark_superseded(self, memory_id: str) -> None:
-        for memory, _ in self._items:
-            if memory.id == memory_id:
-                memory.mark_superseded()
-                break
-        self._persist()
-
     def delete(self, ids: list[str]) -> int:
         targets = set(ids)
         return self._remove(lambda memory: memory.id in targets)
@@ -133,8 +161,11 @@ class InMemoryMemoryRepository:
         return [memory for memory, _ in self._items]
 
     def add_link(self, link: Link) -> None:
-        self._links.append(link)
+        self._insert_link(link)
         self._persist()
+
+    def _insert_link(self, link: Link) -> None:
+        self._links.append(link)
 
     def links_for(self, memory_id: str) -> list[Link]:
         return [
