@@ -20,7 +20,9 @@ def _sqlite(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
-    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+    # The store now requires its dimension from config and creates the schema
+    # eagerly; match the HashEmbedder this suite stores vectors with.
+    return SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
 
 
 @pytest.fixture(

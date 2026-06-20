@@ -257,22 +257,12 @@ def test_sqlite_pending_is_lexically_searchable(tmp_path):
     assert any(hit.memory.id == pending.id for hit in hits)
 
 
-def test_sqlite_pending_first_write_without_dim_errors(tmp_path):
-    """Without a known dimension a vector-less first write cannot create the schema."""
-    pytest.importorskip("sqlite_vec")
-    from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
-
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))  # no dim
-    with pytest.raises(ValueError):
-        repo.add(Memory.create("pending with no dim", project="api"))
-
-
 def test_sqlite_hybrid_finds_exact_token(tmp_path):
     pytest.importorskip("sqlite_vec")
     from mnemo.adapters.store.sqlite_vec_repository import SqliteVecMemoryRepository
 
     embedder = HashEmbedder()
-    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"))
+    repo = SqliteVecMemoryRepository(path=str(tmp_path / "memory.db"), dim=embedder.dim)
     target = _store(repo, embedder, "the fix lives in handleAuthCallback", project="api")
     _store(repo, embedder, "unrelated postgres migration notes", project="api")
 

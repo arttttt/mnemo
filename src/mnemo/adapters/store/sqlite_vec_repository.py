@@ -14,7 +14,11 @@ busy-retry); the READ executor runs reads on per-thread connections (WAL →
 concurrent), and the two-leg hybrid retrieval runs under one snapshot. The
 executors own every transaction; SqliteConnections is just the connection
 resource. Rationale and alternatives weighed are in docs/adr/0001-storage-engine.md.
-The schema is created lazily on the first write, once the vector dimension is known.
+
+The repository is STATELESS: the embedding dimension comes from config (passed in)
+and the schema is ensured EAGERLY at construction (= service/CLI startup). The
+authoritative state lives in SQLite — the store is always ready after __init__, so
+there is no cached `ready`/`dim` flag and no lazy first-write schema path.
 """
 from __future__ import annotations
 
@@ -122,22 +126,25 @@ _FTS_REBUILD = "INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"
 
 
 class SqliteVecMemoryRepository:
-    def __init__(self, path: str, dim: int | None = None) -> None:
-        # The embedding dimension. Given up front (from the embedder) it lets a
-        # PENDING write — one with no vector yet, for deferred embedding — create the
-        # schema before any vector exists. Left None, it is learned from the first
-        # vectored add (the original behaviour), and a vector-less first write errors.
-        self._dim = dim
-        # The repository OWNS the connection resource and shares it between its two
-        # executors; it talks to SQL only through them (the `_conns` handle is the
-        # ownership reference, used for lifecycle).
+    def __init__(self, path: str, dim: int) -> None:
+        # The embedding dimension comes from config (the embedder) — the repository
+        # does not learn or cache it. It is used once here to create the schema; the
+        # live dimension thereafter is read from the schema itself (see _current_dim).
         self._conns = SqliteConnections(path)
         self._read = SqlReadExecutor(self._conns)
         self._write = SqlWriteExecutor(self._conns)
-        # The links table is dimension-independent, so it exists from the start
-        # (an edge can be written before, or independently of, any memory row).
-        self._write.execute(self._create_links_schema)
-        self._ready = self._read.execute(self._memories_table_exists)
+        # Ensure the schema EAGERLY at construction (= service/CLI startup): the links
+        # table (dimension-independent) plus the memories table at `dim` if it is
+        # absent. After this the store is always ready, so no method needs an
+        # existence flag and there is no lazy first-write schema path. An existing
+        # store at a different dimension is left untouched here — `set_dimension`
+        # (reindex) migrates it explicitly.
+        self._write.execute(lambda conn: self._ensure_schema(conn, dim))
+
+    def _ensure_schema(self, conn: sqlite3.Connection, dim: int) -> None:
+        self._create_links_schema(conn)
+        if not self._memories_table_exists(conn):
+            self._create_schema(conn, dim)
 
     @staticmethod
     def _create_links_schema(conn: sqlite3.Connection) -> None:
@@ -159,34 +166,12 @@ class SqliteVecMemoryRepository:
         )
 
     def add(self, memory: Memory, vector: Vector | None = None) -> None:
-        # Fast path: the schema is known to exist, so just insert.
-        if self._ready:
-            self._write.execute(
-                lambda conn: conn.execute(_INSERT_MEMORY, self._row(memory, vector))
-            )
-            return
-
-        # First write(s): the existence check + create live INSIDE the unit of work,
-        # under the writer lock, so concurrent first-writers can't both create the
-        # table (the check is in-transaction, not the stale cached flag). The cached
-        # `_ready` flag is flipped only AFTER the write commits.
-        def work(conn: sqlite3.Connection) -> bool:
-            if self._memories_table_exists(conn):
-                conn.execute(_INSERT_MEMORY, self._row(memory, vector))
-                return False
-            dim = len(vector) if vector is not None else self._dim
-            if dim is None:
-                raise ValueError(
-                    "cannot create the store schema without an embedding dimension:"
-                    " pass dim= for a pending (vector-less) first write"
-                )
-            self._create_schema(conn, dim)
-            conn.execute(_INSERT_MEMORY, self._row(memory, vector))
-            return True
-
-        created = self._write.execute(work)
-        if created:
-            self._ready = True
+        # The schema exists (ensured at construction), so a write is just an insert.
+        # `vector=None` stores the row pending (lexically searchable, absent from the
+        # dense leg) until set_vector lands.
+        self._write.execute(
+            lambda conn: conn.execute(_INSERT_MEMORY, self._row(memory, vector))
+        )
 
     def supersede(
         self, memory: Memory, link: Link, vector: Vector | None = None
@@ -195,8 +180,7 @@ class SqliteVecMemoryRepository:
         superseded, insert the successor, write the supersedes edge — so a crash can
         never leave the topic_key without an active record, or a successor without its
         edge. The caller owns the relationship (sets `memory.supersedes`, builds
-        `link`); this only persists it atomically. The schema is assumed to exist (a
-        supersede always replaces an existing row)."""
+        `link`); this only persists it atomically."""
 
         def work(conn: sqlite3.Connection) -> None:
             self._mark_superseded(conn, memory.supersedes)
@@ -219,13 +203,9 @@ class SqliteVecMemoryRepository:
         until commit, so the table never disappears under a concurrent query (DB schema
         rule: never drop/recreate to change a table).
         """
-        if not self._ready:
-            self._dim = new_dim  # fresh store — first write creates the schema at new_dim
-            return
         if self._current_dim() == new_dim:
             return
         self._write.execute(lambda conn: self._rebuild_to(conn, new_dim))
-        self._dim = new_dim
 
     def _rebuild_to(self, conn: sqlite3.Connection, new_dim: int) -> None:
         conn.execute(_create_table_sql("memories_new", new_dim))
@@ -251,8 +231,6 @@ class SqliteVecMemoryRepository:
         return int(found.group(1)) if found else None
 
     def set_vector(self, memory_id: str, vector: Vector) -> None:
-        if not self._ready:
-            return
         self._write.execute(
             lambda conn: conn.execute(
                 "UPDATE memories SET embedding = ? WHERE id = ?",
@@ -261,8 +239,6 @@ class SqliteVecMemoryRepository:
         )
 
     def has_vector(self, memory_id: str) -> bool:
-        if not self._ready:
-            return False
         row = self._read.execute(
             lambda conn: conn.execute(
                 "SELECT embedding IS NOT NULL FROM memories WHERE id = ?", (memory_id,)
@@ -271,8 +247,6 @@ class SqliteVecMemoryRepository:
         return bool(row[0]) if row else False
 
     def content_for(self, memory_id: str) -> str | None:
-        if not self._ready:
-            return None
         row = self._read.execute(
             lambda conn: conn.execute(
                 "SELECT content FROM memories WHERE id = ?", (memory_id,)
@@ -281,7 +255,7 @@ class SqliteVecMemoryRepository:
         return row[0] if row else None
 
     def next_unembedded(self, limit: int) -> list[str]:
-        if not self._ready or limit <= 0:
+        if limit <= 0:
             return []
         rows = self._read.execute(
             lambda conn: conn.execute(
@@ -291,8 +265,6 @@ class SqliteVecMemoryRepository:
         return [row[0] for row in rows]
 
     def pending_count(self) -> int:
-        if not self._ready:
-            return 0
         (count,) = self._read.execute(
             lambda conn: conn.execute(
                 "SELECT count(*) FROM memories WHERE embedding IS NULL"
@@ -324,7 +296,7 @@ class SqliteVecMemoryRepository:
 
     def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
         limit = request.limit
-        if not self._ready or limit <= 0:
+        if limit <= 0:
             return []
         if request.text is None and request.vector is None:
             return self._browse(request.criteria, limit)
@@ -382,7 +354,7 @@ class SqliteVecMemoryRepository:
         return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
     def delete(self, ids: list[str]) -> int:
-        if not self._ready or not ids:
+        if not ids:
             return 0
         placeholders = ", ".join("?" for _ in ids)
 
@@ -399,9 +371,6 @@ class SqliteVecMemoryRepository:
         return self._write.execute(work)
 
     def delete_by_project(self, project: str) -> int:
-        if not self._ready:
-            return 0
-
         def work(conn: sqlite3.Connection) -> int:
             conn.execute(
                 "DELETE FROM links WHERE source_id IN"
@@ -418,8 +387,6 @@ class SqliteVecMemoryRepository:
     def delete_all(self) -> int:
         def work(conn: sqlite3.Connection) -> int:
             conn.execute("DELETE FROM links")
-            if not self._ready:
-                return 0
             (removed,) = conn.execute("SELECT count(*) FROM memories").fetchone()
             conn.execute("DELETE FROM memories")
             return removed
@@ -427,8 +394,6 @@ class SqliteVecMemoryRepository:
         return self._write.execute(work)
 
     def list_all(self) -> list[Memory]:
-        if not self._ready:
-            return []
         rows = self._read.execute(
             lambda conn: conn.execute(f"SELECT {_PAYLOAD} FROM memories m").fetchall()
         )
@@ -499,8 +464,6 @@ class SqliteVecMemoryRepository:
     def _read_one(
         self, conn: sqlite3.Connection, predicate: str, params: tuple
     ) -> Memory | None:
-        if not self._ready:
-            return None
         row = conn.execute(
             f"SELECT {_PAYLOAD} FROM memories m WHERE {predicate} LIMIT 1", params
         ).fetchone()
@@ -508,8 +471,7 @@ class SqliteVecMemoryRepository:
 
     def _create_schema(self, conn: sqlite3.Connection, dim: int) -> None:
         """Pure SQL: create the memories table + derived state on the given (in-txn)
-        connection. Does NOT commit and does NOT flip `_ready` — the caller sets the
-        flag only after the write executor commits."""
+        connection. Does NOT commit — the write executor owns the transaction."""
         conn.execute(_create_table_sql("memories", dim))
         self._rebuild_indexes_and_fts(conn, rebuild=False)  # empty table — nothing to backfill
 
