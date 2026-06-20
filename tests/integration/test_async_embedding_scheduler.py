@@ -1,5 +1,6 @@
 """Async embed worker pool, exercised against the real (thread-safe) SQLite store."""
 import logging
+import sqlite3
 import time
 
 from mnemo.adapters.embedding.async_embedding_scheduler import AsyncEmbeddingScheduler
@@ -25,6 +26,29 @@ def _pending(repo, content):
     memory = Memory.create(content, project="api")
     repo.add(memory)  # pending, no vector
     return memory
+
+
+class _FlakyStore:
+    """Wraps a real store and raises a store error on a chosen method — once (a transient
+    blip) or always (a persistent fault) — then delegates. Proves the background loops
+    survive a store fault instead of dying silently."""
+
+    def __init__(self, inner, method, *, always=False):
+        self._inner = inner
+        self._method = method
+        self._always = always
+        self._raised = False
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if name != self._method or (self._raised and not self._always):
+            return attr
+
+        def fail(*args, **kwargs):
+            self._raised = True
+            raise sqlite3.OperationalError("database is locked")
+
+        return fail
 
 
 def test_worker_embeds_scheduled_memory(tmp_path):
@@ -179,3 +203,50 @@ def test_failing_encode_retries_exactly_max_retries_then_stops(tmp_path):
         assert embedder.calls == 3  # exactly max_retries — backoff, never a tight loop
     finally:
         scheduler.stop()
+
+
+def test_worker_survives_a_store_error_during_embed_and_keeps_going(tmp_path, monkeypatch):
+    # A store op in _embed_one (here set_vector) raising once must NOT kill the worker: it
+    # backs off, the item stays pending, and the next pass embeds it.
+    monkeypatch.setattr(
+        "mnemo.adapters.embedding.async_embedding_scheduler._STORE_ERROR_BACKOFF", 0.01
+    )
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(HashEmbedder(), _FlakyStore(repo, "set_vector"))
+    scheduler.start()
+    try:
+        memory = _pending(repo, "survive a store write error")
+        scheduler.schedule(memory.id)
+        assert _wait(lambda: repo.has_vector(memory.id))  # embedded despite the one-time fault
+        assert scheduler._threads[0].is_alive()           # the worker did not die
+    finally:
+        scheduler.stop()
+
+
+def test_worker_survives_a_store_error_during_claim_and_keeps_going(tmp_path, monkeypatch):
+    # A store read in the claim scan (next_unembedded) raising once must NOT kill the worker.
+    monkeypatch.setattr(
+        "mnemo.adapters.embedding.async_embedding_scheduler._STORE_ERROR_BACKOFF", 0.01
+    )
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(HashEmbedder(), _FlakyStore(repo, "next_unembedded"))
+    scheduler.start()
+    try:
+        memory = _pending(repo, "survive a store read error")
+        scheduler.schedule(memory.id)
+        assert _wait(lambda: repo.has_vector(memory.id))
+        assert scheduler._threads[0].is_alive()
+    finally:
+        scheduler.stop()
+
+
+def test_drain_returns_by_deadline_under_a_persistent_store_error(tmp_path):
+    # If the claim scan keeps failing, drain must still return by its deadline — so an
+    # idle-exit tears the process down — instead of raising out of the idle-monitor thread.
+    repo = _repo(tmp_path)
+    scheduler = AsyncEmbeddingScheduler(
+        HashEmbedder(), _FlakyStore(repo, "next_unembedded", always=True)
+    )
+    start = time.monotonic()
+    scheduler.drain(timeout=0.2)  # no workers started; must not raise or hang
+    assert time.monotonic() - start < 2.0

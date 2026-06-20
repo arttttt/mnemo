@@ -25,6 +25,14 @@ _log = logging.getLogger("mnemo.embed")
 _RETRY_BACKOFF_BASE = 0.5
 _RETRY_BACKOFF_MAX = 30.0
 
+# A store op (the claim scan, or has_vector/content_for/set_vector in _embed_one) can raise
+# past the executor's busy-retry — DB locked beyond busy_timeout, disk IO, SQLITE_FULL. Rather
+# than let it kill the worker (with workers=1 that stops ALL embedding until restart), the
+# worker logs it, backs off, and retries the loop; the item stays pending (the DB is the
+# queue) so nothing is lost. Escalate to one ERROR once the failures are clearly persistent.
+_STORE_ERROR_BACKOFF = 5.0
+_STORE_ERROR_ESCALATE = 5
+
 
 class AsyncEmbeddingScheduler:
     def __init__(
@@ -73,7 +81,11 @@ class AsyncEmbeddingScheduler:
         while True:
             with self._cond:
                 busy = self._in_flight > 0 or self._has_pending_retry()
-                if not busy and self._first_claimable() is None:
+                try:
+                    idle = not busy and self._first_claimable() is None
+                except Exception:  # a store error in the scan — can't confirm idle; wait the deadline
+                    idle = False
+                if idle:
                     return
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -122,12 +134,21 @@ class AsyncEmbeddingScheduler:
 
     # --- worker ---
     def _run(self) -> None:
+        store_errors = 0  # consecutive store faults (per worker); reset on any clean pass
         while True:
             with self._cond:
                 while True:
-                    if self._stopping and self._in_flight == 0 and self._first_claimable() is None:
-                        return
-                    memory_id = self._claim_next()
+                    try:
+                        if self._stopping and self._in_flight == 0 and self._first_claimable() is None:
+                            return
+                        memory_id = self._claim_next()
+                    except Exception:  # the claim scan hit a store error — survive it
+                        if self._stopping:
+                            return
+                        store_errors += 1
+                        self._log_store_error(store_errors, "claim scan")
+                        self._cond.wait(_STORE_ERROR_BACKOFF)  # releases the lock; wakes early on notify
+                        continue
                     if memory_id is not None:
                         self._in_flight += 1
                         break
@@ -136,11 +157,33 @@ class AsyncEmbeddingScheduler:
                     self._cond.wait()  # woken by schedule(), a completion, or a retry timer
             try:
                 self._embed_one(memory_id)
+                store_errors = 0
+            except Exception:  # a store op in _embed_one failed (encode errors are caught inside)
+                store_errors += 1
+                self._log_store_error(store_errors, memory_id)
+                with self._cond:
+                    self._cond.wait(_STORE_ERROR_BACKOFF)  # item stays pending, re-claimed next turn
             finally:
                 with self._cond:
                     self._in_flight -= 1
                     self._claimed.discard(memory_id)
                     self._cond.notify_all()  # wake drain() and idle workers
+
+    def _log_store_error(self, consecutive: int, what: str) -> None:
+        """A store op raised past the executor's busy-retry. The worker survives; the item
+        stays pending (the DB is the queue). Log one ERROR once the failures are clearly
+        persistent, else WARNING (traceback only on the first, to avoid flooding)."""
+        if consecutive == _STORE_ERROR_ESCALATE:
+            _log.error(
+                "embedding stalled: %d consecutive store errors — dense search is degraded "
+                "until the store recovers (latest: %s)",
+                consecutive, what, exc_info=True,
+            )
+        else:
+            _log.warning(
+                "embed store op failed (%s); item stays pending, backing off %.1fs",
+                what, _STORE_ERROR_BACKOFF, exc_info=(consecutive == 1),
+            )
 
     def _first_claimable(self) -> str | None:
         """The next pending id no worker holds, not permanently failed, and past its retry
