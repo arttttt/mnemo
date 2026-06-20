@@ -217,3 +217,16 @@ def test_cli_delete_project_cascades(tmp_path, monkeypatch):
     # the project's memory cascaded away with it
     found = runner.invoke(app, ["search", "doomed", "--scope", "all"])
     assert "doomed note" not in found.stdout
+
+
+def test_cli_update_and_list_projects(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)  # pre-registers api, other
+
+    updated = runner.invoke(app, ["update-project", "api", "the API service"])
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.stdout)["description"] == "the API service"
+
+    listed = runner.invoke(app, ["list-projects"])
+    assert listed.exit_code == 0, listed.output
+    slugs = {p["slug"] for p in json.loads(listed.stdout)}
+    assert {"api", "other"} <= slugs

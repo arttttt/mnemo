@@ -29,7 +29,7 @@ def _tools(tmp_path):
 def test_mcp_exposes_the_agent_tools(tmp_path):
     assert {
         "remember", "search", "browse", "delete", "purge",
-        "create_project", "delete_project",
+        "create_project", "delete_project", "update_project", "list_projects",
     } <= set(_tools(tmp_path))
 
 
@@ -62,6 +62,8 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["purge"] == []
     assert required["create_project"] == ["name"]
     assert required["delete_project"] == ["name"]
+    assert required["update_project"] == ["name", "description"]
+    assert required["list_projects"] == []
 
 
 def _call(mcp, name, args):
@@ -93,6 +95,18 @@ def test_mcp_delete_project_cascades(tmp_path):
     assert deleted["slug"] == "api"
     # its memory cascaded away — a cross-project search no longer finds it
     assert _call(mcp, "search", {"query": "doomed", "scope": "all"}) == []
+
+
+def test_mcp_update_and_list_projects(tmp_path):
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "create_project", {"name": "svc"})
+
+    updated = json.loads(_call(mcp, "update_project", {"name": "api", "description": "the API"})[0])
+    assert updated["description"] == "the API"
+
+    listed = {json.loads(p)["slug"] for p in _call(mcp, "list_projects", {})}
+    assert listed == {"api", "svc"}  # __global__ excluded
 
 
 def test_mcp_remember_rejects_over_window_content(tmp_path):

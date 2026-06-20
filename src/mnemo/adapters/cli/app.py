@@ -305,6 +305,26 @@ def delete_project(
 
 
 @app.command()
+def update_project(
+    name: str = typer.Argument(..., help="Project slug to update."),
+    description: str = typer.Argument(..., help="New description for the project."),
+) -> None:
+    """Set or change a project's description."""
+    try:
+        project = build_container().update_project.execute(name, description)
+    except UnknownProject as exc:
+        raise typer.BadParameter(str(exc))
+    typer.echo(json.dumps(asdict(project)))
+
+
+@app.command()
+def list_projects() -> None:
+    """List the registered projects (newest first)."""
+    projects = build_container().list_projects.execute()
+    typer.echo(json.dumps([asdict(p) for p in projects], indent=2, ensure_ascii=False))
+
+
+@app.command()
 def purge() -> None:
     """Permanently delete ALL memories."""
     result = build_container().delete.purge()

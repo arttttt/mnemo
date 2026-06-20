@@ -234,4 +234,24 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """
         return asdict(container.delete_project.execute(name))
 
+    @mcp.tool()
+    def update_project(
+        name: Annotated[str, Field(description="Project slug to update.")],
+        description: Annotated[
+            str,
+            Field(description="New description for the project (what it is)."),
+        ],
+    ) -> dict:
+        """Set or change a project's description (the only way to edit it). Errors (with
+        near-match suggestions) if the slug is unknown. Returns {slug, description, created_at}.
+        """
+        return asdict(container.update_project.execute(name, description))
+
+    @mcp.tool()
+    def list_projects() -> list[dict]:
+        """List the registered projects (newest first). Returns a list of
+        {slug, description, created_at}; the global scope is not a project and is excluded.
+        """
+        return [asdict(project) for project in container.list_projects.execute()]
+
     return mcp

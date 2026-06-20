@@ -292,6 +292,36 @@ def test_delete_project_unknown_is_rejected_with_candidates():
     assert "api" in exc.value.candidates
 
 
+def test_update_project_sets_description():
+    from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
+
+    projects = InMemoryProjectRepositoryImpl()
+    projects.create(Project.create("api"))
+    updated = UpdateProjectUseCaseImpl(projects).execute("api", "the api service")
+    assert updated.description == "the api service"
+    assert projects.get("api").description == "the api service"
+
+
+def test_update_project_unknown_is_rejected_with_candidates():
+    from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
+
+    projects = InMemoryProjectRepositoryImpl()
+    projects.create(Project.create("api"))
+    with pytest.raises(UnknownProject) as exc:
+        UpdateProjectUseCaseImpl(projects).execute("ap", "x")  # typo of "api"
+    assert "api" in exc.value.candidates
+
+
+def test_list_projects_lists_registered_excluding_global():
+    from mnemo.application.use_cases.list_projects import ListProjectsUseCaseImpl
+
+    projects = InMemoryProjectRepositoryImpl()
+    projects.create(Project.create("api"))
+    projects.create(Project.create("svc"))
+    slugs = {p.slug for p in ListProjectsUseCaseImpl(projects).execute()}
+    assert slugs == {"api", "svc"}  # the __global__ sentinel is hidden
+
+
 def test_delete_and_purge():
     repo, remember, _, deletion, *_ = _wiring()
     a = remember.execute(content="one", project="api")

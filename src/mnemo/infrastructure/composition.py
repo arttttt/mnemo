@@ -15,9 +15,11 @@ from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_project import DeleteProjectUseCaseImpl
+from mnemo.application.use_cases.list_projects import ListProjectsUseCaseImpl
 from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
+from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
 from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
 
@@ -54,6 +56,8 @@ def build_container(
         delete=DeleteMemoryUseCaseImpl(repository),
         create_project=CreateProjectUseCaseImpl(projects),
         delete_project=DeleteProjectUseCaseImpl(projects),
+        update_project=UpdateProjectUseCaseImpl(projects),
+        list_projects=ListProjectsUseCaseImpl(projects),
     )
 
 
