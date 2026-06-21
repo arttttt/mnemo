@@ -37,6 +37,11 @@ class OnnxEmbedder:
     def max_input(self) -> int:
         return self._max_input
 
+    def close(self) -> None:
+        """Unload the pooled session instances (a Resident embedder keeps them warm until
+        the service shuts down). Tokenization is unaffected — the tokenizer is separate."""
+        self._manager.close()
+
     def count_tokens(self, text: str) -> int:
         return self._tokenizer.count(text)  # tokenizer-only — never leases a session
 

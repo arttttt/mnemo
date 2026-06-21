@@ -68,3 +68,16 @@ def test_count_tokens_uses_the_tokenizer_without_loading_the_model():
 
     assert embedder.count_tokens("a b c") == 3
     assert not runtime.loaded  # tokenizer-only: the heavy session is never loaded or leased
+
+
+def test_close_unloads_the_pooled_instances():
+    output = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)
+    mask = np.array([[1]], dtype=np.int64)
+    runtime = _FakeEncoderRuntime(output, mask)
+    embedder = _embedder(runtime)
+    embedder.encode("x")  # warms a Resident instance
+    assert runtime.loaded
+
+    embedder.close()
+
+    assert not runtime.loaded  # close() unloads the pool
