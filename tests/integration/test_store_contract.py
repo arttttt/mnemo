@@ -305,6 +305,30 @@ def test_delete_and_purge(open_repo, embedder):
     assert repo.list_all() == []
 
 
+def test_delete_chunks_id_lists_over_the_parameter_cap(open_repo, embedder, monkeypatch):
+    # More ids than SQLite's per-statement parameter cap must be chunked, not sent as one
+    # IN (...) that raises "too many SQL variables". Force a tiny cap so a few ids span
+    # several chunks, and assert the returned count is summed across them.
+    monkeypatch.setattr("mnemo.adapters.store.sqlite_vec_repository._DELETE_BATCH", 2)
+    repo = open_repo()
+    ids = [_store(repo, embedder, f"note {i}", project="api").id for i in range(5)]
+
+    assert repo.delete(ids) == 5  # 3 chunks (2 + 2 + 1), counts summed
+    assert repo.list_all() == []
+
+
+def test_delete_survives_an_id_list_over_sqlites_real_parameter_cap(open_repo, embedder):
+    # The actual regression guard: 50k ids exceeds SQLITE_MAX_VARIABLE_NUMBER (max 32766
+    # since 3.32), so one un-chunked IN (...) would raise "too many SQL variables". delete()
+    # must chunk and survive — and still count only the rows that existed.
+    repo = open_repo()
+    real = [_store(repo, embedder, f"note {i}", project="api").id for i in range(3)]
+    huge = real + [f"missing-{i}" for i in range(50_000)]
+
+    assert repo.delete(huge) == 3  # the real rows deleted; the missing ids no-op, no cap error
+    assert repo.list_all() == []
+
+
 def _supersede_inputs(repo, embedder):
     """A stored prior + a successor wired the way the use case does it."""
     prior = _store(repo, embedder, "auth model v1", project="api", topic_key="auth/model")
