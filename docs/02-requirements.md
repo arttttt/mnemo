@@ -29,9 +29,10 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑10 (MUST).** Session tracking: stamp every memory with the `session_id` of the run that wrote it
   (provenance / grouping / a coherent set for consolidation). Identity is per connection; concurrent runs in
   one project get distinct sessions. No "resume" hook and no `session_recap`.
-- **FR‑11 (post‑MVP).** `recall(project)` — an aggregated context bundle. Deferred: a useful (non‑dumping)
-  recall needs LLM synthesis, kept off the read path. Meanwhile "where did I leave off" is an on‑demand
-  `search` for `type=progress`. See [roadmap/post-mvp.md](roadmap/post-mvp.md).
+- **FR‑11 (opt‑in).** `recall(query, project)` — a local LLM synthesizes a grounded answer from the project's
+  memories (only those memories; refuses when none are relevant). The *write* path stays LLM‑free; `recall` is
+  the one opt‑in LLM read tool, disableable with `MNEMO_GENERATOR=off`. A background‑precomputed digest is
+  post‑MVP (see [roadmap/post-mvp.md](roadmap/post-mvp.md)). See [05-mcp-api.md](05-mcp-api.md).
 - **FR‑12 (MAY).** Tasks linked to memories.
 
 ### Rules

@@ -11,13 +11,13 @@ real task needs it. An agent should learn the surface in seconds.
 > aggregated session/project *summary*; this is text synthesis, the **generator's** job. They are different tools
 > and different models. Below, `recall` always means sense (2).
 
-### `recall(project)` — **post‑MVP** (the digest tool, not retrieval)
-A single aggregated context bundle (a session/project **summary**) was the original "magic word", but a *useful* one
-(concise, not a context dump) needs **LLM synthesis** (the generator) — which we keep off the read path — so the
-`recall` digest is **deferred to post‑MVP** (see [roadmap/post-mvp.md](roadmap/post-mvp.md)). It would *select*
-memories (by `session_id`/date, or by meaning via the embedder) and *synthesize* a summary (the generator). In the
-MVP the agent instead **retrieves on demand** with `search`: `search("...", type="rule")` for rules,
-`search("...", type="progress")` for where it left off.
+### `recall(query, project, limit?) -> {project, summary, sections}` — opt‑in LLM synthesis
+The one read tool that runs an LLM. It gathers the project's memories and a local generator writes a concise
+answer to `query` using **only** those memories — replying exactly "No relevant memories found." when none are
+relevant (never outside knowledge). Returns the synthesized `summary` plus the supporting `sections` (memories
+grouped by type). Unlike `search` (ranked hits) it returns a written answer. The write path stays LLM‑free;
+`recall` is the single opt‑in LLM read tool, and the generator is **transient** (loaded on demand, unloaded
+after). Disable synthesis entirely with `MNEMO_GENERATOR=off`.
 
 ### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, status}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)
@@ -103,7 +103,7 @@ mnemo export / import                # portability (Phase 4)
 (`delete` / `delete-project` / `purge`, and the project tools `create-project` / `update-project` / `list-projects`, are also available as CLI commands.)
 
 ## Design notes
-- One write verb, two read verbs (`search` by meaning, `browse` by filter), plus deletion — type/scope/filters are parameters. (`recall` is post‑MVP.)
+- One write verb, three read verbs (`search` by meaning, `browse` by filter, `recall` for an LLM‑synthesized answer), plus deletion — type/scope/filters are parameters.
 - Projects are **registered first‑class entities** (`create_project`/`update_project`/`list_projects`/`delete_project`); writing to or reading an unknown project is a hard error with near‑match suggestions, so a typo can't create a phantom project. `delete_project` deletes the project and its memories in one DB cascade.
 - `search` defaults to **hybrid** (dense + lexical) so exact matches (function names, error codes) aren't missed.
 - `remember` is fast and idempotent by `hash` / `topic_key`.

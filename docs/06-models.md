@@ -32,8 +32,10 @@ real option.
 - **Local / offline.** Runs entirely on the machine, no cloud call ever.
 - **CPU‑feasible.** Must run acceptably on CPU — the 16 GB target machine often has no discrete/CUDA GPU
   (e.g. Apple Silicon). A GPU/Metal may be used if present (faster) but is **not** required.
-- **Generous context window.** Comfortably **thousands of words**, not ~512 tokens — a memory is one
-  vector, so the window bounds how large one memory may be (see [04-data-model.md](04-data-model.md)).
+- **Generous context window.** The embedder comfortably handles **thousands of words** (not the ~512 of
+  bge‑small) — but a memory is deliberately capped to stay one focused unit: the effective per‑memory limit is
+  the stricter of `MNEMO_MAX_MEMORY_TOKENS` (default 512) and the embedder window (see
+  [04-data-model.md](04-data-model.md)).
 - **Good semantic quality.** Strong retrieval on paraphrased, conceptual queries.
 - **Hybrid‑friendly (ideally).** Plays well with the dense + lexical/sparse hybrid step.
 - **Fixed dimension.** The dimension is fixed at store init — changing the embedder later means a reindex.
@@ -97,11 +99,12 @@ tool-use.
 Requirements: ≤ ~4B (transient on a 16 GB machine), **multilingual**, local on Apple Silicon (GGUF via
 llama.cpp/Metal), permissive license preferred, and — the decisive measured axis — **faithfulness** (no
 fabricated facts when merging). Selection is on a local benchmark (see
-[research/generator-benchmark.md](research/generator-benchmark.md)) — **no model is committed yet.** The
-candidates are multilingual ≤4B instruct models (Apache preferred); smaller models that produced degenerate
-or hallucinated output were eliminated. On a RAM-tight machine: the smallest passing candidate, or
-`MNEMO_GENERATOR=off` (the pipeline still dedups via the reranker — see
-[08-consolidation.md](08-consolidation.md#degradation--economy-mode)).
+[research/generator-benchmark.md](research/generator-benchmark.md)): **Gemma 4 E2B‑it**, official **QAT GGUF**
+(`UD‑Q4_K_XL`, near‑lossless Q4) — best faithful synthesis at the lightest RAM, multilingual, Apache‑2.0,
+driven through its chat template. The QAT quant lifts the small model's grounding to match a larger one at
+about half the RAM; models that produced degenerate or hallucinated output were eliminated. To skip synthesis
+on a RAM‑tight machine, set `MNEMO_GENERATOR=off`. (The reranker is off by default — no reranker beat the
+embedder alone on the small, clean domain.)
 
 ### Structured-output reliability on a small model
 JSON validity is a *solved* problem at any size with **grammar/guided decoding** (llama.cpp GBNF or
