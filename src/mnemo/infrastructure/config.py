@@ -1,22 +1,53 @@
 """Configuration (composition-root concern). Reads MNEMO_* environment variables."""
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
+
+_Num = TypeVar("_Num", int, float)
 
 
-def _positive_int(name: str, default: str) -> int:
-    """Parse a MNEMO_* integer that must be >= 1, failing fast with a named error.
-    Used where the value sizes a real resource (e.g. MNEMO_EMBED_WORKERS = the embedder
-    instance-pool size) so a bad value can't silently degrade or oversubscribe RAM."""
+def _int_env(name: str, default: str, *, minimum: int, maximum: int | None = None) -> int:
+    """Parse a MNEMO_* integer at the config boundary, failing fast with a named, range-checked
+    error — so a typo or out-of-range value surfaces at startup instead of an opaque later crash
+    (a raw traceback in the CLI, or the service's "exited before listening")."""
     raw = os.environ.get(name, default)
     try:
         value = int(raw)
     except ValueError:
-        raise ValueError(f"{name} must be a positive integer, got {raw!r}") from None
-    if value < 1:
-        raise ValueError(f"{name} must be >= 1, got {value}")
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from None
+    return _in_range(name, value, minimum, maximum, exclusive_min=False)
+
+
+def _float_env(
+    name: str, default: str, *, minimum: float, maximum: float | None = None,
+    exclusive_min: bool = False,
+) -> float:
+    """Parse a MNEMO_* float at the config boundary, with the same fail-fast, named, range-checked
+    contract as _int_env. exclusive_min rejects the bound itself (e.g. an idle-check interval must
+    be strictly > 0 — a 0 would busy-loop)."""
+    raw = os.environ.get(name, default)
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number, got {raw!r}") from None
+    if not math.isfinite(value):  # nan/inf parse but slip every range check (nan compares False)
+        raise ValueError(f"{name} must be a finite number, got {raw!r}")
+    return _in_range(name, value, minimum, maximum, exclusive_min=exclusive_min)
+
+
+def _in_range(
+    name: str, value: _Num, minimum: float, maximum: float | None, *, exclusive_min: bool
+) -> _Num:
+    too_low = value <= minimum if exclusive_min else value < minimum
+    if too_low:
+        rel = ">" if exclusive_min else ">="
+        raise ValueError(f"{name} must be {rel} {minimum}, got {value}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}, got {value}")
     return value
 
 
@@ -58,26 +89,26 @@ class Config:
             models_dir=os.path.expanduser(
                 os.environ.get("MNEMO_MODELS_DIR", "~/.mnemo/models")
             ),
-            embed_max_tokens=int(os.environ.get("MNEMO_EMBED_MAX_TOKENS", "2048")),
+            embed_max_tokens=_int_env("MNEMO_EMBED_MAX_TOKENS", "2048", minimum=1),
             sqlite_path=os.environ.get(
                 "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
             ),
             host=os.environ.get("MNEMO_HOST", "127.0.0.1"),
-            port=int(os.environ.get("MNEMO_PORT", "8765")),
-            idle_grace_seconds=float(os.environ.get("MNEMO_IDLE_GRACE_SECONDS", "300")),
-            idle_check_interval_seconds=float(
-                os.environ.get("MNEMO_IDLE_CHECK_INTERVAL_SECONDS", "5")
+            port=_int_env("MNEMO_PORT", "8765", minimum=1, maximum=65535),
+            idle_grace_seconds=_float_env("MNEMO_IDLE_GRACE_SECONDS", "300", minimum=0),
+            idle_check_interval_seconds=_float_env(
+                "MNEMO_IDLE_CHECK_INTERVAL_SECONDS", "5", minimum=0, exclusive_min=True
             ),
-            service_ready_timeout=float(
-                os.environ.get("MNEMO_SERVICE_READY_TIMEOUT", "120")
+            service_ready_timeout=_float_env(
+                "MNEMO_SERVICE_READY_TIMEOUT", "120", minimum=0, exclusive_min=True
             ),
-            embed_workers=_positive_int("MNEMO_EMBED_WORKERS", "1"),
-            embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
-            embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
-            embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),
+            embed_workers=_int_env("MNEMO_EMBED_WORKERS", "1", minimum=1),
+            embed_queue_max=_int_env("MNEMO_EMBED_QUEUE_MAX", "256", minimum=1),
+            embed_max_retries=_int_env("MNEMO_EMBED_MAX_RETRIES", "3", minimum=0),
+            embed_drain_timeout=_float_env("MNEMO_EMBED_DRAIN_TIMEOUT", "30", minimum=0),
             reranker=os.environ.get("MNEMO_RERANKER", "jinaai/jina-reranker-v2-base-multilingual"),
             generator=os.environ.get("MNEMO_GENERATOR", "Qwen/Qwen2.5-3B-Instruct-GGUF"),
             generator_file=os.environ.get("MNEMO_GENERATOR_FILE", "*q4_k_m.gguf"),
-            rerank_top_k=int(os.environ.get("MNEMO_RERANK_TOP_K", "20")),
-            generator_max_tokens=int(os.environ.get("MNEMO_GENERATOR_MAX_TOKENS", "512")),
+            rerank_top_k=_int_env("MNEMO_RERANK_TOP_K", "20", minimum=1),
+            generator_max_tokens=_int_env("MNEMO_GENERATOR_MAX_TOKENS", "512", minimum=1),
         )
