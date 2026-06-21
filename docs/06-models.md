@@ -78,6 +78,14 @@ chosen, the concrete limit is pplx's **32K tokens** (`max_position_embeddings = 
 a single focused memory, so the bound rarely bites. The offline hash embedder has no meaningful window and
 imposes no limit. The policy ("never truncate") is in [04-data-model.md](04-data-model.md).
 
+**Query path — asymmetric on purpose (for now).** The rule above is the **write** path: a stored memory is a
+persisted vector, so it must fit. A **search query** is different — an over‑window query is currently
+**silently truncated to the window head** by the encoder, not rejected, so the two halves of the vector space
+disagree on "fits the window." The impact is low (queries are short in practice). Fixing it in isolation (a
+`count_tokens` guard, or an explicit logged truncation on the query path) would be premature: query handling —
+sanitization, expansion, length policy — is designed holistically once the full query/recall pipeline lands, so
+the asymmetry is **intended until then**.
+
 ## 2. Generator — the generation stage (background; on demand; transient)
 
 A single small instruct LLM, loaded only for the consolidation **generation** stage (Stage 3), then
