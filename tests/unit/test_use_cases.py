@@ -128,6 +128,36 @@ def test_exact_duplicate_is_not_stored_twice(wiring):
     assert len(repo.list_all()) == 1
 
 
+def test_exact_duplicate_under_a_new_topic_key_is_rejected(wiring):
+    # The exact-dup guard runs before the topic_key upsert, so re-storing identical content
+    # under a NEW topic_key would silently drop the intended evolution — it must be loud.
+    repo, remember, *_ = wiring
+    first = remember.execute(content="auth uses jwt", project="api")
+    with pytest.raises(ValueError, match=first.id):  # the error names the existing memory
+        remember.execute(content="auth uses jwt", project="api", topic_key="auth/model")
+    assert len(repo.list_all()) == 1  # nothing was stored
+
+
+def test_re_remembering_identical_content_under_the_same_topic_key_is_a_duplicate(wiring):
+    # Same content AND the same topic_key is an idempotent re-store, not a re-key → soft dup.
+    repo, remember, *_ = wiring
+    first = remember.execute(content="auth uses jwt", project="api", topic_key="auth/model")
+    second = remember.execute(content="auth uses jwt", project="api", topic_key="auth/model")
+    assert second.status == "duplicate"
+    assert second.id == first.id
+    assert len(repo.list_all()) == 1
+
+
+def test_re_keying_identical_content_to_another_topic_key_is_rejected(wiring):
+    # Both keys set but different — moving identical content from key A to key B is the
+    # deferred edit op, not a silent dup; it must also be a loud error.
+    repo, remember, *_ = wiring
+    remember.execute(content="auth uses jwt", project="api", topic_key="auth/v1")
+    with pytest.raises(ValueError, match="auth/v1"):  # names the existing key
+        remember.execute(content="auth uses jwt", project="api", topic_key="auth/v2")
+    assert len(repo.list_all()) == 1
+
+
 def test_same_content_in_two_projects_is_kept_separately(wiring):
     # The exact-dup hash key is global, but content is unique only within a scope: the
     # same fact in another project is a distinct memory, not a duplicate to drop.
