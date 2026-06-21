@@ -13,7 +13,7 @@ from mnemo.application.ports.token_window import TokenWindow
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
-from mnemo.domain.constants import DEFAULT_TYPE
+from mnemo.domain.constants import DEFAULT_MAX_MEMORY_TOKENS, DEFAULT_TYPE
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.scope import Scope
@@ -27,12 +27,14 @@ class RememberMemoryUseCaseImpl:
         token_window: TokenWindow,
         session_provider: SessionProvider,
         gate: ProjectGate,
+        max_content_tokens: int = DEFAULT_MAX_MEMORY_TOKENS,
     ) -> None:
         self._repository = repository
         self._scheduler = scheduler
         self._token_window = token_window
         self._session_provider = session_provider
         self._gate = gate
+        self._max_content_tokens = max_content_tokens
 
     def execute(
         self,
@@ -62,15 +64,17 @@ class RememberMemoryUseCaseImpl:
             topic_key=topic_key,
         )
 
-        # Over-window guard: a memory is one vector, so it must fit the embedder's
-        # token window. Reject with an explicit error (never truncate, never auto-split)
-        # so the caller — already an LLM — can split it deliberately. The token count is
-        # cheap and stays on the hot path; only the encode is deferred.
+        # Length guard: keep a memory one focused unit (the policy cap) AND ensure it fits
+        # the embedder's window (a memory is one vector) — the effective limit is the stricter
+        # of the two. Reject with an explicit error (never truncate, never auto-split) so the
+        # caller — already an LLM — can split it deliberately. The token count is cheap and
+        # stays on the hot path; only the encode is deferred.
+        cap = min(self._max_content_tokens, self._token_window.max_input)
         tokens = self._token_window.count_tokens(memory.content)
-        if tokens > self._token_window.max_input:
+        if tokens > cap:
             raise ValueError(
-                f"content is {tokens} tokens, over the embedder's window of "
-                f"{self._token_window.max_input}; split it into smaller, focused memories"
+                f"content is {tokens} tokens, over the {cap}-token limit for a memory; "
+                "split it into smaller, focused memories"
             )
 
         # Exact duplicate: identical normalized content already ACTIVE in this same
