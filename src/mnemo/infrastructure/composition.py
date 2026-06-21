@@ -153,7 +153,7 @@ def _build_generator(config: Config) -> Generator | None:
             # at the vendor-recommended Gemma sampling; a wider context holds the recall bundle.
             source=GgufSource(
                 model=config.generator, filename=config.generator_file,
-                context_tokens=8192, chat=True,
+                context_tokens=config.generator_context, chat=True,
                 temperature=1.0, top_p=0.95, top_k=64, min_p=0.0,
             ),
             residency=Transient(),  # load-on-demand, unload after each recall

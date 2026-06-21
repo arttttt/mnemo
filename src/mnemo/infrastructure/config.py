@@ -78,8 +78,9 @@ class Config:
     # per the bench, at the lightest RAM; driven through its chat template (see _build_generator).
     generator: str = "unsloth/gemma-4-E2B-it-qat-GGUF"          # MNEMO_GENERATOR: HF GGUF repo / path / "off"
     generator_file: str = "*UD-Q4_K_XL.gguf"                     # MNEMO_GENERATOR_FILE: GGUF glob in the repo
+    generator_context: int = 65536                              # MNEMO_GENERATOR_CONTEXT: n_ctx window (holds the recall bundle + answer); KV-cache RAM knob
     rerank_top_k: int = 20                                       # how many candidates the reranker keeps
-    generator_max_tokens: int = 1024                            # synthesis output token cap
+    generator_max_tokens: int = 2048                            # synthesis output token cap
 
     @staticmethod
     def from_env() -> "Config":
@@ -112,6 +113,7 @@ class Config:
             reranker=os.environ.get("MNEMO_RERANKER", "off"),
             generator=os.environ.get("MNEMO_GENERATOR", "unsloth/gemma-4-E2B-it-qat-GGUF"),
             generator_file=os.environ.get("MNEMO_GENERATOR_FILE", "*UD-Q4_K_XL.gguf"),
+            generator_context=_int_env("MNEMO_GENERATOR_CONTEXT", "65536", minimum=1),
             rerank_top_k=_int_env("MNEMO_RERANK_TOP_K", "20", minimum=1),
-            generator_max_tokens=_int_env("MNEMO_GENERATOR_MAX_TOKENS", "1024", minimum=1),
+            generator_max_tokens=_int_env("MNEMO_GENERATOR_MAX_TOKENS", "2048", minimum=1),
         )
