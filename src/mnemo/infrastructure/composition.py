@@ -149,8 +149,14 @@ def _build_generator(config: Config) -> Generator | None:
 
     return build_generator(
         ModelConfig(
-            source=GgufSource(model=config.generator, filename=config.generator_file),
-            residency=Transient(),
+            # Drive the instruct model through its chat template (raw prompts make it ramble)
+            # at the vendor-recommended Gemma sampling; a wider context holds the recall bundle.
+            source=GgufSource(
+                model=config.generator, filename=config.generator_file,
+                context_tokens=config.generator_context, chat=True,
+                temperature=1.0, top_p=0.95, top_k=64, min_p=0.0,
+            ),
+            residency=Transient(),  # load-on-demand, unload after each recall
             cache_dir=config.models_dir or None,
         )
     )

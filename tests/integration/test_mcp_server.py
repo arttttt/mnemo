@@ -7,6 +7,7 @@ pytest.importorskip("mcp")
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.mcp.server import build_mcp
+from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
@@ -28,7 +29,7 @@ def _tools(tmp_path):
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
     assert {
-        "remember", "search", "browse", "delete", "purge",
+        "remember", "search", "browse", "recall", "delete", "purge",
         "create_project", "delete_project", "update_project", "list_projects",
     } <= set(_tools(tmp_path))
 
@@ -58,6 +59,7 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["remember"] == ["content"]
     assert required["search"] == ["query"]
     assert required["browse"] == []  # query-less: every param is optional
+    assert required["recall"] == ["query", "project"]
     assert required["delete"] == ["ids"]
     assert required["purge"] == []
     assert required["create_project"] == ["name"]
@@ -84,6 +86,35 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
 
     assert json.loads(_call(mcp, "delete", {"ids": [stored["id"]]})[0])["deleted"] == 1
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
+
+
+class _StubGenerator:
+    """A deterministic generator so recall is exercised end-to-end without a real model."""
+
+    def generate(self, prompt, *, max_tokens):
+        assert "jwt refresh rotation" in prompt  # the gathered memory reached the synthesis prompt
+        return "auth uses jwt refresh rotation"
+
+
+def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
+    container = _container(tmp_path)
+    # Inject a stub generator (the default is the real GGUF model — too heavy for this test).
+    container.recall = RecallProjectUseCaseImpl(
+        container.repository, reranker=None, generator=_StubGenerator(),
+        rerank_top_k=20, generator_max_tokens=128,
+    )
+    mcp = build_mcp(container)
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})
+
+    result = json.loads(_call(mcp, "recall", {"query": "auth", "project": "api"})[0])
+
+    assert result["project"] == "api"
+    assert result["summary"] == "auth uses jwt refresh rotation"  # the synthesized answer
+    assert any(  # the supporting memory is returned alongside, grouped by type
+        m["content"] == "jwt refresh rotation"
+        for section in result["sections"] for m in section["memories"]
+    )
 
 
 def test_mcp_delete_project_cascades(tmp_path):

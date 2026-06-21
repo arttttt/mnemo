@@ -193,6 +193,43 @@ def build_mcp(container: Optional[Container] = None, **settings):
         return [asdict(result) for result in results]
 
     @mcp.tool()
+    def recall(
+        query: Annotated[
+            str,
+            Field(description="The question to answer from this project's memory."),
+        ],
+        project: Annotated[
+            str,
+            Field(description="Project slug to recall from."),
+        ],
+        limit: Annotated[
+            int,
+            Field(ge=1, le=100, description="Max memories to gather before synthesis."),
+        ] = 50,
+    ) -> dict:
+        """Recall a project's memory as a synthesized, grounded answer.
+
+        Gathers the project's memories, then a local LLM writes an answer to your query
+        using ONLY those memories — never outside knowledge — and replies exactly
+        "No relevant memories found." when none apply. Unlike `search` (a ranked list of
+        hits), this returns a written answer. Returns {project, summary, sections}, where
+        `summary` is the synthesized answer and `sections` are the supporting memories
+        grouped by type (each {type, memories:[{id, content}]}).
+        """
+        bundle = container.recall.execute(project=project, query=query, limit=limit)
+        return {
+            "project": bundle.project,
+            "summary": bundle.summary,
+            "sections": [
+                {
+                    "type": section.type,
+                    "memories": [{"id": m.id, "content": m.content} for m in section.memories],
+                }
+                for section in bundle.sections
+            ],
+        }
+
+    @mcp.tool()
     def delete(
         ids: Annotated[list[str], Field(description="Ids of the memories to delete.")],
     ) -> dict:
