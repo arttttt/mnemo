@@ -24,7 +24,7 @@ class _FakeGeneratorRuntime:
 
 def test_generator_passes_prompt_and_cap_then_frees_the_model():
     runtime = _FakeGeneratorRuntime("S")
-    generator = LlamaCppGenerator(ResidencyManager(runtime, Transient()))
+    generator = LlamaCppGenerator(ResidencyManager(lambda: runtime, Transient()))
 
     out = generator.generate("hello", max_tokens=42)
 

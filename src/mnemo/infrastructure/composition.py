@@ -85,7 +85,12 @@ def _build_embedder(config: Config) -> TextEmbedder:
             max_input=config.embed_max_tokens,
         )
         return build_embedder(
-            ModelConfig(source=source, residency=Resident(), cache_dir=config.models_dir or None),
+            ModelConfig(
+                source=source,
+                residency=Resident(),
+                cache_dir=config.models_dir or None,
+                pool_size=config.embed_workers,  # N independent instances → parallel encode
+            ),
             dim=1024,
         )
     if name in ("fastembed", "bge-small", "bge-small-en-v1.5"):

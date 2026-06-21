@@ -20,6 +20,7 @@ from mnemo.adapters.mcp.idle_monitor import IdleMonitor
 from mnemo.adapters.mcp.run_paths import connectors_dir, run_dir
 from mnemo.adapters.mcp.server import build_mcp
 from mnemo.adapters.session.meta_session_provider import MetaSessionProvider
+from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.infrastructure.composition import build_container
@@ -57,28 +58,44 @@ def main() -> None:
         config.embedder, container.embedder.dim, config.embed_workers, config.host, config.port,
     )
     mcp = build_mcp(container, host=config.host, port=config.port)
-    _start_idle_monitor(config, scheduler)
+    _start_idle_monitor(config, scheduler, container.embedder)
     mcp.run(transport="streamable-http")
 
 
-def _start_idle_monitor(config: Config, scheduler: AsyncEmbeddingScheduler) -> None:
+def _start_idle_monitor(
+    config: Config, scheduler: AsyncEmbeddingScheduler, embedder: TextEmbedder
+) -> None:
     monitor = IdleMonitor(
         ConnectorLiveness(connectors_dir(config)),
-        on_idle=lambda: _shutdown(config, scheduler),
+        on_idle=lambda: _shutdown(config, scheduler, embedder),
         grace_seconds=config.idle_grace_seconds,
         interval_seconds=config.idle_check_interval_seconds,
     )
     threading.Thread(target=monitor.run, name="mnemo-idle-monitor", daemon=True).start()
 
 
-def _shutdown(config: Config, scheduler: AsyncEmbeddingScheduler) -> None:
+def _shutdown(
+    config: Config, scheduler: AsyncEmbeddingScheduler, embedder: TextEmbedder
+) -> None:
     # Fires only when no connector is alive → no in-flight requests and no new writes.
     # Finish embedding whatever is still pending (bounded by a timeout; the rest is
     # recovered on the next start). Committed data is durable in the SQLite WAL.
     scheduler.drain(config.embed_drain_timeout)
     scheduler.stop()
+    # Workers were asked to stop; unload the idle pool. A straggler still mid-encode keeps
+    # its leased slot (it self-unloads on return), and any session still loaded dies with
+    # the os._exit below — so this never double-unloads.
+    _close_embedder(embedder)
     try:
         (run_dir(config) / "service.pid").unlink()
     except FileNotFoundError:
         pass
     os._exit(0)
+
+
+def _close_embedder(embedder: TextEmbedder) -> None:
+    """Free the embedder's pooled instances on shutdown. The pool lives in the ONNX
+    embedder capability (its close()); the hash/fastembed embedders have nothing to free."""
+    close = getattr(embedder, "close", None)
+    if callable(close):
+        close()

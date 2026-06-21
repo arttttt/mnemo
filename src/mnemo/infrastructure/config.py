@@ -6,6 +6,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _positive_int(name: str, default: str) -> int:
+    """Parse a MNEMO_* integer that must be >= 1, failing fast with a named error.
+    Used where the value sizes a real resource (e.g. MNEMO_EMBED_WORKERS = the embedder
+    instance-pool size) so a bad value can't silently degrade or oversubscribe RAM."""
+    raw = os.environ.get(name, default)
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}") from None
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value}")
+    return value
+
+
 @dataclass(frozen=True)
 class Config:
     data_dir: str
@@ -21,7 +35,7 @@ class Config:
     service_ready_timeout: float = 120.0      # how long a spawn waits for the service to listen
     #                                           (covers a cold model download+load)
     # Deferred embedding (the service's async worker pool; docs/03-architecture.md).
-    embed_workers: int = 1                     # parallel encodes — also the RAM bound (default 1 = safe)
+    embed_workers: int = 1                     # worker threads = embedder pool size (N independent instances) = max parallel encodes; the RAM knob (default 1 = safe)
     embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
     embed_max_retries: int = 3                 # retries before a memory is left lexical-only
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
@@ -57,7 +71,7 @@ class Config:
             service_ready_timeout=float(
                 os.environ.get("MNEMO_SERVICE_READY_TIMEOUT", "120")
             ),
-            embed_workers=int(os.environ.get("MNEMO_EMBED_WORKERS", "1")),
+            embed_workers=_positive_int("MNEMO_EMBED_WORKERS", "1"),
             embed_queue_max=int(os.environ.get("MNEMO_EMBED_QUEUE_MAX", "256")),
             embed_max_retries=int(os.environ.get("MNEMO_EMBED_MAX_RETRIES", "3")),
             embed_drain_timeout=float(os.environ.get("MNEMO_EMBED_DRAIN_TIMEOUT", "30")),

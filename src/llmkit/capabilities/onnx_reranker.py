@@ -9,18 +9,24 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from llmkit.lifecycle.manager import ResidencyManager
+from llmkit.ports.tokenizer import Tokenizer
 from llmkit.runtime.onnx_encoder import OnnxEncoderRuntime
 
 
 class OnnxReranker:
-    def __init__(self, manager: ResidencyManager[OnnxEncoderRuntime]) -> None:
+    def __init__(
+        self, manager: ResidencyManager[OnnxEncoderRuntime], tokenizer: Tokenizer
+    ) -> None:
         self._manager = manager
+        self._tokenizer = tokenizer
 
     def rank(self, query: str, documents: Sequence[str]) -> list[float]:
         documents = list(documents)
         if not documents:
             return []
-        pairs = [(query, document) for document in documents]
+        encodings = self._tokenizer.encode_batch(
+            [(query, document) for document in documents]
+        )
         with self._manager.use() as runtime:
-            logits = runtime.forward_pairs(pairs).output
+            logits = runtime.run(encodings).output
         return [float(score) for score in logits.reshape(len(documents), -1)[:, 0]]
