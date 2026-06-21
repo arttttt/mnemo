@@ -17,7 +17,7 @@ def test_embedder_encodes_a_real_model_to_a_unit_vector():
 
     source = OnnxSource(repo="Xenova/all-MiniLM-L6-v2", onnx_file="onnx/model.onnx", max_input=256)
     embedder = OnnxEmbedder(
-        ResidencyManager(OnnxEncoderRuntime(source), Resident()), HfTokenizer(source),
+        ResidencyManager(lambda: OnnxEncoderRuntime(source), Resident()), HfTokenizer(source),
         dim=384, max_input=256,
     )
 

@@ -40,7 +40,7 @@ class _FakeTokenizer:
 
 def test_reranker_returns_a_score_per_document_in_order():
     runtime = _FakeEncoderRuntime([0.1, 0.9, 0.5])
-    reranker = OnnxReranker(ResidencyManager(runtime, Transient()), _FakeTokenizer())
+    reranker = OnnxReranker(ResidencyManager(lambda: runtime, Transient()), _FakeTokenizer())
 
     scores = reranker.rank("q", ["a", "b", "c"])
 
@@ -50,7 +50,7 @@ def test_reranker_returns_a_score_per_document_in_order():
 
 def test_reranker_with_no_documents_does_not_load_the_model():
     runtime = _FakeEncoderRuntime([])
-    reranker = OnnxReranker(ResidencyManager(runtime, Resident()), _FakeTokenizer())
+    reranker = OnnxReranker(ResidencyManager(lambda: runtime, Resident()), _FakeTokenizer())
 
     assert reranker.rank("q", []) == []
     assert not runtime.loaded  # no work → never loaded

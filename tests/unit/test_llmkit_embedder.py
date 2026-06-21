@@ -38,7 +38,7 @@ class _FakeTokenizer:
 
 def _embedder(runtime, tokenizer=None) -> OnnxEmbedder:
     return OnnxEmbedder(
-        ResidencyManager(runtime, Resident()), tokenizer or _FakeTokenizer(),
+        ResidencyManager(lambda: runtime, Resident()), tokenizer or _FakeTokenizer(),
         dim=3, max_input=512,
     )
 

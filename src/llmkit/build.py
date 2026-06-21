@@ -22,8 +22,12 @@ from llmkit.runtime.onnx_encoder import OnnxEncoderRuntime, OnnxSource
 def _onnx_manager(config: ModelConfig) -> ResidencyManager[OnnxEncoderRuntime]:
     if not isinstance(config.source, OnnxSource):
         raise ValueError("an ONNX-encoder capability needs an OnnxSource")
-    runtime = OnnxEncoderRuntime(config.source, cache_dir=config.cache_dir)
-    return ResidencyManager(runtime, config.residency)
+    source, cache = config.source, config.cache_dir
+    return ResidencyManager(
+        lambda: OnnxEncoderRuntime(source, cache_dir=cache),
+        config.residency,
+        size=config.pool_size,
+    )
 
 
 def _onnx_tokenizer(config: ModelConfig) -> HfTokenizer:
@@ -49,5 +53,11 @@ def build_reranker(config: ModelConfig) -> Reranker:
 def build_generator(config: ModelConfig) -> Generator:
     if not isinstance(config.source, GgufSource):
         raise ValueError("a generator needs a GgufSource")
-    runtime = LlamaCppRuntime(config.source, cache_dir=config.cache_dir)
-    return LlamaCppGenerator(ResidencyManager(runtime, config.residency))
+    source, cache = config.source, config.cache_dir
+    return LlamaCppGenerator(
+        ResidencyManager(
+            lambda: LlamaCppRuntime(source, cache_dir=cache),
+            config.residency,
+            size=config.pool_size,
+        )
+    )

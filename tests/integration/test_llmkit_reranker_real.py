@@ -15,7 +15,7 @@ def test_onnx_reranker_loads_a_real_model_and_scores_each_document():
 
     source = OnnxSource(repo="Xenova/ms-marco-MiniLM-L-6-v2", onnx_file="onnx/model.onnx")
     runtime = OnnxEncoderRuntime(source)
-    reranker = OnnxReranker(ResidencyManager(runtime, Transient()), HfTokenizer(source))
+    reranker = OnnxReranker(ResidencyManager(lambda: runtime, Transient()), HfTokenizer(source))
 
     scores = reranker.rank("authentication", ["jwt auth tokens", "logging config", "auth session"])
 
