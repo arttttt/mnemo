@@ -32,14 +32,28 @@ def ensure_service_running(config: Config) -> None:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if _is_listening(config.host, config.port):
             return  # another connector brought it up while we waited for the lock
+        pid_file = run_dir / "service.pid"
         proc = _spawn_service(run_dir)
-        (run_dir / "service.pid").write_text(str(proc.pid))
-        # Hold the lock until the service accepts connections, so a burst spawns exactly
-        # one. A cold model download+load can take a while, so wait as long as the process
-        # is alive (up to a generous, configurable cap) and only give up if it dies.
-        # Releasing the lock while it is still loading would let the next connector spawn a
-        # second service onto the taken port and crash on bind().
-        _wait_until_listening(proc, config.host, config.port, config.service_ready_timeout)
+        pid_file.write_text(str(proc.pid))
+        # Hold the lock until the service binds the port, so a burst spawns exactly one
+        # (latecomers take the lock only once it is already listening, and skip the spawn).
+        # With the default ONNX embedder the model loads lazily in a worker after the port
+        # is up, so binding is fast; the generous, configurable cap covers the slower cases
+        # (an embedder that loads eagerly at startup, a cold download) and guards against a
+        # process that comes up alive but never binds (a hang).
+        try:
+            _wait_until_listening(
+                proc, config.host, config.port, config.service_ready_timeout
+            )
+        except BaseException:
+            # Could not confirm the spawn bound the port (it timed out still alive, or it
+            # died). Tear it down while we still hold the lock and drop its now-stale
+            # pidfile: a lingering orphan that binds later would make the next connector —
+            # which sees nothing listening, takes the freed lock, and spawns again — race a
+            # second service onto the port and crash on bind().
+            _terminate(proc)
+            pid_file.unlink(missing_ok=True)
+            raise
 
 
 def _is_listening(host: str, port: int) -> bool:
@@ -81,3 +95,13 @@ def _wait_until_listening(
             )
         time.sleep(0.1)
     raise TimeoutError(f"service did not become ready on {host}:{port} within {timeout:.0f}s")
+
+
+def _terminate(proc: subprocess.Popen) -> None:
+    """Force-kill a spawned service we could not confirm as ready. It never bound the port
+    or served anything, so there is nothing to shut down gracefully — SIGKILL guarantees it
+    dies (even if it hung) so the port frees for the next attempt. No-op if it already exited."""
+    if proc.poll() is not None:
+        return  # already gone (e.g. it crashed before listening)
+    proc.kill()
+    proc.wait()
