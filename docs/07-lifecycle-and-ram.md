@@ -62,6 +62,15 @@ the MCP SDK, no embedder/store). The store is **brute‑force `sqlite-vec` + FTS
 agents ≈ `1200 + 40·10 = 1.6 GB`, vs `1200·10 = 12 GB` if each agent ran its own server — the shared
 embedder is the decisive saving; the `c·N` tail is cheap.
 
+**The embedder is a pool of `MNEMO_EMBED_WORKERS` independent instances** (default **1**, so the `S` above
+is the single‑instance figure). Raising it gives *real* parallel encoding — the background embed workers and
+`search` requests each lease their own instance, run with no lock, and return it. The RAM cost: the model
+weights are largely shared (the `.onnx` file is mmap'd, so the OS page cache backs every session), but each
+instance adds its own session + activations, so `S`'s embedder portion grows roughly with the worker count.
+So `MNEMO_EMBED_WORKERS` is the one knob for parallelism **and** RAM — set it to what the machine allows; when
+all instances are busy a `search` simply waits for a free one (about one encode). The reranker and generator
+are single‑instance pools (recall is single‑threaded).
+
 The number is a guide, not a ceiling: once a **local model for the coding agent itself** runs, it is the main
 consumer and the machine is in the GBs regardless — mnemo's job is just to stay the minimum, and we schedule
 consolidation for machine‑idle.
@@ -75,7 +84,7 @@ MNEMO_IDLE_CHECK_INTERVAL_SECONDS=5 # how often the service sweeps for live conn
 MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: fastembed | hash
 MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
-MNEMO_EMBED_WORKERS=1                # deferred-embed worker threads (= the RAM bound)
+MNEMO_EMBED_WORKERS=1                # embed worker threads = embedder instance-pool size = max parallel encodes (the RAM knob)
 # Consolidation pipeline (Phase 3) — all multilingual; see 08-consolidation.md. Models NOT yet chosen.
 MNEMO_RERANKER=<model>                      # Stage 1 routing/dedup (cross-encoder)
 MNEMO_NLI=<model>                           # Stage 2 contradiction (cross-encoder, bidirectional)

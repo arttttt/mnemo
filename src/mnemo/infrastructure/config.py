@@ -35,7 +35,7 @@ class Config:
     service_ready_timeout: float = 120.0      # how long a spawn waits for the service to listen
     #                                           (covers a cold model download+load)
     # Deferred embedding (the service's async worker pool; docs/03-architecture.md).
-    embed_workers: int = 1                     # parallel encodes — also the RAM bound (default 1 = safe)
+    embed_workers: int = 1                     # worker threads = embedder pool size (N independent instances) = max parallel encodes; the RAM knob (default 1 = safe)
     embed_queue_max: int = 256                 # backlog cap; above it a write embeds synchronously
     embed_max_retries: int = 3                 # retries before a memory is left lexical-only
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
