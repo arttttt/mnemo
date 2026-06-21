@@ -147,6 +147,24 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     assert container.repository.list_all() == []  # nothing stored on reject
 
 
+def test_mcp_remember_rejects_a_re_keyed_duplicate(tmp_path):
+    """Re-storing identical content under a new topic_key surfaces an explicit tool error
+    instead of being silently dropped as a duplicate (the evolution never happening)."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    container = _container(tmp_path)
+    container.create_project.execute("api")
+    mcp = build_mcp(container)
+
+    _call(mcp, "remember", {"content": "auth uses jwt", "project": "api"})
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "remember", {
+            "content": "auth uses jwt", "project": "api", "topic_key": "auth/model",
+        })
+    assert "topic_key" in str(exc.value)  # actionable: names the conflicting topic_key
+    assert len(container.repository.list_all()) == 1  # only the original remains
+
+
 def test_mcp_search_requires_a_project_in_project_scope(tmp_path):
     """A project-scoped search with no project surfaces an explicit, actionable
     tool error — not a silent empty result — so the calling agent can fix the call."""

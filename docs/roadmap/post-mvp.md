@@ -67,6 +67,16 @@ Add a `current_dim()` read to the repository port (symmetric to `set_dimension`)
 `set_dimension`. Optionally extend the check to the CLI `store`/`search` commands (but never `reindex`) to
 cover the direct‑CLI path too. From dogfooding FEEDBACK item 2.
 
+### Edit / re‑key an existing memory (evolve identical content under a new topic_key)
+**Why:** `remember` evolves a memory by reusing a `topic_key` with **changed** content (the topic_key upsert
+supersedes the prior). But re‑storing **identical** content under a *new* topic_key hits the exact‑dup guard
+first — it is now a **loud error** (it used to be a silent drop), but there is still no way to re‑key or edit an
+existing memory in place. From the 0.2.14 review.
+**What:** a deliberate edit/re‑key op (an explicit MCP tool, or a `topic_key`‑precedence flag on `remember`)
+that moves identical content onto a new topic_key / chain — or edits an active memory's metadata — without
+forking a duplicate. Settle the semantics (re‑key vs. attach vs. supersede‑with‑same‑content) when the
+ops/management surface is designed; it pairs with the `get`/`neighbors` + management‑surface items below.
+
 ---
 
 ## Retrieval & recall surface — problems found by dogfooding

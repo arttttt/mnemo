@@ -79,6 +79,19 @@ class RememberMemoryUseCaseImpl:
         # previously superseded content writes a fresh, retrievable row).
         exact = self._repository.find_active_by_hash(memory.hash, memory.project)
         if exact is not None:
+            # Re-storing identical content under a *new* topic_key would otherwise be
+            # silently dropped here — this guard runs BEFORE the topic_key upsert below, so
+            # the caller's intended evolution never happens. Make it a loud error instead.
+            # (Editing/re-keying identical content in place is a deliberate post-MVP op —
+            # see docs/roadmap/post-mvp.md.) No topic_key, or the same one, is an idempotent
+            # re-store → the existing soft "duplicate".
+            if memory.topic_key is not None and memory.topic_key != exact.topic_key:
+                raise ValueError(
+                    f"identical content is already stored as memory {exact.id} "
+                    f"(topic_key={exact.topic_key!r}); storing it again under a different "
+                    f"topic_key ({memory.topic_key!r}) is not supported — change the content "
+                    f"to evolve the memory, or delete {exact.id} first to re-key it"
+                )
             return RememberResult(id=exact.id, status="duplicate")
 
         # Explicit evolution: reusing a topic_key supersedes the prior active record.
