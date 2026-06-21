@@ -282,14 +282,16 @@ def test_distinct_runs_get_distinct_session_ids(tmp_path):
     assert session_a != session_b
 
 
-def _remember_with_window(tmp_path, max_input):
+def _remember_with_window(tmp_path, max_input, max_content=100_000):
     """A standalone remember wired with its own small-window embedder + a registry
-    holding 'api' (the gate needs a registered project)."""
+    holding 'api' (the gate needs a registered project). max_content defaults large so a
+    test exercises the embedder WINDOW unless it sets a smaller policy cap."""
     embedder = HashEmbedder(max_input=max_input)
     repo, projects = open_store(tmp_path, embedder.dim, projects=("api",))
     remember = RememberMemoryUseCaseImpl(
         repo, SyncEmbeddingScheduler(embedder, repo), embedder,
         InProcessSessionProvider(), ProjectGate(projects),
+        max_content_tokens=max_content,
     )
     return repo, remember
 
@@ -306,6 +308,15 @@ def test_within_window_content_is_stored(tmp_path):
     stored = remember.execute(content="one two three", project="api")
     assert stored.id
     assert len(repo.list_all()) == 1
+
+
+def test_policy_cap_rejects_content_that_fits_the_embedder_window(tmp_path):
+    # The embedder window is generous (100) but the per-memory policy cap (5) is stricter
+    # and bites first — keeping memories focused even when the embedder could take more.
+    repo, remember = _remember_with_window(tmp_path, 100, max_content=5)
+    with pytest.raises(ValueError):
+        remember.execute(content="one two three four five six seven", project="api")
+    assert repo.list_all() == []
 
 
 def test_delete_project_removes_it_from_the_registry(wiring):

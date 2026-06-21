@@ -143,7 +143,7 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
     with pytest.raises(ToolError) as exc:
         _call(mcp, "remember", {"content": "one two three four five", "project": "api"})
     message = str(exc.value)
-    assert "window" in message and "split" in message  # actionable
+    assert "limit" in message and "split" in message  # actionable
     assert container.repository.list_all() == []  # nothing stored on reject
 
 

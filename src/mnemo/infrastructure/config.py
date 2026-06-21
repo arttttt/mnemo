@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
 
+from mnemo.domain.constants import DEFAULT_MAX_MEMORY_TOKENS
+
 _Num = TypeVar("_Num", int, float)
 
 
@@ -58,6 +60,7 @@ class Config:
     embed_model: str | None = None  # concrete fastembed model; None => adapter default
     models_dir: str = ""            # where local models are cached (default ~/.mnemo/models)
     embed_max_tokens: int = 2048    # the embedder's operational window cap (pplx)
+    max_memory_tokens: int = DEFAULT_MAX_MEMORY_TOKENS  # MNEMO_MAX_MEMORY_TOKENS: per-memory content cap (keeps memories focused; capped again by the embedder window)
     sqlite_path: str = ""
     host: str = "127.0.0.1"   # the shared service binds localhost-only
     port: int = 8765
@@ -90,6 +93,9 @@ class Config:
                 os.environ.get("MNEMO_MODELS_DIR", "~/.mnemo/models")
             ),
             embed_max_tokens=_int_env("MNEMO_EMBED_MAX_TOKENS", "2048", minimum=1),
+            max_memory_tokens=_int_env(
+                "MNEMO_MAX_MEMORY_TOKENS", str(DEFAULT_MAX_MEMORY_TOKENS), minimum=1
+            ),
             sqlite_path=os.environ.get(
                 "MNEMO_SQLITE_PATH", os.path.join(data_dir, "memory.db")
             ),

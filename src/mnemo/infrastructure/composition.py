@@ -48,7 +48,10 @@ def build_container(
         embedding_queue=repository,
         projects=projects,
         scheduler=scheduler,
-        remember=RememberMemoryUseCaseImpl(repository, scheduler, embedder, session_provider, gate),
+        remember=RememberMemoryUseCaseImpl(
+            repository, scheduler, embedder, session_provider, gate,
+            max_content_tokens=config.max_memory_tokens,
+        ),
         search=SearchMemoryUseCaseImpl(repository, embedder, gate),
         browse=BrowseMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(
