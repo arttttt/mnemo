@@ -16,9 +16,9 @@ class _EchoGenerator:
     """A deterministic stand-in: asserts the prompt was built, returns a fixed summary."""
 
     def generate(self, prompt, *, max_tokens):
-        assert "auth jwt rotation" in prompt            # the gathered memory reached the prompt
-        assert "Focus the summary on: auth" in prompt   # and the query focused it
-        return "  auth uses jwt rotation  "             # whitespace proves the stage strips it
+        assert "auth jwt rotation" in prompt   # the gathered memory reached the prompt
+        assert "Question: auth" in prompt      # and the query focused it
+        return "  auth uses jwt rotation  "    # whitespace proves the stage strips it
 
 
 def _repo_with(tmp_path, *memories: Memory):

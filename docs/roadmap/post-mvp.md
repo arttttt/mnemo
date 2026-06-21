@@ -25,13 +25,13 @@ with point‑in‑time queries. Done **in full** (no half‑measures); the schem
 **Why:** some context is only relevant within a session.
 **What:** a `session` scope value + the matching search filter.
 
-### `recall(project)` — aggregated session context
+### `recall(project)` — background‑precomputed digest (basic recall **shipped**)
 **Why:** one call that returns a concise "here's where you are" (rules + what matters now) instead of forcing
 several searches.
-**What:** an aggregated context bundle. Deferred because a *useful* recall — concise, not a context dump —
-needs **LLM synthesis**, and the read path stays LLM‑free in the MVP. A post‑MVP design can precompute a
-digest in the background worker (off the hot path) and have `recall` just read it. In the MVP, the agent
-retrieves on demand with `search` (`type=rule` for rules, `type=progress` for where it left off).
+**What (shipped):** `recall(query, project)` — a local LLM synthesizes a grounded answer from the project's
+memories on demand (the one opt‑in LLM read tool; the write path stays LLM‑free; the generator is transient).
+**What remains post‑MVP:** a background worker that **precomputes** a project digest off the hot path so
+`recall` just reads it (no per‑call generation, lower latency), plus recall‑latency/quality tuning.
 
 ### Transient embedder (idle‑unload)
 **Why:** the design principle is "heavy things are transient" and the README promises "~1 GB while active,
@@ -49,6 +49,21 @@ Embedding is already off the hot path (the async worker), so the reload cost is 
 load/unload thrash. Natural home: the async embedding scheduler (it already has an idle notion). Closes the
 "connected but quiet" gap so idle RAM falls to **baseline**, not only to ~0 when *every* agent disconnects.
 Optionally pair with `enable_cpu_mem_arena=False` to also cap the active long‑input peak.
+
+### MLX runtime for the embedder (Apple‑Silicon speed)
+**Why:** on Apple Silicon, MLX (unified‑memory, GPU) is typically faster than the embedder's
+current ONNX CPU path, and the embedder is the resident hot component. But the embedder is
+`pplx-embed` (custom architecture `bidirectional_pplx_qwen3`), and **stock/generic MLX cannot
+load it** — the same custom‑arch reason it runs on ONNX rather than stock MLX. So the speed‑up
+is gated on **porting the architecture**, not just converting weights.
+**What:** implement `bidirectional_pplx_qwen3` in MLX (the attention/embedding modules + the
+bidirectional pooling head), convert the 0.6b‑int8 weights to MLX format, and add it behind the
+existing embedder port as a **config‑selected alternative backend**, keeping ONNX as the
+default/fallback. Bench MLX vs ONNX on the embedder retrieval task for speed **and** quality
+before switching the default. Note (2026‑06): MLX for the *generators* was deliberately **not**
+pursued — the official Gemma 4 QAT GGUFs (near‑lossless Q4, `UD‑Q4_K_XL`) on llama.cpp/Metal
+were prioritised because quantization quality matters more than the MLX speed gain there; the
+embedder is the remaining MLX opportunity.
 
 ### Fail‑fast on an embedder/store dimension mismatch
 **Why:** the store bakes its embedding dimension at first write (`CHECK(vec_length(embedding) == N)`); the
