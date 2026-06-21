@@ -82,7 +82,10 @@ def _shutdown(
     # recovered on the next start). Committed data is durable in the SQLite WAL.
     scheduler.drain(config.embed_drain_timeout)
     scheduler.stop()
-    _close_embedder(embedder)  # workers joined → no leases held → unload the pooled instances
+    # Workers were asked to stop; unload the idle pool. A straggler still mid-encode keeps
+    # its leased slot (it self-unloads on return), and any session still loaded dies with
+    # the os._exit below — so this never double-unloads.
+    _close_embedder(embedder)
     try:
         (run_dir(config) / "service.pid").unlink()
     except FileNotFoundError:
