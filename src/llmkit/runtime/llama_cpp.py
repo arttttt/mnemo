@@ -23,6 +23,12 @@ class GgufSource:
     model: str                      # a local GGUF path, or a HF repo id to download from
     filename: str = "*q4_k_m.gguf"  # glob within the repo (ignored for a local path)
     context_tokens: int = 4096
+    chat: bool = False              # apply the model's embedded chat template (instruct models
+    #                                 are trained with turn tokens; a raw prompt makes them ramble)
+    temperature: float = 0.0        # 0.0 = greedy (the raw-completion default)
+    top_p: float = 1.0
+    top_k: int = 0                  # 0 = disabled
+    min_p: float = 0.0
 
 
 class LlamaCppRuntime:
@@ -74,10 +80,23 @@ class LlamaCppRuntime:
         _log.info("generator freed model=%s peak_rss=%.0fMB", self._source.model, peak_rss_mb())
 
     def complete(self, prompt: str, *, max_tokens: int) -> str:
+        src = self._source
         started = time.monotonic()
-        completion = self._llama.create_completion(prompt, max_tokens=max_tokens, temperature=0.0)
+        if src.chat:
+            # Instruct models need their chat template (turn tokens); llama.cpp applies the
+            # GGUF's embedded template here. A raw prompt to these models rambles/confabulates.
+            out = self._llama.create_chat_completion(
+                messages=[{"role": "user", "content": prompt}], max_tokens=max_tokens,
+                temperature=src.temperature, top_p=src.top_p, top_k=src.top_k, min_p=src.min_p,
+            )
+            text = out["choices"][0]["message"]["content"]
+        else:
+            out = self._llama.create_completion(
+                prompt, max_tokens=max_tokens, temperature=src.temperature,
+            )
+            text = out["choices"][0]["text"]
         _log.info(
-            "generated max_tokens=%d in %.2fs peak_rss=%.0fMB",
-            max_tokens, time.monotonic() - started, peak_rss_mb(),
+            "generated chat=%s max_tokens=%d in %.2fs peak_rss=%.0fMB",
+            src.chat, max_tokens, time.monotonic() - started, peak_rss_mb(),
         )
-        return completion["choices"][0]["text"]
+        return text
