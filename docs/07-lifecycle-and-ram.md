@@ -85,10 +85,14 @@ MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: 
 MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
 MNEMO_EMBED_WORKERS=1                # embed worker threads = embedder instance-pool size = max parallel encodes (the RAM knob)
-# Consolidation pipeline (Phase 3) — all multilingual; see 08-consolidation.md. Models NOT yet chosen.
-MNEMO_RERANKER=<model>                      # Stage 1 routing/dedup (cross-encoder)
-MNEMO_NLI=<model>                           # Stage 2 contradiction (cross-encoder, bidirectional)
-MNEMO_GENERATOR=<model>                     # Stage 3 generation only; or "off"
+# Recall synthesis (now) + consolidation (Phase 3) generator — multilingual; see 06-models.md, 08-consolidation.md.
+MNEMO_RERANKER=off                          # cross-encoder reranker repo, or "off" (default: off — none beat the embedder)
+MNEMO_NLI=<model>                           # contradiction NLI (cross-encoder); not yet chosen (Phase 3)
+MNEMO_GENERATOR=unsloth/gemma-4-E2B-it-qat-GGUF  # synthesis generator GGUF repo/path, or "off"
+MNEMO_GENERATOR_FILE=*UD-Q4_K_XL.gguf       # GGUF glob in the repo (QAT, near-lossless Q4)
+MNEMO_GENERATOR_CONTEXT=65536               # generator n_ctx (holds the recall bundle + answer)
+MNEMO_GENERATOR_MAX_TOKENS=2048             # synthesis output token cap
+MNEMO_MAX_MEMORY_TOKENS=512                 # per-memory content cap (stricter of this and the embedder window)
 MNEMO_GENERATOR_ENGINE=llama.cpp            # llama.cpp | ollama
-MNEMO_CONSOLIDATE_EVERY=50                  # new records before a trigger
+MNEMO_CONSOLIDATE_EVERY=50                  # new records before a consolidation trigger (Phase 3)
 ```

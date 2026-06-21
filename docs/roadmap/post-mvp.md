@@ -25,13 +25,13 @@ with point‑in‑time queries. Done **in full** (no half‑measures); the schem
 **Why:** some context is only relevant within a session.
 **What:** a `session` scope value + the matching search filter.
 
-### `recall(project)` — aggregated session context
+### `recall(project)` — background‑precomputed digest (basic recall **shipped**)
 **Why:** one call that returns a concise "here's where you are" (rules + what matters now) instead of forcing
 several searches.
-**What:** an aggregated context bundle. Deferred because a *useful* recall — concise, not a context dump —
-needs **LLM synthesis**, and the read path stays LLM‑free in the MVP. A post‑MVP design can precompute a
-digest in the background worker (off the hot path) and have `recall` just read it. In the MVP, the agent
-retrieves on demand with `search` (`type=rule` for rules, `type=progress` for where it left off).
+**What (shipped):** `recall(query, project)` — a local LLM synthesizes a grounded answer from the project's
+memories on demand (the one opt‑in LLM read tool; the write path stays LLM‑free; the generator is transient).
+**What remains post‑MVP:** a background worker that **precomputes** a project digest off the hot path so
+`recall` just reads it (no per‑call generation, lower latency), plus recall‑latency/quality tuning.
 
 ### Transient embedder (idle‑unload)
 **Why:** the design principle is "heavy things are transient" and the README promises "~1 GB while active,
