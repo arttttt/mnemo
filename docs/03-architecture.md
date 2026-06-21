@@ -131,8 +131,16 @@ loop:
 - **RAM bound = concurrency.** `MNEMO_EMBED_WORKERS` (default **1**) = how many encodes run at once. At 1, RAM = one
   encode (onnxruntime already uses all cores for it). Higher drains faster but multiplies activation RAM (a set of
   long inputs in flight is the balloon trap), so raise it deliberately. No batching.
-- **Failure → retry, capped.** A failed encode is retried up to `MNEMO_EMBED_MAX_RETRIES` (default 3); after that the
-  memory is marked embed‑failed (stays lexical‑only) and logged. A memory deleted before processing is skipped.
+- **Failure → retry, capped (give‑up tracking is in‑memory by design).** A failed encode is retried up to
+  `MNEMO_EMBED_MAX_RETRIES` (default 3); after that the memory is marked embed‑failed (stays lexical‑only) and
+  logged. A memory deleted before processing is skipped. The give‑up set is held **in memory, not persisted to the
+  DB** — deliberately: a *permanent, per‑row* encode failure is essentially impossible (the embedder is a local
+  deterministic model, over‑window content is already rejected at write time and truncated by the encoder anyway,
+  and the tokenizer is total over strings). Real encode failures are **transient and global** (model load, OOM,
+  disk) — they hit every row and self‑heal, via the retry/backoff or on the next service start, where the in‑memory
+  state resets and the still‑pending rows are re‑attempted. So the bookkeeping can only grow within a single uptime
+  under a rare transient outage and clears on the regular idle‑exit; persisting it would instead make a transient
+  failure *stick* across restarts. Intended behaviour, not a leak to fix.
 - **Superseded jobs still run.** A memory superseded after scheduling keeps its embed job — it is kept as history and
   can be retrieved, so its vector is still computed (no coalescing).
 - **Idle‑exit drain.** The on‑demand service does not idle‑exit while work remains: it waits for
