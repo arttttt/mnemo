@@ -41,6 +41,11 @@ from mnemo.application.types import Vector
 from mnemo.domain.generators import now
 from mnemo.domain.memory import Memory
 
+# SQLite caps host parameters per statement (SQLITE_MAX_VARIABLE_NUMBER — 999 before
+# 3.32, 32766 after). A multi-id delete is chunked under this floor so clearing a large
+# set (e.g. every hit of a broad search) can't blow the cap with a single IN (...).
+_DELETE_BATCH = 900
+
 # Payload columns, qualified to the `m` alias so they stay unambiguous when the
 # lexical leg joins the FTS table (which also has a `content` column).
 _PAYLOAD = (
@@ -402,10 +407,17 @@ class SqliteRepositoryImpl:
                     (now(), newest["id"]),
                 )
 
-            placeholders = ", ".join("?" for _ in ids)
-            return conn.execute(
-                f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids)
-            ).rowcount
+            # Chunk the final delete: a single IN (...) over every id can exceed SQLite's
+            # per-statement parameter cap. Every chunk runs in this one transaction, so the
+            # delete stays atomic. (SPLICE/AUTO-PROMOTE above use per-row UPDATEs — no cap.)
+            removed = 0
+            for start in range(0, len(ids), _DELETE_BATCH):
+                batch = ids[start:start + _DELETE_BATCH]
+                placeholders = ", ".join("?" for _ in batch)
+                removed += conn.execute(
+                    f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(batch)
+                ).rowcount
+            return removed
 
         return self._write.execute(work)
 
