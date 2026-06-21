@@ -50,6 +50,21 @@ load/unload thrash. Natural home: the async embedding scheduler (it already has 
 "connected but quiet" gap so idle RAM falls to **baseline**, not only to ~0 when *every* agent disconnects.
 Optionally pair with `enable_cpu_mem_arena=False` to also cap the active long‑input peak.
 
+### MLX runtime for the embedder (Apple‑Silicon speed)
+**Why:** on Apple Silicon, MLX (unified‑memory, GPU) is typically faster than the embedder's
+current ONNX CPU path, and the embedder is the resident hot component. But the embedder is
+`pplx-embed` (custom architecture `bidirectional_pplx_qwen3`), and **stock/generic MLX cannot
+load it** — the same custom‑arch reason it runs on ONNX rather than stock MLX. So the speed‑up
+is gated on **porting the architecture**, not just converting weights.
+**What:** implement `bidirectional_pplx_qwen3` in MLX (the attention/embedding modules + the
+bidirectional pooling head), convert the 0.6b‑int8 weights to MLX format, and add it behind the
+existing embedder port as a **config‑selected alternative backend**, keeping ONNX as the
+default/fallback. Bench MLX vs ONNX on the embedder retrieval task for speed **and** quality
+before switching the default. Note (2026‑06): MLX for the *generators* was deliberately **not**
+pursued — the official Gemma 4 QAT GGUFs (near‑lossless Q4, `UD‑Q4_K_XL`) on llama.cpp/Metal
+were prioritised because quantization quality matters more than the MLX speed gain there; the
+embedder is the remaining MLX opportunity.
+
 ### Fail‑fast on an embedder/store dimension mismatch
 **Why:** the store bakes its embedding dimension at first write (`CHECK(vec_length(embedding) == N)`); the
 `dim` passed to the repository is only used to create a *fresh* schema and is **not** reconciled with an
