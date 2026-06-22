@@ -184,9 +184,8 @@ def recall(
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
     except RuntimeError as exc:
-        # The optional reranker/generator extras are missing (their adapters raise an
-        # actionable RuntimeError telling you to install mnemo[recall] or set the model
-        # to "off"). Surface that message, not a traceback.
+        # A configured model runtime failed to initialise. Surface its actionable
+        # message without leaking a traceback through the CLI boundary.
         typer.echo(str(exc), err=True)
         raise typer.Exit(1)
     logging.getLogger("mnemo.recall").info(

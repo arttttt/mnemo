@@ -45,7 +45,8 @@ class LlamaCppRuntime:
             from llama_cpp import Llama
         except ImportError as exc:
             raise RuntimeError(
-                "the generator needs llama-cpp-python — install it (pip install llama-cpp-python)"
+                "llama-cpp-python is a required mnemo dependency but is not importable — "
+                "reinstall mnemo"
             ) from exc
 
         src = self._source
