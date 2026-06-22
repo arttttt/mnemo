@@ -18,6 +18,11 @@ dist/
 *.lance/
 *.db
 
+# Benchmark datasets (third-party, license unstated) + run outputs + isolated stores
+/tools/data/
+/tools/results/
+/tools/.locomo_store*/
+
 # Local model weights
 /models/
 *.gguf
