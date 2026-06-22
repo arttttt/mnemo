@@ -8,6 +8,7 @@ domain enums by a test.
 from dataclasses import asdict
 from typing import Annotated, Literal, Optional
 
+from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
 
@@ -204,8 +205,8 @@ def build_mcp(container: Optional[Container] = None, **settings):
         ],
         limit: Annotated[
             int,
-            Field(ge=1, le=100, description="Max memories to gather before synthesis."),
-        ] = 50,
+            Field(ge=1, le=100, description="Number of the most query-relevant memories to ground the answer on."),
+        ] = DEFAULT_RECALL_LIMIT,
     ) -> dict:
         """Recall a project's memory as a synthesized, grounded answer.
 

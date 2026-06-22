@@ -1,10 +1,10 @@
-"""Assemble the recall pipeline from its blocks; the model-backed stages are optional.
+"""Assemble the recall pipeline: embedder -> reranker -> generator, the refinements optional.
 
-Always gathers and groups; with a reranker it inserts ``RerankStage`` (which orders the
-gather by the query, and is a no-op without one); with a generator it appends
-``SynthesizeStage`` for a prose digest. Pass neither and recall is fully model-free —
-the same degradation philosophy as consolidation (each stage earns its place when its
-model is configured).
+The gather stage retrieves the query-relevant memories with the embedder (the relevance step,
+always present). With a reranker it inserts ``RerankStage`` to re-order that gather by the
+query; with a generator it appends ``SynthesizeStage`` for a written answer. Without a
+generator recall is the structured grouping — the same degradation philosophy as consolidation
+(each refinement earns its place when its model is configured).
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
 from mnemo.application.pipeline.pipeline import Pipeline
+from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.recall.assemble_stage import AssembleStage
 from mnemo.application.recall.bundle import RECALL, RecallBundle
@@ -23,13 +24,14 @@ from mnemo.application.recall.synthesize_stage import SynthesizeStage
 
 def build_recall_pipeline(
     repository: MemoryRepository,
+    embedder: TextEmbedder,
     *,
     reranker: Reranker | None = None,
     generator: Generator | None = None,
     top_k: int = 20,
     max_tokens: int = 512,
 ) -> Pipeline[RecallRequest, RecallBundle]:
-    stages = [GatherStage(repository)]
+    stages = [GatherStage(repository, embedder)]
     if reranker is not None:
         stages.append(RerankStage(reranker, top_k=top_k))
     stages.append(AssembleStage())

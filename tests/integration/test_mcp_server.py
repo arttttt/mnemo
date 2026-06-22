@@ -100,7 +100,7 @@ def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
     container = _container(tmp_path)
     # Inject a stub generator (the default is the real GGUF model — too heavy for this test).
     container.recall = RecallProjectUseCaseImpl(
-        container.repository, reranker=None, generator=_StubGenerator(),
+        container.repository, container.embedder, reranker=None, generator=_StubGenerator(),
         rerank_top_k=20, generator_max_tokens=128,
     )
     mcp = build_mcp(container)
