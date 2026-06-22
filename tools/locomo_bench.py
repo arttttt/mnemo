@@ -368,7 +368,7 @@ def print_report(report: dict, meta: dict, k_list: list[int]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--embedder", default="pplx", choices=["pplx", "hash", "fastembed"],
+    parser.add_argument("--embedder", default="pplx", choices=["pplx", "hash"],
                         help="production embedder (pplx) for real numbers; hash = fast machinery smoke")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA, help="path to locomo10.json")
     parser.add_argument("--store-dir", type=Path, default=None,
