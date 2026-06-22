@@ -140,7 +140,7 @@ uv run pytest                       # sanity check
 ```
 
 - Code updates apply on `git pull` (editable install) — reinstall only when deps change.
-- Global tool install: `uv tool install --force --from . "mnemo[pplx]"` after pulling.
+- Global tool install: `uv tool install --force --from . mnemo` after pulling.
 
 ## 7. Contributing flow (gitflow: feature → main)
 
