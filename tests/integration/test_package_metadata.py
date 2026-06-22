@@ -33,3 +33,4 @@ def test_removed_default_runtime_extras_are_not_advertised():
 
     assert "pplx" not in extras
     assert "recall" not in extras
+    assert "embed" not in extras

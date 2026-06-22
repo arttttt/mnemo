@@ -32,8 +32,7 @@ The sections below explain the same steps manually (and the `pip` alternative).
 - **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provisions a
   new‑enough interpreter automatically. With plain `pip`/`venv` you must first install Python 3.10+ yourself.
 - The default install includes the runtime for the pplx embedder and recall generator. Model weights are
-  fetched once into `~/.mnemo/models`, then loaded cache-first without a network round-trip. The optional
-  **`embed`** extra installs the legacy fastembed adapter.
+  fetched once into `~/.mnemo/models`, then loaded cache-first without a network round-trip.
 
 ## 1. Get the code
 
@@ -48,13 +47,12 @@ cd mnemo
 ```bash
 uv venv                          # create .venv
 uv pip install -e ".[dev]"       # default pplx + recall runtimes, plus pytest
-# legacy fastembed adapter, only when explicitly requested: ".[dev,embed]"
 ```
 
 **pip:**
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"          # add ,embed only for the legacy fastembed adapter
+pip install -e ".[dev]"
 ```
 
 Editable install (`-e`) means code changes take effect immediately — no reinstall after a `git pull`.
@@ -97,7 +95,7 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
 | `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (SQLite + `sqlite-vec` + FTS5 — the store) |
-| `MNEMO_EMBEDDER` | `pplx` | `pplx` (default) · `fastembed` (legacy extra) · `hash` (model-free tests) |
+| `MNEMO_EMBEDDER` | `pplx` | `pplx` (default, pplx-embed-v1-0.6b int8) · `hash` (model-free tests) |
 | `MNEMO_MODELS_DIR` | `~/.mnemo/models` | model cache (pplx → `~/.mnemo/models/pplx`) |
 | `MNEMO_EMBED_MAX_TOKENS` | `2048` | embedder window cap; over it a memory is rejected (split it) |
 

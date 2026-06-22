@@ -97,13 +97,6 @@ def _build_embedder(config: Config) -> TextEmbedder:
             ),
             dim=1024,
         )
-    if name in ("fastembed", "bge-small", "bge-small-en-v1.5"):
-        from mnemo.adapters.embedding.fastembed_embedder import FastEmbedEmbedder
-
-        # MNEMO_EMBED_MODEL picks the concrete fastembed model (e.g. a multilingual one);
-        # omit to keep the adapter default. Switching models changes the vector dimension,
-        # which is fixed at first write — a different model needs a reindex.
-        return FastEmbedEmbedder(config.embed_model) if config.embed_model else FastEmbedEmbedder()
     raise ValueError(f"unknown embedder: {name!r}")
 
 

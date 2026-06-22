@@ -15,4 +15,4 @@ def test_close_embedder_calls_close_when_present():
 
 
 def test_close_embedder_is_a_noop_when_absent():
-    _close_embedder(object())  # hash / fastembed embedders have no close() — must not raise
+    _close_embedder(object())  # the hash embedder has no close() — must not raise

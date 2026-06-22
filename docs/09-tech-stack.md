@@ -4,7 +4,7 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 
 ## Language / runtime: **Python**
 
-- **Why:** the richest "batteries‑included" path for this stack — MCP SDK (FastMCP), ONNX/`fastembed`,
+- **Why:** the richest "batteries‑included" path for this stack — MCP SDK (FastMCP), ONNX Runtime,
   `sqlite-vec`, `llama-cpp-python`, model tooling.
 - **Alternative:** TypeScript/Node (good MCP SDK, single‑binary‑ish via Bun). Viable, but the local‑ML
   ecosystem (embedders, llama.cpp bindings, GBNF) is smoother in Python. Pick TS only if the team is TS‑first.
@@ -42,7 +42,7 @@ fork with native DiskANN ANN) is the upgrade path if we ever outgrow brute‑for
 - Local, CPU, no API key. Default model = **`pplx-embed-v1-0.6b` int8 ONNX** (chosen 2026-06; see
   [06-models.md](06-models.md) and [research/embedder-benchmark.md](research/embedder-benchmark.md);
   q4 is the fast profile if latency-bound). Loaded via `onnxruntime` directly (`trust_remote_code` +
-  pinned revision; its custom arch isn't a stock `fastembed` model). dim 1024.
+  pinned revision; its custom architecture is loaded directly through ONNX Runtime). dim 1024.
 - One‑time weights download at install; afterwards fully offline.
 
 ## Consolidation‑model inference
@@ -71,7 +71,7 @@ Consolidation is a staged pipeline (see [08-consolidation.md](08-consolidation.m
 ```
 mcp                      # FastMCP server + stdio shim
 sqlite-vec               # vector search inside SQLite (FTS5 is built in)
-fastembed      OR  onnxruntime + tokenizers
+onnxruntime + tokenizers
 llama-cpp-python         # shipped recall generator runtime (model stage can be disabled)
 pydantic                 # schemas / config
 typer                    # CLI
@@ -90,7 +90,7 @@ src/mnemo/
 │   └── use_cases.py     RememberMemory, SearchMemory
 ├── adapters/          # implement ports / handle I/O
 │   ├── store/           InMemoryMemoryRepository (offline/tests), SqliteVecMemoryRepository
-│   ├── embedding/       HashEmbedder (offline/tests), FastEmbedEmbedder
+│   ├── embedding/       HashEmbedder (model-free tests)
 │   ├── mcp/             FastMCP controller exposing remember/search/delete
 │   └── cli/             Typer controller
 └── infrastructure/    # composition root: config, wiring (DI), entrypoints
@@ -99,7 +99,7 @@ src/mnemo/
 ```
 
 - **Ports live in `application`**; concrete adapters implement them (Dependency Inversion).
-- Domain and use cases import **nothing** from `mcp`, `sqlite`, `fastembed`, or `llama.cpp`.
+- Domain and use cases import **nothing** from `mcp`, `sqlite`, ONNX Runtime, or `llama.cpp`.
 - Adding a backend = a new adapter; the core stays untouched (Open/Closed). Adapters are swappable (Liskov).
 
 ## What we deliberately do NOT build

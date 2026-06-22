@@ -23,14 +23,14 @@ tests/
     ├── test_container.py              # composition root wires a working use case
     ├── test_cli.py                    # CLI commands end-to-end
     ├── test_mcp_server.py             # MCP tools registered + callable
-    └── test_fastembed.py             # real embedder (marked heavy, opt-in)
+    └── test_pplx_embedder.py          # real embedder (marked heavy)
 ```
 
 ## Principles
 
 - **Fast & offline by default:** tests use the `hash` embedder; unit tests inject an in‑memory fake repository,
   integration tests run against a temp‑file SQLite store — no network, no heavy deps.
-- **Heavy/networked tests are opt‑in:** the real embedder (fastembed) lives behind `@pytest.mark.heavy` and
+- **Heavy/networked tests are opt‑in:** real model integrations live behind `@pytest.mark.heavy` and
   are skipped unless explicitly requested.
 - **Ports enable isolation:** because use cases depend on ports, unit tests inject fakes — no MCP/DB needed to test core logic.
 - **One behavior per test;** integration tests assert the adapter honors its port contract.

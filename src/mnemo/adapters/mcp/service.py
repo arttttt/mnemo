@@ -95,7 +95,7 @@ def _shutdown(
 
 def _close_embedder(embedder: TextEmbedder) -> None:
     """Free the embedder's pooled instances on shutdown. The pool lives in the ONNX
-    embedder capability (its close()); the hash/fastembed embedders have nothing to free."""
+    embedder capability (its close()); the hash embedder has nothing to free."""
     close = getattr(embedder, "close", None)
     if callable(close):
         close()

@@ -81,7 +81,7 @@ MNEMO_PORT=8765
 MNEMO_DATA_DIR=~/.mnemo/data
 MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown after the last connector leaves
 MNEMO_IDLE_CHECK_INTERVAL_SECONDS=5 # how often the service sweeps for live connectors
-MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: fastembed | hash
+MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); hash for model-free tests
 MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
 MNEMO_EMBED_WORKERS=1                # embed worker threads = embedder instance-pool size = max parallel encodes (the RAM knob)

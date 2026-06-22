@@ -11,7 +11,6 @@ from mnemo.domain.constants import DEFAULT_MAX_MEMORY_TOKENS
 
 _Num = TypeVar("_Num", int, float)
 
-
 def _int_env(name: str, default: str, *, minimum: int, maximum: int | None = None) -> int:
     """Parse a MNEMO_* integer at the config boundary, failing fast with a named, range-checked
     error — so a typo or out-of-range value surfaces at startup instead of an opaque later crash
@@ -57,7 +56,6 @@ def _in_range(
 class Config:
     data_dir: str
     embedder: str
-    embed_model: str | None = None  # concrete fastembed model; None => adapter default
     models_dir: str = ""            # where local models are cached (default ~/.mnemo/models)
     embed_max_tokens: int = 2048    # the embedder's operational window cap (pplx)
     max_memory_tokens: int = DEFAULT_MAX_MEMORY_TOKENS  # MNEMO_MAX_MEMORY_TOKENS: per-memory content cap (keeps memories focused; capped again by the embedder window)
@@ -92,7 +90,6 @@ class Config:
         return Config(
             data_dir=data_dir,
             embedder=os.environ.get("MNEMO_EMBEDDER", "pplx"),
-            embed_model=os.environ.get("MNEMO_EMBED_MODEL") or None,
             models_dir=os.path.expanduser(
                 os.environ.get("MNEMO_MODELS_DIR", "~/.mnemo/models")
             ),
