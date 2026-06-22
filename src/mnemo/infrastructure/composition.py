@@ -56,6 +56,7 @@ def build_container(
         browse=BrowseMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(
             repository,
+            embedder,
             reranker=_build_reranker(config),
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,

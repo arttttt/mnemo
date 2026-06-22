@@ -21,16 +21,18 @@ class _EchoGenerator:
         return "  auth uses jwt rotation  "    # whitespace proves the stage strips it
 
 
-def _repo_with(tmp_path, *memories: Memory):
-    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api",))
+def _repo_with(tmp_path, embedder, *memories: Memory):
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))
     for memory in memories:
         repo.add(memory)
+        repo.set_vector(memory.id, embedder.encode(memory.content))
     return repo
 
 
 def test_generator_fills_a_query_focused_summary_alongside_the_grouping(tmp_path):
-    repo = _repo_with(tmp_path, Memory.create("auth jwt rotation", type="decision", project="api"))
-    pipeline = build_recall_pipeline(repo, generator=_EchoGenerator())
+    embedder = HashEmbedder()
+    repo = _repo_with(tmp_path, embedder, Memory.create("auth jwt rotation", type="decision", project="api"))
+    pipeline = build_recall_pipeline(repo, embedder, generator=_EchoGenerator())
     bundle = pipeline.run(RecallRequest(project="api", query="auth"))
 
     assert bundle.summary == "auth uses jwt rotation"  # stripped
@@ -49,9 +51,10 @@ class _RecordingGenerator:
 
 
 def test_max_tokens_threads_through_to_the_generator(tmp_path):
-    repo = _repo_with(tmp_path, Memory.create("auth jwt rotation", type="decision", project="api"))
+    embedder = HashEmbedder()
+    repo = _repo_with(tmp_path, embedder, Memory.create("auth jwt rotation", type="decision", project="api"))
     generator = _RecordingGenerator()
-    pipeline = build_recall_pipeline(repo, generator=generator, max_tokens=123)
+    pipeline = build_recall_pipeline(repo, embedder, generator=generator, max_tokens=123)
     pipeline.run(RecallRequest(project="api", query="auth"))
 
     assert generator.max_tokens == 123  # not the hardcoded 512

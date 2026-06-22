@@ -11,6 +11,7 @@ from typing import Optional
 import typer
 
 from mnemo.application.project_gate import UnknownProject
+from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.logging_config import configure_logging
@@ -166,7 +167,8 @@ def recall(
     project: str = typer.Argument(..., help="Project whose memory to recall."),
     query: str = typer.Argument(..., help="What to recall about — a question or topic."),
     limit: int = typer.Option(
-        50, "--limit", "-l", min=1, max=200, help="Maximum number of memories to gather."
+        DEFAULT_RECALL_LIMIT, "--limit", "-l", min=1, max=200,
+        help="Number of the most query-relevant memories to ground the answer on.",
     ),
 ) -> None:
     """Recall a project's memory as a query-focused answer (the CLI view of the `recall` MCP tool).

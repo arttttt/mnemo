@@ -1,7 +1,8 @@
-"""The recall pipeline (model-free) — gathers a project's memory and groups it by type.
+"""The recall pipeline's relevance step — gathers a project's query-relevant memory by type.
 
-Recall always takes a query; with no reranker or generator configured it is unused (the
-structured grouping is the whole output), but it is still required and validated.
+Gather retrieves with the embedder (the same hybrid path as ``search``), so the memories
+must be embedded for the dense leg to find them. With no generator configured the structured
+grouping is the whole output; the query is always required and validated.
 """
 from __future__ import annotations
 
@@ -16,21 +17,24 @@ from mnemo.domain.memory import Memory
 from tests.support.sqlite_store import open_store
 
 
-def _repo_with(tmp_path, *memories: Memory):
-    repo, _ = open_store(tmp_path, HashEmbedder().dim, projects=("api", "other"))
+def _repo_with(tmp_path, embedder, *memories: Memory):
+    repo, _ = open_store(tmp_path, embedder.dim, projects=("api", "other"))
     for memory in memories:
-        repo.add(memory)  # no vector — the browse path does not need one
+        repo.add(memory)
+        repo.set_vector(memory.id, embedder.encode(memory.content))
     return repo
 
 
 def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
+    embedder = HashEmbedder()
     repo = _repo_with(
         tmp_path,
+        embedder,
         Memory.create("use jwt", type="decision", project="api"),
         Memory.create("fixed the race", type="debug", project="api"),
         Memory.create("auth adr", type="decision", project="api"),
     )
-    bundle = build_recall_pipeline(repo).run(RecallRequest(project="api", query="state"))
+    bundle = build_recall_pipeline(repo, embedder).run(RecallRequest(project="api", query="state"))
 
     assert bundle.project == "api"
     assert bundle.total == 3
@@ -42,24 +46,30 @@ def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
 
 
 def test_scopes_to_the_project_but_includes_global_memories(tmp_path):
+    embedder = HashEmbedder()
     repo = _repo_with(
         tmp_path,
+        embedder,
         Memory.create("api decision", type="decision", project="api"),
         Memory.create("other project", type="decision", project="other"),
         Memory.create("a global rule", type="rule", scope="global"),
     )
-    bundle = build_recall_pipeline(repo).run(RecallRequest(project="api", query="anything"))
+    bundle = build_recall_pipeline(repo, embedder).run(RecallRequest(project="api", query="anything"))
 
     contents = {m.content for section in bundle.sections for m in section.memories}
     assert contents == {"api decision", "a global rule"}  # 'other' excluded, global kept
 
 
 def test_limit_caps_the_number_of_gathered_memories(tmp_path):
+    embedder = HashEmbedder()
     repo = _repo_with(
         tmp_path,
+        embedder,
         *[Memory.create(f"note {i}", type="working-notes", project="api") for i in range(5)],
     )
-    bundle = build_recall_pipeline(repo).run(RecallRequest(project="api", query="notes", limit=2))
+    bundle = build_recall_pipeline(repo, embedder).run(
+        RecallRequest(project="api", query="notes", limit=2)
+    )
     assert bundle.total == 2
 
 

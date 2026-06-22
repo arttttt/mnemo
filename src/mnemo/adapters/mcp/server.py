@@ -202,30 +202,24 @@ def build_mcp(container: Optional[Container] = None, **settings):
             str,
             Field(description="Project slug to recall from."),
         ],
-        limit: Annotated[
-            int,
-            Field(ge=1, le=100, description="Max memories to gather before synthesis."),
-        ] = 50,
     ) -> dict:
         """Recall a project's memory as a synthesized, grounded answer.
 
-        Gathers the project's memories, then a local LLM writes an answer to your query
-        using ONLY those memories — never outside knowledge — and replies exactly
+        Retrieves the memories most relevant to your query, then a local LLM writes an
+        answer using ONLY those memories — never outside knowledge — and replies exactly
         "No relevant memories found." when none apply. Unlike `search` (a ranked list of
-        hits), this returns a written answer. Returns {project, summary, sections}, where
-        `summary` is the synthesized answer and `sections` are the supporting memories
-        grouped by type (each {type, memories:[{id, content}]}).
+        hits), this returns a written answer. Returns {project, summary, sources}: `summary`
+        is the answer and `sources` are the memories it drew on ({id, type}, not their
+        content — so the answer stays light on the caller's context).
         """
-        bundle = container.recall.execute(project=project, query=query, limit=limit)
+        bundle = container.recall.execute(project=project, query=query)
         return {
             "project": bundle.project,
             "summary": bundle.summary,
-            "sections": [
-                {
-                    "type": section.type,
-                    "memories": [{"id": m.id, "content": m.content} for m in section.memories],
-                }
+            "sources": [
+                {"id": memory.id, "type": section.type}
                 for section in bundle.sections
+                for memory in section.memories
             ],
         }
 
