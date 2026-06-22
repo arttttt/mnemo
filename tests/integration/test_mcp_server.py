@@ -105,16 +105,17 @@ def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
     )
     mcp = build_mcp(container)
     _call(mcp, "create_project", {"name": "api"})
-    _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})
+    remembered = json.loads(
+        _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
+    )
 
     result = json.loads(_call(mcp, "recall", {"query": "auth", "project": "api"})[0])
 
     assert result["project"] == "api"
     assert result["summary"] == "auth uses jwt refresh rotation"  # the synthesized answer
-    assert any(  # the supporting memory is returned alongside, grouped by type
-        m["content"] == "jwt refresh rotation"
-        for section in result["sections"] for m in section["memories"]
-    )
+    # the supporting memory comes back only as a light reference — id + type, never its content
+    assert result["sources"] == [{"id": remembered["id"], "type": "decision"}]
+    assert "sections" not in result  # full memory content is not dumped to the caller
 
 
 def test_mcp_delete_project_cascades(tmp_path):
