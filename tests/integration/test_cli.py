@@ -171,16 +171,16 @@ def test_cli_recall_rejects_a_blank_query(tmp_path, monkeypatch):
     assert "Traceback" not in result.output
 
 
-def test_cli_recall_reports_missing_model_dep_without_a_traceback(tmp_path, monkeypatch):
-    # The reranker/generator adapters raise an actionable RuntimeError when their
-    # optional extra is absent; the CLI must show the message, not a stack trace.
+def test_cli_recall_reports_a_broken_required_runtime_without_a_traceback(tmp_path, monkeypatch):
+    # A broken/incomplete install is still possible even though the generator runtime
+    # is required metadata; the CLI must surface the actionable message cleanly.
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
     class _Boom:
         def execute(self, **_kwargs):
             raise RuntimeError(
-                'the recall generator needs llama-cpp-python — install the model extra '
-                '(pip install "mnemo[recall]") or set MNEMO_GENERATOR=off'
+                "llama-cpp-python is a required mnemo dependency but is not importable — "
+                "reinstall mnemo"
             )
 
     class _Container:

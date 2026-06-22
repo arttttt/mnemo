@@ -1,6 +1,6 @@
 [project]
 name = "mnemo"
-version = "0.3.3"
+version = "0.3.4"
 description = "Local, on-demand memory for AI coding agents (MCP)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -8,21 +8,14 @@ dependencies = [
     "mcp>=1.2.0",
     "typer>=0.12.0",
     "sqlite-vec>=0.1.6",       # the store: vector search inside SQLite (FTS5 is built in)
+    "onnxruntime>=1.16",        # default pplx embedder runtime (CPU)
+    "tokenizers>=0.15",         # default pplx tokenizer
+    "numpy>=1.24",              # embedding pooling / model output handling
+    "huggingface-hub>=0.20",    # cache-first model resolution and first-run download
+    "llama-cpp-python>=0.3.0",  # recall generator runtime — recall is always on the MCP surface
 ]
 
 [project.optional-dependencies]
-# Default embedder: pplx-embed-v1-0.6b int8 ONNX on CPU, via raw onnxruntime (heavy).
-pplx = ["onnxruntime>=1.16", "tokenizers>=0.15", "huggingface-hub>=0.20", "numpy>=1.24"]
-embed = ["fastembed>=0.4.0"]   # alternative embedder (bge-small / fastembed models)
-# Recall / consolidation model stages (opt-in, heavy): the cross-encoder reranker and
-# the instruct generator. A base install runs without them (stages off / actionable error).
-recall = [
-    "onnxruntime>=1.16",        # reranker / NLI — cross-encoder via ONNX Runtime (no torch)
-    "tokenizers>=0.15",         #   its tokenizer
-    "numpy>=1.24",              #   logit handling
-    "llama-cpp-python>=0.3.0",  # generator — small instruct LLM via llama.cpp (GGUF)
-    "huggingface-hub>=0.20",    # model download (ONNX / GGUF)
-]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

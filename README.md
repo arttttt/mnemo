@@ -21,4 +21,4 @@ remembers decisions, bugs, progress, and rules across sessions. What sets it apa
 3. **Heavy things are transient.** The generative model is loaded only for a consolidation window, then unloaded.
 4. **Typed memory, project scoping.** `decision / debug / progress / rule / ...` across `project` / `global` / (optional) `session` scopes — reads isolate by project (plus always‑visible `global`); cross‑project search is first‑class but opt‑in (`scope=all`).
 5. **Tiny, obvious API.** Two everyday verbs (`remember` / `search`) plus a query‑less `browse` and three ops tools (`delete` / `clear` / `purge`, also on the CLI); type/scope are parameters, not extra tools.
-6. **Extra models are opt‑in.** Default = embedder + one optional background generator; more small models only when justified.
+6. **The default path works after one install.** The pplx and recall runtimes ship together; additional specialist models must earn their place.

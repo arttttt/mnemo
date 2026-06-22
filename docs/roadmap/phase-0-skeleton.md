@@ -11,7 +11,7 @@ Step format: **Why** (the requirement) · **What** (exactly what to do) · **Don
 
 ### 0.2 Local store + embedders ✅
 **Why:** the core must run and be tested offline, with no cloud (NFR‑1/2).
-**What:** in‑memory + JSON store behind `MemoryRepositoryPort`; `hash` (offline) and `fastembed` embedders.
+**What:** in‑memory + JSON store behind `MemoryRepositoryPort`; a model-free `hash` embedder for the skeleton.
 **Done when:** store round‑trips; search ranks by similarity; tests pass offline.
 
 ### 0.3 MCP `remember` / `search` ✅

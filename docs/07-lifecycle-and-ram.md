@@ -81,14 +81,16 @@ MNEMO_PORT=8765
 MNEMO_DATA_DIR=~/.mnemo/data
 MNEMO_IDLE_GRACE_SECONDS=300        # grace before shutdown after the last connector leaves
 MNEMO_IDLE_CHECK_INTERVAL_SECONDS=5 # how often the service sweeps for live connectors
-MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); also: fastembed | hash
+MNEMO_EMBEDDER=pplx                  # default (pplx-embed-v1-0.6b int8); hash for model-free tests
 MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo/models/pplx)
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
 MNEMO_EMBED_WORKERS=1                # embed worker threads = embedder instance-pool size = max parallel encodes (the RAM knob)
 # Recall synthesis (now) + consolidation (Phase 3) generator — multilingual; see 06-models.md, 08-consolidation.md.
 MNEMO_RERANKER=off                          # cross-encoder reranker repo, or "off" (default: off — none beat the embedder)
+MNEMO_RERANKER_REVISION=<commit>            # required immutable revision when a reranker repo is enabled
 MNEMO_NLI=<model>                           # contradiction NLI (cross-encoder); not yet chosen (Phase 3)
 MNEMO_GENERATOR=unsloth/gemma-4-E2B-it-qat-GGUF  # synthesis generator GGUF repo/path, or "off"
+MNEMO_GENERATOR_REVISION=<commit>            # optional override; default Gemma is pinned in code, custom HF repos require this
 MNEMO_GENERATOR_FILE=*UD-Q4_K_XL.gguf       # GGUF glob in the repo (QAT, near-lossless Q4)
 MNEMO_GENERATOR_CONTEXT=65536               # generator n_ctx (holds the recall bundle + answer)
 MNEMO_GENERATOR_MAX_TOKENS=2048             # synthesis output token cap
