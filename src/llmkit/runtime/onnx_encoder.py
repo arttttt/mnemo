@@ -49,11 +49,12 @@ class OnnxEncoderRuntime:
             return  # idempotent
         import numpy as np
         import onnxruntime as ort
-        from huggingface_hub import snapshot_download
+
+        from llmkit.runtime.hf_cache import resolve_snapshot
 
         src = self._source
         started = time.monotonic()
-        local = snapshot_download(
+        local = resolve_snapshot(
             src.repo,
             revision=src.revision,
             cache_dir=self._cache_dir,
