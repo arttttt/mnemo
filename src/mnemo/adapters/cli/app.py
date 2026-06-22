@@ -198,15 +198,10 @@ def recall(
         "query": query,
         "total": bundle.total,
         "summary": bundle.summary,
-        "sections": [
-            {
-                "type": section.type,
-                "memories": [
-                    {"id": memory.id, "content": memory.content, "created_at": memory.created_at}
-                    for memory in section.memories
-                ],
-            }
+        "sources": [
+            {"id": memory.id, "type": section.type}
             for section in bundle.sections
+            for memory in section.memories
         ],
     }
     typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))

@@ -143,7 +143,7 @@ def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     assert stats["pending"] == 1  # only the vector-less one
 
 
-def test_cli_recall_groups_a_projects_memory_by_type(tmp_path, monkeypatch):
+def test_cli_recall_returns_the_query_relevant_memories_as_light_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MNEMO_LOG_LEVEL", "ERROR")  # keep timing/model logs off stdout
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "use jwt", "--type", "decision", "--project", "api"])
@@ -157,9 +157,10 @@ def test_cli_recall_groups_a_projects_memory_by_type(tmp_path, monkeypatch):
     assert bundle["query"] == "auth"
     assert bundle["total"] == 2  # the 'other' project is excluded
     assert bundle["summary"] is None  # no generator configured → structured bundle only
-    by_type = {section["type"]: section for section in bundle["sections"]}
-    assert set(by_type) == {"decision", "debug"}
-    assert len(by_type["decision"]["memories"]) == 1
+    # sources are light references — id + type, never the memory content
+    assert sorted(source["type"] for source in bundle["sources"]) == ["debug", "decision"]
+    assert all("content" not in source for source in bundle["sources"])
+    assert "sections" not in bundle
 
 
 def test_cli_recall_rejects_a_blank_query(tmp_path, monkeypatch):
