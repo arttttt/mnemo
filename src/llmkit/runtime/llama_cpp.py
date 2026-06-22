@@ -11,6 +11,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from llmkit.runtime._stats import peak_rss_mb
@@ -50,15 +51,21 @@ class LlamaCppRuntime:
         src = self._source
         started = time.monotonic()
         if os.path.exists(src.model):
-            self._llama = Llama(
-                model_path=src.model, n_ctx=src.context_tokens,
-                n_gpu_layers=-1, verbose=False,  # offload to Metal when present, else CPU
-            )
+            model_path = src.model
         else:
-            self._llama = Llama.from_pretrained(
-                repo_id=src.model, filename=src.filename, cache_dir=self._cache_dir,
-                n_ctx=src.context_tokens, n_gpu_layers=-1, verbose=False,
+            from llmkit.runtime.hf_cache import resolve_snapshot
+
+            local = resolve_snapshot(
+                src.model, cache_dir=self._cache_dir, allow_patterns=[src.filename],
             )
+            matches = sorted(Path(local).glob(src.filename))
+            if not matches:
+                raise RuntimeError(f"no file matching {src.filename!r} in {src.model}")
+            model_path = str(matches[0])
+        self._llama = Llama(
+            model_path=model_path, n_ctx=src.context_tokens,
+            n_gpu_layers=-1, verbose=False,  # offload to Metal when present, else CPU
+        )
         _log.info(
             "generator loaded model=%s load=%.2fs peak_rss=%.0fMB",
             src.model, time.monotonic() - started, peak_rss_mb(),

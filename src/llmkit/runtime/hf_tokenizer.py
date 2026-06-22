@@ -26,11 +26,12 @@ class HfTokenizer:
             return self._tokenizer
         with self._lock:
             if self._tokenizer is None:  # double-checked: only one thread downloads/parses
-                from huggingface_hub import snapshot_download
                 from tokenizers import Tokenizer as HfTok
 
+                from llmkit.runtime.hf_cache import resolve_snapshot
+
                 src = self._source
-                local = snapshot_download(
+                local = resolve_snapshot(
                     src.repo,
                     revision=src.revision,
                     cache_dir=self._cache_dir,
