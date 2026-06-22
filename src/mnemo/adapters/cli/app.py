@@ -169,12 +169,11 @@ def recall(
         50, "--limit", "-l", min=1, max=200, help="Maximum number of memories to gather."
     ),
 ) -> None:
-    """Recall a project's memory as a query-focused bundle (a summary too, with a generator).
+    """Recall a project's memory as a query-focused answer (the CLI view of the `recall` MCP tool).
 
-    A dev/debug view (CLI-only): MNEMO_RERANKER orders the gather by the query, MNEMO_GENERATOR
-    synthesizes a summary; without either it is the structured grouping. Not exposed on the
-    agent-facing MCP surface yet. Model timing/RAM go to the logs (MNEMO_LOG_LEVEL); the bundle
-    prints as JSON.
+    MNEMO_GENERATOR synthesizes a grounded summary from the gathered memories (refusing when none
+    are relevant); with the generator off it is the structured grouping (MNEMO_RERANKER can order
+    it by the query). Model timing/RAM go to the logs (MNEMO_LOG_LEVEL); the bundle prints as JSON.
     """
     configure_logging()
     started = time.monotonic()
