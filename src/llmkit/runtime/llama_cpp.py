@@ -23,6 +23,7 @@ _log = logging.getLogger("llmkit.llama")
 class GgufSource:
     model: str                      # a local GGUF path, or a HF repo id to download from
     filename: str = "*q4_k_m.gguf"  # glob within the repo (ignored for a local path)
+    revision: str | None = None     # immutable HF revision; ignored for a local path
     context_tokens: int = 4096
     chat: bool = False              # apply the model's embedded chat template (instruct models
     #                                 are trained with turn tokens; a raw prompt makes them ramble)
@@ -57,7 +58,10 @@ class LlamaCppRuntime:
             from llmkit.runtime.hf_cache import resolve_snapshot
 
             local = resolve_snapshot(
-                src.model, cache_dir=self._cache_dir, allow_patterns=[src.filename],
+                src.model,
+                revision=src.revision,
+                cache_dir=self._cache_dir,
+                allow_patterns=[src.filename],
             )
             matches = sorted(Path(local).glob(src.filename))
             if not matches:

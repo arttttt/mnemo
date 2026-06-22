@@ -1,6 +1,8 @@
 """Builds the Container by wiring concrete adapters from config (DI)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
@@ -20,7 +22,11 @@ from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.application.use_cases.search_memory import SearchMemoryUseCaseImpl
 from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
-from mnemo.infrastructure.config import Config
+from mnemo.infrastructure.config import (
+    DEFAULT_GENERATOR,
+    DEFAULT_GENERATOR_REVISION,
+    Config,
+)
 from mnemo.infrastructure.container import Container
 from mnemo.infrastructure.migrations import add_project_foreign_keys, drop_links_table
 
@@ -121,6 +127,10 @@ def _build_store(
 def _build_reranker(config: Config) -> Reranker | None:
     if config.reranker == "off":
         return None
+    if config.reranker_revision is None:
+        raise ValueError(
+            "MNEMO_RERANKER_REVISION is required when MNEMO_RERANKER names a Hugging Face repo"
+        )
     from llmkit.build import build_reranker
     from llmkit.config import ModelConfig
     from llmkit.lifecycle.residency import Transient
@@ -129,7 +139,7 @@ def _build_reranker(config: Config) -> Reranker | None:
     # cache_dir reuses the models dir so reranker weights live alongside the embedder's.
     return build_reranker(
         ModelConfig(
-            source=OnnxSource(repo=config.reranker),
+            source=OnnxSource(repo=config.reranker, revision=config.reranker_revision),
             residency=Transient(),
             cache_dir=config.models_dir or None,
         )
@@ -144,12 +154,22 @@ def _build_generator(config: Config) -> Generator | None:
     from llmkit.lifecycle.residency import Transient
     from llmkit.runtime.llama_cpp import GgufSource
 
+    revision = config.generator_revision
+    if revision is None and config.generator == DEFAULT_GENERATOR:
+        revision = DEFAULT_GENERATOR_REVISION
+    if revision is None and not Path(config.generator).exists():
+        raise ValueError(
+            "MNEMO_GENERATOR_REVISION is required when MNEMO_GENERATOR names a custom "
+            "Hugging Face repo"
+        )
+
     return build_generator(
         ModelConfig(
             # Drive the instruct model through its chat template (raw prompts make it ramble)
             # at the vendor-recommended Gemma sampling; a wider context holds the recall bundle.
             source=GgufSource(
                 model=config.generator, filename=config.generator_file,
+                revision=revision,
                 context_tokens=config.generator_context, chat=True,
                 temperature=1.0, top_p=0.95, top_k=64, min_p=0.0,
             ),

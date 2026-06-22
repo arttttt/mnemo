@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+from types import SimpleNamespace
 
 from llmkit.runtime.llama_cpp import GgufSource, LlamaCppRuntime
 
@@ -26,6 +28,37 @@ def test_unload_is_idempotent_when_nothing_is_loaded():
     runtime = LlamaCppRuntime(GgufSource(model="/nonexistent.gguf"))
     runtime.unload()  # no-op, must not raise
     assert runtime._llama is None
+
+
+def test_load_resolves_the_configured_revision(tmp_path, monkeypatch):
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / "model.gguf").touch()
+    captured = {}
+
+    def resolve_snapshot(repo, **kwargs):
+        captured.update(repo=repo, **kwargs)
+        return str(snapshot)
+
+    class FakeLlama:
+        def __init__(self, **kwargs):
+            captured["model_path"] = kwargs["model_path"]
+
+    monkeypatch.setitem(sys.modules, "llama_cpp", SimpleNamespace(Llama=FakeLlama))
+    monkeypatch.setattr("llmkit.runtime.hf_cache.resolve_snapshot", resolve_snapshot)
+
+    runtime = LlamaCppRuntime(
+        GgufSource(
+            model="org/model",
+            filename="*.gguf",
+            revision="immutable-commit",
+        )
+    )
+    runtime.load()
+
+    assert captured["repo"] == "org/model"
+    assert captured["revision"] == "immutable-commit"
+    assert captured["model_path"] == str(snapshot / "model.gguf")
 
 
 class _RecordingModel:
