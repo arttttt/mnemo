@@ -31,9 +31,9 @@ The sections below explain the same steps manually (and the `pip` alternative).
   old — a plain `pip install -e .` against the system interpreter fails before mnemo runs.
 - **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provisions a
   new‑enough interpreter automatically. With plain `pip`/`venv` you must first install Python 3.10+ yourself.
-- The **`pplx`** extra for the default embedder (pplx-embed-v1-0.6b int8 ONNX; ~335 MB fetched once into
-  `~/.mnemo/models/pplx`, then offline). Or the **`embed`** extra for fastembed/bge models. Without either,
-  use the offline `hash` embedder (`MNEMO_EMBEDDER=hash`, lexical only — good for testing).
+- The default install includes the runtime for the pplx embedder and recall generator. Model weights are
+  fetched once into `~/.mnemo/models`, then loaded cache-first without a network round-trip. The optional
+  **`embed`** extra installs the legacy fastembed adapter.
 
 ## 1. Get the code
 
@@ -47,16 +47,14 @@ cd mnemo
 **uv:**
 ```bash
 uv venv                          # create .venv
-uv pip install -e ".[dev]"       # core deps + pytest (hash embedder, offline)
-# real local embeddings — the default pplx embedder:
-uv pip install -e ".[dev,pplx]"
-# (or fastembed/bge instead: ".[dev,embed]")
+uv pip install -e ".[dev]"       # default pplx + recall runtimes, plus pytest
+# legacy fastembed adapter, only when explicitly requested: ".[dev,embed]"
 ```
 
 **pip:**
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"          # add ,pplx for the default embedder (or ,embed for fastembed)
+pip install -e ".[dev]"          # add ,embed only for the legacy fastembed adapter
 ```
 
 Editable install (`-e`) means code changes take effect immediately — no reinstall after a `git pull`.
@@ -66,7 +64,7 @@ Editable install (`-e`) means code changes take effect immediately — no reinst
 ```bash
 uv run pytest                    # unit + offline integration (in‑memory + SQLite backends)
 uv run pytest tests/unit         # only unit
-uv run pytest -m heavy           # real fastembed (downloads the model) + LanceDB migration
+uv run pytest -m heavy           # real model integration tests (downloads weights)
 ```
 
 Covered: unit (domain, use cases, rank fusion) + integration (store contract on in‑memory and SQLite,
@@ -76,7 +74,8 @@ legacy LanceDB tests are marked `heavy` and skipped unless requested.
 
 ## 4. Use it — CLI
 
-The default embedder is `pplx` (needs the `pplx` extra). For a quick offline check, set the `hash` embedder.
+The default embedder is `pplx`; its runtime is part of the normal install. For a quick model-free check,
+set the `hash` embedder.
 
 ```bash
 export MNEMO_EMBEDDER=hash        # offline; drop this once you installed .[embed]
@@ -98,7 +97,7 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 |---|---|---|
 | `MNEMO_DATA_DIR` | `~/.mnemo/data` | data directory |
 | `MNEMO_SQLITE_PATH` | `<data>/memory.db` | SQLite store file (SQLite + `sqlite-vec` + FTS5 — the store) |
-| `MNEMO_EMBEDDER` | `pplx` | `pplx` (default, pplx-embed-v1-0.6b int8) · `fastembed` · `hash` (offline) |
+| `MNEMO_EMBEDDER` | `pplx` | `pplx` (default) · `fastembed` (legacy extra) · `hash` (model-free tests) |
 | `MNEMO_MODELS_DIR` | `~/.mnemo/models` | model cache (pplx → `~/.mnemo/models/pplx`) |
 | `MNEMO_EMBED_MAX_TOKENS` | `2048` | embedder window cap; over it a memory is rejected (split it) |
 
@@ -138,7 +137,7 @@ claude mcp add --scope user mnemo -- uv run --directory /ABS/PATH/to/mnemo mnemo
 cd mnemo
 git checkout main
 git pull
-uv pip install -e ".[dev,pplx]"    # only needed when dependencies changed
+uv pip install -e ".[dev]"         # only needed when dependencies changed
 uv run pytest                       # sanity check
 ```
 

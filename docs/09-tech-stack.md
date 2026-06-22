@@ -72,7 +72,7 @@ Consolidation is a staged pipeline (see [08-consolidation.md](08-consolidation.m
 mcp                      # FastMCP server + stdio shim
 sqlite-vec               # vector search inside SQLite (FTS5 is built in)
 fastembed      OR  onnxruntime + tokenizers
-llama-cpp-python         # generator (optional at runtime)
+llama-cpp-python         # shipped recall generator runtime (model stage can be disabled)
 pydantic                 # schemas / config
 typer                    # CLI
 ```
@@ -99,7 +99,7 @@ src/mnemo/
 ```
 
 - **Ports live in `application`**; concrete adapters implement them (Dependency Inversion).
-- Domain and use cases import **nothing** from `mcp`, `sqlite`, `fastembed`, `llama.cpp`.
+- Domain and use cases import **nothing** from `mcp`, `sqlite`, `fastembed`, or `llama.cpp`.
 - Adding a backend = a new adapter; the core stays untouched (Open/Closed). Adapters are swappable (Liskov).
 
 ## What we deliberately do NOT build

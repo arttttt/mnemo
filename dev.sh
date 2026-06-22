@@ -17,16 +17,16 @@ require_uv() {
 cmd_install() {
   require_uv
   uv venv
-  uv pip install -e ".[dev,embed]"
+  uv pip install -e ".[dev]"
   echo
-  echo "Installed (editable: dev + embed)."
+  echo "Installed (editable: default runtime + dev)."
 }
 
 cmd_update() {
   # Re-sync the environment to the current checkout (you manage git/branches yourself),
   # then stop the shared service so it respawns on demand with the new code.
   require_uv
-  uv pip install -e ".[dev,embed]"
+  uv pip install -e ".[dev]"
   cmd_stop
 }
 
