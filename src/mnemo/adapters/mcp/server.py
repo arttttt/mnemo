@@ -8,7 +8,6 @@ domain enums by a test.
 from dataclasses import asdict
 from typing import Annotated, Literal, Optional
 
-from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
 
@@ -203,10 +202,6 @@ def build_mcp(container: Optional[Container] = None, **settings):
             str,
             Field(description="Project slug to recall from."),
         ],
-        limit: Annotated[
-            int,
-            Field(ge=1, le=100, description="Number of the most query-relevant memories to ground the answer on."),
-        ] = DEFAULT_RECALL_LIMIT,
     ) -> dict:
         """Recall a project's memory as a synthesized, grounded answer.
 
@@ -217,7 +212,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
         is the answer and `sources` are the memories it drew on ({id, type}, not their
         content — so the answer stays light on the caller's context).
         """
-        bundle = container.recall.execute(project=project, query=query, limit=limit)
+        bundle = container.recall.execute(project=project, query=query)
         return {
             "project": bundle.project,
             "summary": bundle.summary,
