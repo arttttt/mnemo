@@ -1,4 +1,5 @@
 import json
+from importlib.metadata import version as package_version
 
 import pytest
 
@@ -20,6 +21,21 @@ def _runner_and_app(tmp_path, monkeypatch):
     for slug in ("api", "other"):
         container.create_project.execute(slug)
     return testing.CliRunner(), app
+
+
+def test_cli_version_reports_installed_distribution(monkeypatch):
+    import mnemo.adapters.cli.app as cli_app
+
+    def fail_container(*_args, **_kwargs):
+        raise AssertionError("version must not build the application container")
+
+    monkeypatch.setattr(cli_app, "build_container", fail_container)
+    runner = testing.CliRunner()
+    expected = package_version("mnemo")
+
+    result = runner.invoke(cli_app.app, ["version"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == expected
 
 
 def test_cli_store_then_search(tmp_path, monkeypatch):
