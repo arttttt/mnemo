@@ -1,84 +1,77 @@
-# tools
+# tools/eval — in-repo evaluation harness
 
-Developer benchmarks and one-off scripts. Not shipped in the wheel; not imported by
-`mnemo`. Run them from a checkout with `uv run python tools/<script>.py`.
+Developer benchmarks. Not shipped in the wheel; not imported by `mnemo`. Run from a checkout
+with `uv run python -m tools.eval.<name>` (the package resolves `mnemo` via the editable
+install; data/outputs are gitignored).
 
-## `locomo_bench.py` — LoCoMo Tier-1 retrieval benchmark (LLM-free)
+## Layout
 
-Runs mnemo's own store + `search` over the public
-[LoCoMo](https://github.com/snap-research/locomo) dataset and scores **Recall@k / MRR@k**
-of the gold source turns. This is the cheap, deterministic, **search-path-only** signal —
-**no recall, no generator, no LLM** — i.e. Tier 1 of the benchmark plan: "if the gold
-source is not retrieved, no gate or generator can recover it."
-
-### What it does
-
-1. **Isolated environment.** Builds the `Container` against a throwaway SQLite store with
-   the reranker and generator forced **off**. It never touches the live `~/.mnemo` store
-   and never loads a model beyond the embedder.
-2. **One project per conversation.** `create_project(sample_id)`; `search` is scoped to
-   that project, so conversation A cannot answer conversation B (mnemo's
-   `project = ? OR scope='global'`).
-3. **Ingest each turn as a memory.** `content = "Speaker (date): text [+ image caption]"`,
-   tagged `dialog:<dia_id>`. The Speaker/date prefix adds temporal context **and** keeps
-   otherwise-identical chitchat unique so the content-hash dedup doesn't fold two turns
-   into one. Turns embed inline via the sync scheduler — there is no queue to drain.
-4. **Score.** Per QA, `search` scoped to the conversation → map returned memory ids back to
-   dia_ids → Recall@k / MRR@k against the QA's `evidence`. The id→dia_id bridge is captured
-   at ingest (`remember` returns the id) because `SearchResult` does not carry tags.
-
-### Running
-
-```bash
-# Real numbers — the production embedder (heavy: ~6k turns + ~2k queries to embed on CPU).
-uv run python tools/locomo_bench.py --embedder pplx
-
-# Fast machinery smoke — deterministic hash double (lexical-only; numbers are MEANINGLESS).
-uv run python tools/locomo_bench.py --embedder hash --conversations 1
-
-# Persist the ingested store and re-query without re-embedding.
-uv run python tools/locomo_bench.py --embedder pplx --store-dir tools/.locomo_store
-uv run python tools/locomo_bench.py --embedder pplx --store-dir tools/.locomo_store --skip-ingest
-
-# Add the input-gate refusal curve (extra encodes per query).
-uv run python tools/locomo_bench.py --embedder pplx --abstention
+```
+tools/eval/
+  core.py          # isolated mnemo Container + manifest I/O + LoCoMo dataset loaders (mnemo)
+  metrics.py       # PURE (no mnemo): Recall@k / MRR / AnyEvidence@k / CompleteEvidence@k,
+                   #   the top-1 A/B Tally, score_candidates / report_ab, abstention curve
+  rerankers.py     # in-process reranker backends (ONNX CPU, GGUF Metal) + sanity_check
+  locomo.py        # CLI: LoCoMo Tier-1 retrieval benchmark (search path, no recall)
+  dump_candidates.py  # CLI: dump hybrid top-N candidates -> candidates.json (once, reusable)
+  rerank_ab.py     # CLI: reranker top-1 A/B over candidates.json (ONNX / GGUF backends)
+  domain.py        # CLI: project-fact domain eval (п3) — the real go/no-go — NOT BUILT YET
+  scorers/         # offline scorers that read candidates.json with a non-stock runtime:
+    jina_v3_mlx.py #   jina-reranker-v3 (MLX/Metal) — runs in an ISOLATED mlx venv
+    qwen3.py       #   Qwen3-Reranker-0.6B (GGUF Q8/Metal)
 ```
 
-Key flags: `--conversations N` / `--max-turns N` (subset for dev), `--k 1,3,5,10,20`
-(cutoffs), `--store-dir` (reuse an ingest), `--skip-ingest` (reload the bridge from the
-store's manifest). Results are written to `tools/results/locomo_<embedder>_<ts>.json`.
+`metrics.py` imports no mnemo, so the isolated-venv scorers reuse it; `core.py` re-exports it
+for the in-process runners.
 
-### The dataset
+## LoCoMo Tier-1 retrieval
 
-Not committed (third-party, **license unstated** in the LoCoMo README — fine for local
-private testing; verify before publishing any numbers). Download once:
+LLM-free, the **search path only** — "if the gold source isn't retrieved, no gate or generator
+can recover it". Validates the machinery against a public standard; **not** mnemo on its real
+domain. Read the per-category breakdown, never the aggregate (LoCoMo headline numbers are
+contested). `AnyEvidence@k` vs `CompleteEvidence@k` splits multi-hop into found-one (coverage)
+vs found-none (relevance).
 
+```bash
+uv run python -m tools.eval.locomo --embedder pplx --store-dir tools/.locomo_store   # real
+uv run python -m tools.eval.locomo --embedder hash --conversations 1                 # smoke
+uv run python -m tools.eval.locomo --embedder pplx --store-dir tools/.locomo_store --skip-ingest --abstention
+```
+
+The dataset is third-party (license unstated — local testing only) and not committed:
 ```bash
 mkdir -p tools/data
 curl -L -o tools/data/locomo10.json \
   https://raw.githubusercontent.com/snap-research/locomo/main/data/locomo10.json
 ```
 
-### Reading the output — caveats (do not over-read)
+## Reranker top-1 A/B
 
-- **Per-category, never the aggregate.** LoCoMo headline numbers are contested (Zep's 84
-  was independently re-scored to ~58). The harness prints a per-category breakdown; read it.
-- **This validates the MACHINERY against a standard, not mnemo on its real job.** LoCoMo is
-  conversational; a turn is not an atomic fact, so multi-hop/temporal answers (which need
-  aggregation across turns) fit a fact store awkwardly. A modest absolute here is expected
-  and is not the project-fact-memory number.
-- **Category 5 is adversarial — the should-REFUSE slice.** Its retrieval is shown for
-  visibility only, never credited as recall. With `--abstention`, the input-gate curve
-  (true-refusal on adversarial vs false-refusal on answerable, swept over a top-1 **raw
-  cosine** threshold — not the uninformative RRF score) is computed. Expect *poor*
-  separation: LoCoMo adversarial are on-topic trap questions, so a relevant-looking turn is
-  still retrieved — that low separation is the informative result (these need an
-  output/answerability gate, not an input-relevance one).
-- `--embedder hash` is for exercising the runner only; it is lexical bag-of-tokens and its
-  retrieval quality is not representative.
+Hypothesis: when a caller asks for the single best memory (`limit=1`), pay for a reranker over
+the hybrid top-N. Dump the candidates once, then score any reranker against the same set.
 
-### Not yet here (Tier 2, needs the generator / a gate)
+```bash
+uv run python -m tools.eval.dump_candidates --store-dir tools/.locomo_store --max-questions 400
+# in-process (stock stack):
+uv run python -m tools.eval.rerank_ab --backend gguf \
+  --gguf-repo gpustack/bge-reranker-v2-m3-GGUF --gguf-file bge-reranker-v2-m3-Q8_0.gguf
+uv run python -m tools.eval.rerank_ab --backend onnx \
+  --reranker jinaai/jina-reranker-v2-base-multilingual
+# out-of-process (isolated mlx venv):
+<mlxvenv>/bin/python -m tools.eval.scorers.jina_v3_mlx --model-dir <jina-v3-mlx> \
+  --candidates tools/results/candidates.json
+uv run python -m tools.eval.scorers.qwen3 --gguf <qwen3-q8.gguf> \
+  --candidates tools/results/candidates.json
+```
 
-Answer correctness and faithfulness (answer entailed by the gold sources), and the
-search-vs-recall head-to-head. Those require the recall pipeline and are out of scope for
-this LLM-free pass.
+**Finding (LoCoMo, 400-question subset, multilingual rerankers):** reranking the hybrid top-20
+lifts top-1 meaningfully (base@1 0.39 → best 0.555). Ranking: **bge-reranker-v2-m3** (+16.5pp,
+Q8 GGUF Metal, in-process) > jina-reranker-v3 (+14.5pp, MLX) > Qwen3-Reranker-0.6B (+13.0pp) >
+jina-v2 (+10.8pp, ONNX CPU). bge also leads the neutral MIRACL multilingual benchmark — it is
+the pick. Caveat: LoCoMo is conversational; the final decision belongs to the domain eval (п3).
+```
+
+## п3 — domain eval (next)
+
+`tools.eval.domain` is the stub for the project-fact eval that actually decides reranker /
+fusion / gate questions for mnemo. See its module docstring for the fixture plan.
