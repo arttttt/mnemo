@@ -24,7 +24,11 @@ from mnemo.adapters.store.sqlite_vec_repository import (
     _create_table_sql,
 )
 from mnemo.domain.memory import Memory
-from mnemo.infrastructure.migrations import add_project_foreign_keys, drop_links_table
+from mnemo.infrastructure.migrations import (
+    add_project_foreign_keys,
+    drop_links_table,
+    remap_retired_memory_types,
+)
 
 _DIM = 256
 # The pre-FK memories DDL = today's schema with the project foreign key stripped.
@@ -39,12 +43,12 @@ _OLD_LINKS = (
 _TS = "2026-01-01T00:00:00+00:00"
 
 
-def _insert_memory(conn, embedder, mid, content, project, scope="project"):
+def _insert_memory(conn, embedder, mid, content, project, scope="project", mtype="decision"):
     conn.execute(
         "INSERT INTO memories (id, content, embedding, type, scope, project, tags,"
         " related_files, topic_key, session_id, status, supersedes, hash, created_at, updated_at)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (mid, content, serialize_float32(list(embedder.encode(content))), "decision",
+        (mid, content, serialize_float32(list(embedder.encode(content))), mtype,
          scope, project, "[]", "[]", None, None, "active", None, mid + "-hash", _TS, _TS),
     )
 
@@ -153,3 +157,45 @@ def test_drop_links_table_removes_it_and_is_idempotent(tmp_path):
 
     assert drop_links_table(path) is False  # idempotent no-op
     assert drop_links_table(str(tmp_path / "absent.db")) is False  # no store → no-op
+
+
+def _store_with_memory_schema(path):
+    """A store with just the memories schema + derived state (FTS/triggers/indexes), no FK —
+    enough to insert raw rows of any type and run a column-value migration over them."""
+    conn = sqlite3.connect(path)
+    conn.isolation_level = None
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+    conn.execute(_OLD_MEMORIES)
+    for statement in _INDEX_STATEMENTS:
+        conn.execute(statement)
+    conn.execute(_FTS_STATEMENT)
+    for statement in _TRIGGER_STATEMENTS:
+        conn.execute(statement)
+    return conn
+
+
+def test_remap_retired_types_rehomes_and_is_idempotent(tmp_path):
+    path = str(tmp_path / "memory.db")
+    embedder = HashEmbedder(dim=_DIM)
+    conn = _store_with_memory_schema(path)
+    for mid, mtype in [
+        ("m-debug", "debug"), ("m-design", "design"), ("m-feature", "feature"),
+        ("m-snip", "code-snippet"), ("m-disc", "discussion"), ("m-keep", "research"),
+    ]:
+        _insert_memory(conn, embedder, mid, "note " + mid, "api", mtype=mtype)
+    conn.close()
+
+    assert remap_retired_memory_types(path) is True
+
+    conn = sqlite3.connect(path)
+    kinds = dict(conn.execute("SELECT id, type FROM memories"))
+    conn.close()
+    assert kinds == {
+        "m-debug": "learning", "m-design": "decision", "m-feature": "decision",
+        "m-snip": "working-notes", "m-disc": "working-notes", "m-keep": "research",
+    }
+
+    assert remap_retired_memory_types(path) is False  # idempotent — nothing left to remap
+    assert remap_retired_memory_types(str(tmp_path / "absent.db")) is False  # no store → no-op
