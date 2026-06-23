@@ -28,6 +28,8 @@ def main() -> None:
     p.add_argument("--gguf-file", help="GGUF filename (gguf backend)")
     p.add_argument("--sep", default="</s></s>", help="query/doc separator for gguf (XLM-R = </s></s>)")
     p.add_argument("--reranker-max-tokens", type=int, default=512)
+    p.add_argument("--n", type=int, default=None,
+                   help="truncate each candidate pool to top-N before reranking (pool-size sweep)")
     p.add_argument("--models-dir", default=str(Path("~/.mnemo/models").expanduser()))
     p.add_argument("--out", type=Path)
     args = p.parse_args()
@@ -47,10 +49,13 @@ def main() -> None:
     rerankers.sanity_check(reranker)
 
     cands = json.loads(args.candidates.read_text())
-    overall, per_cat, single, ms = core.score_candidates(cands, reranker.rank)
-    res = core.report_ab(label, overall, per_cat, single, ms, core.CATEGORY_LABELS)
+    if args.n:
+        for q in cands:
+            q["candidates"] = q["candidates"][:args.n]
+        label = f"{label} @top-{args.n}"
+    result = core.report_ab(label, core.score_candidates(cands, reranker.rank))
     if args.out:
-        args.out.write_text(json.dumps(res, indent=2))
+        args.out.write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

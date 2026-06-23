@@ -47,10 +47,9 @@ def main() -> None:
         return scores
 
     cands = json.loads(open(args.candidates).read())
-    overall, per_cat, single, ms = score_candidates(cands, rank_fn)
-    res = report_ab("Qwen3-Reranker-0.6B (GGUF Q8/Metal)", overall, per_cat, single, ms)
+    result = report_ab("Qwen3-Reranker-0.6B (GGUF Q8/Metal)", score_candidates(cands, rank_fn))
     if args.out:
-        open(args.out, "w").write(json.dumps(res, indent=2))
+        open(args.out, "w").write(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

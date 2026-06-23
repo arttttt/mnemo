@@ -42,10 +42,9 @@ def main() -> None:
         return scores
 
     cands = json.loads(candidates.read_text())
-    overall, per_cat, single, ms = score_candidates(cands, rank_fn)
-    res = report_ab("jina-reranker-v3 (MLX/Metal)", overall, per_cat, single, ms)
+    result = report_ab("jina-reranker-v3 (MLX/Metal)", score_candidates(cands, rank_fn))
     if out:
-        out.write_text(json.dumps(res, indent=2))
+        out.write_text(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
