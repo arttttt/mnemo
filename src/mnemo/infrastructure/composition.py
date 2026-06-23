@@ -28,7 +28,11 @@ from mnemo.infrastructure.config import (
     Config,
 )
 from mnemo.infrastructure.container import Container
-from mnemo.infrastructure.migrations import add_project_foreign_keys, drop_links_table
+from mnemo.infrastructure.migrations import (
+    add_project_foreign_keys,
+    drop_links_table,
+    remap_retired_memory_types,
+)
 
 
 def build_container(
@@ -40,6 +44,7 @@ def build_container(
     # once the live store has it applied (see infrastructure/migrations.py).
     add_project_foreign_keys(config.sqlite_path)
     drop_links_table(config.sqlite_path)
+    remap_retired_memory_types(config.sqlite_path)
     embedder = _build_embedder(config)
     repository, projects = _build_store(config, embedder.dim)
     session_provider = session_provider or InProcessSessionProvider()

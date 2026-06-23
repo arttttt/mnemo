@@ -7,6 +7,9 @@ before the store opens (so BOTH the service and the CLI apply them). Idempotent.
   (the original tables are never the only copy on disk; any failure rolls back intact).
 - ``drop_links_table``: drops the now-unused ``links`` table — the supersede chain
   lives solely in the ``memories.supersedes`` column; the typed-link graph was removed.
+- ``remap_retired_memory_types``: rewrites memories whose ``type`` is a retired kind
+  (debug/design/feature/code-snippet/discussion) to its surviving home, so they still
+  load after those MemoryType members were removed.
 
 DELETE each migration (and its call in `build_container`) once the live store has it
 applied — disposable, not a permanent runtime check (per the DB migration policy).
@@ -92,6 +95,53 @@ def drop_links_table(sqlite_path: str) -> bool:
         conn.execute("DROP TABLE links")
         _log.info("migrated store %s: dropped the unused links table", sqlite_path)
         return True
+    finally:
+        conn.close()
+
+
+# Memory types retired (2026-06-24) → their surviving home. A plain column-value remap, so
+# rows of the old kinds still load once those MemoryType members are gone.
+_RETIRED_TYPES = {
+    "debug": "learning",
+    "design": "decision",
+    "feature": "decision",
+    "code-snippet": "working-notes",
+    "discussion": "working-notes",
+}
+
+
+def remap_retired_memory_types(sqlite_path: str) -> bool:
+    """Re-home memories of the retired types onto the surviving six. A column-value UPDATE
+    only (embeddings untouched), so no table rewrite; idempotent (the old values are gone
+    once it runs). Returns True if it changed any row. No-op if the store is absent or clean."""
+    if not sqlite_path or not os.path.exists(sqlite_path):
+        return False
+    conn = sqlite3.connect(sqlite_path)
+    conn.isolation_level = None
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)  # an UPDATE re-checks the memories CHECK(vec_length(...)) constraint
+    conn.enable_load_extension(False)
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        if not _has_table(conn, "memories"):
+            return False
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            migrated = sum(
+                conn.execute(
+                    "UPDATE memories SET type=? WHERE type=?", (new, old)
+                ).rowcount
+                for old, new in _RETIRED_TYPES.items()
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        if migrated:
+            _log.info(
+                "migrated store %s: re-homed %d memories of retired types", sqlite_path, migrated
+            )
+        return migrated > 0
     finally:
         conn.close()
 

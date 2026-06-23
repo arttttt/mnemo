@@ -163,7 +163,7 @@ def test_cli_recall_returns_the_query_relevant_memories_as_light_sources(tmp_pat
     monkeypatch.setenv("MNEMO_LOG_LEVEL", "ERROR")  # keep timing/model logs off stdout
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "use jwt", "--type", "decision", "--project", "api"])
-    runner.invoke(app, ["store", "fixed a race", "--type", "debug", "--project", "api"])
+    runner.invoke(app, ["store", "fixed a race", "--type", "learning", "--project", "api"])
     runner.invoke(app, ["store", "other thing", "--type", "decision", "--project", "other"])
 
     result = runner.invoke(app, ["recall", "api", "auth"])
@@ -174,7 +174,7 @@ def test_cli_recall_returns_the_query_relevant_memories_as_light_sources(tmp_pat
     assert bundle["total"] == 2  # the 'other' project is excluded
     assert bundle["summary"] is None  # no generator configured → structured bundle only
     # sources are light references — id + type, never the memory content
-    assert sorted(source["type"] for source in bundle["sources"]) == ["debug", "decision"]
+    assert sorted(source["type"] for source in bundle["sources"]) == ["decision", "learning"]
     assert all("content" not in source for source in bundle["sources"])
     assert "sections" not in bundle
 

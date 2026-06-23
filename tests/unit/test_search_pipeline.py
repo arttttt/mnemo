@@ -37,7 +37,7 @@ def test_returns_search_results_for_the_query(tmp_path):
         tmp_path,
         embedder,
         Memory.create("jwt refresh rotation", type="decision", project="api"),
-        Memory.create("fixed the race", type="debug", project="api"),
+        Memory.create("fixed the race", type="learning", project="api"),
     )
     results = build_search_pipeline(repo, embedder).run(_request("jwt refresh rotation"))
 

@@ -31,7 +31,7 @@ def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
         tmp_path,
         embedder,
         Memory.create("use jwt", type="decision", project="api"),
-        Memory.create("fixed the race", type="debug", project="api"),
+        Memory.create("fixed the race", type="learning", project="api"),
         Memory.create("auth adr", type="decision", project="api"),
     )
     bundle = build_recall_pipeline(repo, embedder).run(RecallRequest(project="api", query="state"))
@@ -40,9 +40,9 @@ def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
     assert bundle.total == 3
     assert bundle.summary is None  # no generator configured → structured bundle only
     by_type = {section.type: section for section in bundle.sections}
-    assert set(by_type) == {"decision", "debug"}
+    assert set(by_type) == {"decision", "learning"}
     assert len(by_type["decision"].memories) == 2
-    assert len(by_type["debug"].memories) == 1
+    assert len(by_type["learning"].memories) == 1
 
 
 def test_scopes_to_the_project_but_includes_global_memories(tmp_path):
