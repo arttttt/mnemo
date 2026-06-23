@@ -88,6 +88,22 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
+def test_mcp_remember_enforces_the_per_type_cap(tmp_path):
+    # A `rule` is capped at 128 tokens, a `decision` at 512: the SAME ~140-token content is
+    # rejected as a rule but stored as a decision — enforced end-to-end through the MCP tool.
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    content = " ".join(f"w{i}" for i in range(140))
+
+    with pytest.raises(Exception, match=r"128-token limit for a 'rule'"):
+        _call(mcp, "remember", {"content": content, "type": "rule", "project": "api"})
+
+    stored = json.loads(
+        _call(mcp, "remember", {"content": content, "type": "decision", "project": "api"})[0]
+    )
+    assert stored["status"] == "created"
+
+
 class _StubGenerator:
     """A deterministic generator so recall is exercised end-to-end without a real model."""
 
