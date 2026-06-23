@@ -56,7 +56,6 @@ def build_container(
         scheduler=scheduler,
         remember=RememberMemoryUseCaseImpl(
             repository, scheduler, embedder, session_provider, gate,
-            max_content_tokens=config.max_memory_tokens,
         ),
         search=SearchMemoryUseCaseImpl(repository, embedder, gate),
         browse=BrowseMemoryUseCaseImpl(repository, gate),
