@@ -13,15 +13,10 @@ from mnemo.infrastructure.container import Container
 
 MemoryTypeName = Literal[
     "decision",
-    "debug",
     "progress",
-    "feature",
     "research",
-    "code-snippet",
     "rule",
     "learning",
-    "discussion",
-    "design",
     "working-notes",
 ]
 StoreScope = Literal["project", "global"]
@@ -50,7 +45,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
         ],
         type: Annotated[
             MemoryTypeName,
-            Field(description="Kind of memory (shapes retrieval): decision, debug, progress, feature, research, code-snippet, rule, learning, discussion, design, working-notes."),
+            Field(description="Kind of memory (shapes retrieval): decision, progress, research, rule, learning, working-notes."),
         ] = "working-notes",
         project: Annotated[
             str,

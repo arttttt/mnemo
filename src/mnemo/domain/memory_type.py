@@ -13,15 +13,10 @@ class MemoryType(Enum):
     max_tokens: int  # per-member content cap, in tokens (declared here for typing; set in __new__)
 
     DECISION = ("decision", 512)
-    DEBUG = ("debug", 512)
     PROGRESS = ("progress", 512)
-    FEATURE = ("feature", 512)
     RESEARCH = ("research", 512)
-    CODE_SNIPPET = ("code-snippet", 512)
     RULE = ("rule", 128)
     LEARNING = ("learning", 512)
-    DISCUSSION = ("discussion", 512)
-    DESIGN = ("design", 512)
     WORKING_NOTES = ("working-notes", 512)
 
     def __new__(cls, value: str, max_tokens: int) -> "MemoryType":
