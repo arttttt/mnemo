@@ -92,6 +92,16 @@ that moves identical content onto a new topic_key / chain — or edits an active
 forking a duplicate. Settle the semantics (re‑key vs. attach vs. supersede‑with‑same‑content) when the
 ops/management surface is designed; it pairs with the `get`/`neighbors` + management‑surface items below.
 
+### Language‑aware memory‑size caps
+**Why:** the per‑memory cap is in **tokens** (per type — `rule` 128, others 512), which is far from char‑fair
+across languages. Measured on the pplx tokenizer (chars/token): English 4.97, Russian 2.74, Chinese 1.64,
+Hindi 1.08 (Devanagari — the most token‑hungry). So at 128 tokens the real budget is ~636 English chars but only
+~350 Russian / ~210 Chinese / ~137 Hindi — a non‑English memory gets far less actual content for the same cap.
+**What:** consider a per‑language / per‑script **correction factor** on the effective cap so the char/meaning
+budget is comparable. Open: cheap language/script detection on the write path; source factors from the
+chars‑per‑token table; and whether to correct at all — tokens already track semantic density (a CJK/Devanagari
+char carries more meaning), so this may only matter for the most token‑hungry scripts.
+
 ---
 
 ## Retrieval & recall surface — problems found by dogfooding
