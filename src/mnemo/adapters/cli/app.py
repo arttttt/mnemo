@@ -11,6 +11,7 @@ from typing import Optional
 
 import typer
 
+from mnemo.adapters.cli.confirmation import confirm_or_abort
 from mnemo.application.project_gate import UnknownProject
 from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
 from mnemo.domain.memory_type import MemoryType
@@ -364,11 +365,10 @@ def purge(
     ),
 ) -> None:
     """Permanently delete ALL memories and the project registry. Prompts to confirm."""
-    if not yes:
-        typer.confirm(
-            "This permanently deletes ALL memories and the project registry. Continue?",
-            abort=True,
-        )
+    confirm_or_abort(
+        "This permanently deletes ALL memories and the project registry. Continue?",
+        assume_yes=yes,
+    )
     result = build_container().delete.purge()
     typer.echo(json.dumps(asdict(result)))
 
