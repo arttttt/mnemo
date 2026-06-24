@@ -172,9 +172,6 @@ def browse(
     created_after: Optional[str] = typer.Option(
         None, "--created-after", help="Keep only memories created at or after this ISO-8601 instant (e.g. 2026-06-01)."
     ),
-    status: str = typer.Option(
-        "active", "--status", help="Which versions: 'active' (default), 'superseded', or 'all'."
-    ),
     limit: int = typer.Option(
         10, "--limit", "-l", min=1, max=100, help="Maximum number of memories."
     ),
@@ -189,7 +186,6 @@ def browse(
             tags=tags,
             related_files=related_files,
             created_after=created_after,
-            status=status,
             limit=limit,
         )
     except ValueError as exc:

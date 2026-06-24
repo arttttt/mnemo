@@ -2,8 +2,7 @@
 
 A value object (specification): it carries the filters and knows how to test a
 memory in-process. Each store also translates it to its own query (e.g. a SQL
-WHERE) for pushed-down filtering. Active memories by default; `status` widens to
-superseded or all.
+WHERE) for pushed-down filtering. Only active memories are ever returned.
 """
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ class SearchCriteria:
     tags: tuple[str, ...] = ()              # memory must carry ALL of these
     related_files: tuple[str, ...] = ()     # memory must reference ANY of these
     created_after: str | None = None        # ISO-8601 lower bound; keep created_at >= this
-    status: str = "active"                  # 'active' (default) | 'superseded' | 'all'
 
     def __post_init__(self) -> None:
         # Parse created_after to a datetime and normalize it to UTC up front: a malformed
@@ -45,15 +43,9 @@ class SearchCriteria:
             object.__setattr__(self, "created_after", parsed.astimezone(timezone.utc).isoformat())
         # The scope↔project contract, shared with browse (one source of truth).
         validate_scope_project(self.scope, self.project)
-        if self.status not in ("active", "superseded", "all"):
-            raise ValueError(
-                f"status must be 'active', 'superseded' or 'all'; got {self.status!r}"
-            )
 
     def matches(self, memory: Memory) -> bool:
-        if self.status == "active" and memory.status != "active":
-            return False
-        if self.status == "superseded" and memory.status != "superseded":
+        if memory.status != "active":
             return False
         if not self._in_scope(memory):
             return False

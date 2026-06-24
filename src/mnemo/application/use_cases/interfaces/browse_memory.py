@@ -16,6 +16,5 @@ class BrowseMemoryUseCase(Protocol):
         tags: list[str] | None = None,
         related_files: list[str] | None = None,
         created_after: str | None = None,
-        status: str = "active",
         limit: int = 10,
     ) -> list[BrowseResult]: ...

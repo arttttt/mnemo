@@ -93,6 +93,7 @@ def test_cli_browse_lists_memories_without_a_query(tmp_path, monkeypatch):
     assert created == sorted(created, reverse=True)  # newest first
     assert {hit["id"] for hit in hits} == {a, b}
     assert all("score" not in hit for hit in hits)  # browse carries no score
+    assert all("topic_key" in hit and hit["status"] == "active" for hit in hits)  # audit fields on hits
 
 
 def test_cli_browse_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
@@ -279,18 +280,6 @@ def test_cli_search_fails_fast_on_a_dimension_mismatch(tmp_path, monkeypatch):
     assert "dimension mismatch" in result.output
     assert "7" in result.output and "256" in result.output  # both dimensions surfaced
     assert "Traceback" not in result.output                 # clean message, no stack trace
-
-
-def test_cli_browse_status_lists_superseded(tmp_path, monkeypatch):
-    runner, app = _runner_and_app(tmp_path, monkeypatch)
-    runner.invoke(app, ["store", "auth v1", "--project", "api", "--topic-key", "auth/model"])
-    runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])  # supersedes v1
-
-    result = runner.invoke(app, ["browse", "--project", "api", "--status", "superseded"])
-    assert result.exit_code == 0, result.output
-    hits = json.loads(result.stdout)
-    assert [h["content"] for h in hits] == ["auth v1"]
-    assert hits[0]["status"] == "superseded" and hits[0]["topic_key"] == "auth/model"
 
 
 def test_cli_get_by_topic_key(tmp_path, monkeypatch):
