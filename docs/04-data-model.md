@@ -161,11 +161,13 @@ can't silently spawn an invisible phantom project.
 
 ## Deletion
 
-Hard delete only — no soft‑delete/inactivation. All are available to **both the agent and the CLI**:
+Hard delete only — no soft‑delete/inactivation. `delete` and `delete_project` are available to **both the
+agent and the CLI**; `purge` (wipe everything) is **CLI‑only**, behind a confirmation prompt:
 - `delete(ids)` — remove specific memories.
 - `delete_project(name)` — remove a project and **all its memories** in one FK cascade. This is
   the unit of bulk deletion; there is no per‑project `clear`.
 - `purge()` — remove everything: memories and the project registry (the `__global__` sentinel is re‑seeded).
+  **CLI‑only**, behind a y/n confirmation (too destructive for the agent surface).
 
 `delete(ids)` keeps any surviving **supersede chain** consistent: deleting the active head of a `topic_key`
 promotes the newest surviving version to active, and deleting an interior version splices the `supersedes`
