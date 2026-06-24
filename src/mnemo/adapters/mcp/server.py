@@ -249,10 +249,9 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """
         return asdict(container.delete.delete(ids, cascade=cascade))
 
-    @mcp.tool()
-    def purge() -> dict:
-        """Permanently delete ALL memories. Returns {deleted}."""
-        return asdict(container.delete.purge())
+    # NOTE: purge (drop EVERYTHING) is deliberately NOT exposed as an MCP tool — it is too
+    # destructive to put on the agent surface. It stays a CLI-only operation (guarded by an
+    # interactive confirmation there). Agents delete narrowly via `delete` / `delete_project`.
 
     @mcp.tool()
     def create_project(
