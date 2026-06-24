@@ -13,7 +13,7 @@ from tools.eval import core
 from tools.eval.domain import evaluate, ingest
 from tools.eval.domain_fixture import load_fixture
 
-_FIXTURE = Path(__file__).resolve().parents[2] / "tools" / "eval" / "fixtures" / "domain_v1.json"
+_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "domain_v1.json"
 
 
 def _run(tmp_path):

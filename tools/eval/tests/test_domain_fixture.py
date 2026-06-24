@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tools.eval.domain_fixture import SLICES, load_fixture
 
-_FIXTURE = Path(__file__).resolve().parents[2] / "tools" / "eval" / "fixtures" / "domain_v1.json"
+_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "domain_v1.json"
 
 
 def test_fixture_loads_and_validates():
