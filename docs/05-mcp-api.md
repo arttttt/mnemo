@@ -55,7 +55,9 @@ search("changes", scope="all", created_after="2026-06-01")      # created at/aft
 - Filters (all optional): `type` (one type), `tags` (memory must carry **all** of them), `related_files`
   (references **any** of them), `created_after` (created at/after an ISO‑8601 date or datetime).
 - Project scope is a **hard filter** (the named project + `global`); other projects are excluded from the default scope. Cross‑project search is the explicit `scope="all"` (see [04-data-model.md](04-data-model.md)).
-- `MemoryHit = {id, score, type, scope, project, content, related_files, created_at}`.
+- Hits come in **rank order** (the list order is the ranking); there is **no relevance score** — the underlying
+  RRF value is opaque and easily misread as a confidence, so it stays internal. Read the hit content to judge it.
+- `MemoryHit = {id, type, scope, project, content, related_files, created_at}`.
 
 ### `browse(scope?, project?, type?, tags?, related_files?, created_after?, limit?) -> list[BrowseHit]`
 The query‑less companion to `search`: retrieve a **category**, newest first, with no relevance ranking. Use it
@@ -67,7 +69,7 @@ browse(project="checkout-api", type="decision")  # all decisions, newest first
 browse(scope="all", tags=["feedback"])           # a category across every project
 ```
 - No `query`, no ranking: hits are ordered by recency, so there is **no `score`**.
-- `BrowseHit = {id, type, scope, project, content, related_files, created_at}` (a `MemoryHit` without `score`).
+- `BrowseHit = {id, type, scope, project, content, related_files, created_at}` — the same fields as `MemoryHit`; neither carries a relevance score.
 
 ### Projects — `create_project` / `update_project` / `list_projects` / `delete_project`
 A project is a **registered entity**, not just a slug on a memory: you must create it before writing to it, so a

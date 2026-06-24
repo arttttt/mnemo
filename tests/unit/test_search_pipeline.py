@@ -43,6 +43,7 @@ def test_returns_search_results_for_the_query(tmp_path):
 
     assert results
     assert all(isinstance(r, SearchResult) for r in results)
+    assert all(not hasattr(r, "score") for r in results)  # search hits carry no relevance score
     assert "jwt refresh rotation" in {r.content for r in results}
 
 
