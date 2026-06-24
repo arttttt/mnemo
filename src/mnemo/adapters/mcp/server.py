@@ -198,8 +198,15 @@ def build_mcp(container: Optional[Container] = None, **settings):
             str,
             Field(description="Project slug to recall from."),
         ],
+        force: Annotated[
+            bool,
+            Field(description="Acknowledge that recall is experimental — it uses an LLM to synthesize the answer and may be wrong. Must be true to run; otherwise the call is rejected. Prefer `search`/`browse` for verbatim memories."),
+        ] = False,
     ) -> dict:
         """Recall a project's memory as a synthesized, grounded answer.
+
+        EXPERIMENTAL: a local LLM writes the answer, so it can be wrong — pass force=true
+        to acknowledge this and run. Prefer `search`/`browse` for verbatim memories.
 
         Retrieves the memories most relevant to your query, then a local LLM writes an
         answer using ONLY those memories — never outside knowledge — and replies exactly
@@ -208,6 +215,12 @@ def build_mcp(container: Optional[Container] = None, **settings):
         is the answer and `sources` are the memories it drew on ({id, type}, not their
         content — so the answer stays light on the caller's context).
         """
+        if not force:
+            raise ValueError(
+                "recall is an EXPERIMENTAL feature: it uses an LLM to synthesize the answer "
+                "and may return an incorrect answer. If you want to proceed, call recall again "
+                "with force=true. Prefer `search` or `browse` for verbatim memories."
+            )
         bundle = container.recall.execute(project=project, query=query)
         return {
             "project": bundle.project,
