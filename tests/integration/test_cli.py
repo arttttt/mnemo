@@ -199,8 +199,19 @@ def test_cli_recall_reports_a_broken_required_runtime_without_a_traceback(tmp_pa
                 "reinstall mnemo"
             )
 
+    # The guarded recall path reads these before recall runs; a None dimension means a
+    # fresh store, so the dimension guard is a no-op and the broken generator is what surfaces.
+    class _Queue:
+        def current_dim(self):
+            return None
+
+    class _Embedder:
+        dim = 1024
+
     class _Container:
         recall = _Boom()
+        embedding_queue = _Queue()
+        embedder = _Embedder()
 
     monkeypatch.setattr(
         "mnemo.adapters.cli.app.build_container", lambda *a, **k: _Container()
@@ -210,6 +221,28 @@ def test_cli_recall_reports_a_broken_required_runtime_without_a_traceback(tmp_pa
     assert result.exit_code == 1
     assert "llama-cpp-python" in result.output
     assert "Traceback" not in result.output
+
+
+def test_cli_search_fails_fast_on_a_dimension_mismatch(tmp_path, monkeypatch):
+    # End-to-end: bake the store at an odd dimension FIRST (the CLI's sqlite_path is
+    # MNEMO_DATA_DIR/memory.db), then run the hash embedder (dim 256) against it. The guard
+    # must turn the mismatch into a clean BadParameter, not a deep CHECK / sqlite-vec failure.
+    pytest.importorskip("sqlite_vec")
+    from tests.support.sqlite_store import open_store
+
+    open_store(tmp_path, dim=7)  # tmp_path/memory.db, memories CHECK baked at dim 7
+    monkeypatch.setenv("MNEMO_EMBEDDER", "hash")  # dim 256 ≠ 7
+    monkeypatch.setenv("MNEMO_RERANKER", "off")
+    monkeypatch.setenv("MNEMO_GENERATOR", "off")
+    monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
+    from mnemo.adapters.cli.app import app
+
+    result = testing.CliRunner().invoke(app, ["search", "anything", "--scope", "all"])
+
+    assert result.exit_code != 0
+    assert "dimension mismatch" in result.output
+    assert "7" in result.output and "256" in result.output  # both dimensions surfaced
+    assert "Traceback" not in result.output                 # clean message, no stack trace
 
 
 def test_cli_create_project_then_store(tmp_path, monkeypatch):
