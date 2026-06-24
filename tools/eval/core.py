@@ -16,7 +16,7 @@ from mnemo.infrastructure.config import Config
 from mnemo.infrastructure.container import Container
 
 from tools.eval.metrics import (  # noqa: F401  (re-exported for the runners)
-    Bucket, Tally, abstention_curve, cosine, report_ab, score_candidates,
+    Bucket, Tally, abstention_curve, corroboration, cosine, report_ab, score_candidates,
 )
 
 _REPO = Path(__file__).resolve().parents[2]
