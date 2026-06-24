@@ -147,13 +147,15 @@ scale until there is real usage feedback to calibrate against; the lever that un
 signal**, not more retrieval knobs. This qualifies the auto‑apply framing in *Retrieval robustness to write‑time
 mis‑typing* below: re‑typing too is **propose‑first**, not unattended auto‑apply, under the same stance.
 
-### Graph navigation at the MCP surface (`get` / `neighbors`)
+### Graph navigation at the MCP surface — `get` **shipped**, `neighbors` deferred
 **Why:** memory is densely linked (`[[topic_key]]` wikilinks), but there is no way to *traverse* relationships
 from the tools — reaching a linked memory means another semantic search and hope.
-**What:** add `get(id | topic_key)` (exact fetch, including the supersede chain — which lives in the `supersedes`
-column) and `neighbors(id)` (typed edges out/in, single hop — not multi‑hop inference) MCP tools. A typed `links`
-table existed once but was **removed** (it was write‑only — no reader), so this item **reintroduces** the typed
-edge store (and the `supersedes` column may fold into it) when there is finally a consumer. Deterministic
+**What (`get` shipped):** `get(id | topic_key)` — an exact point lookup returning the full record plus its
+**supersede chain** (walked along the `supersedes` pointers, light entries, paged by `chain_limit`/`chain_after`).
+A `[[wikilink]]` is a `topic_key`, so `get` dereferences it. See [05-mcp-api.md](../05-mcp-api.md).
+**What remains (`neighbors`):** `neighbors(id)` (typed edges out/in, single hop — not multi‑hop inference). A typed
+`links` table existed once but was **removed** (write‑only — no reader), so this **reintroduces** the typed edge
+store (and the `supersedes` column may fold into it) only when there is finally a consumer. Deterministic
 typed‑edge graph, not a knowledge graph.
 
 ### Query‑less browse / list mode — **shipped**
@@ -193,17 +195,18 @@ axiom, re‑typing is a cheap, reindex‑free, reversible filter‑facet correct
 Settle the policy when the worker's op set is designed — and against the **propose‑first / no‑unattended‑writes**
 stance in *Bank consolidation* above (re‑typing earns auto‑apply only once the read‑only audit proves it safe).
 
-### Management surface — audit & correct memory *through the server*
+### Management surface — audit & correct memory *through the server* (read side **shipped**)
 **Why:** auditing and correcting memory (find stale entries, supersede, re‑type, delete) must go through the
-**real service** — the one owner of the store — but the MCP surface can't support it: there is no list/browse, no
-fetch by `id` or `topic_key`, and `search` returns neither `topic_key` nor `status`. So a sweep over the active
-memories to fix them isn't expressible through the server, which forces a **direct read of the SQLite file** — a
-side‑channel around the service that owns the store (observed during a real memory audit). This is the *ops*
-driver behind the `get`/`neighbors` and browse items above, not just retrieval polish.
-**What:** a small ops surface exposed *by the service* — `get(id | topic_key)` and a query‑less `list`/browse
-(filter by type / tags / scope / recency, returning `topic_key` + `status`) — so the store is audited and
-corrected through its single owner, never a side‑channel. Writes already go through the service (`remember` /
-`delete`); reads for management must too.
+**real service** — the one owner of the store — but the MCP read surface couldn't support the AUDIT half: no fetch
+by `id`/`topic_key`, and `search`/`browse` exposed neither `topic_key` nor `status`. So a sweep over the memories
+forced a **direct read of the SQLite file** — a side‑channel around the store's owner (observed in a real audit).
+**What (read side shipped):** the audit READ is now expressible through the server — `get(id | topic_key)` (the
+record + its supersede chain, reaching superseded versions), `browse(status=active|superseded|all)`, and
+`topic_key`/`status` surfaced on the hits. The direct‑SQLite side‑channel is closed for reads. This is exactly the
+read substrate a future read‑only `mnemo audit` (see *Bank consolidation* above) would sit on.
+**What remains:** the *correcting* write ops (supersede / re‑type / in‑place edit) exposed through the service — see
+the re‑type item above and *Edit / re‑key*. Management writes must go through the service too, like `remember` /
+`delete` already do.
 
 ### Deferred indefinitely
 **Why:** out of the local, single‑user, lightweight scope mnemo targets.
