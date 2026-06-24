@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from llmkit.runtime._stats import peak_rss_mb
+from llmkit.runtime._stats import current_rss_mb, peak_rss_mb
 
 _log = logging.getLogger("llmkit.llama")
 
@@ -72,8 +72,8 @@ class LlamaCppRuntime:
             n_gpu_layers=-1, verbose=False,  # offload to Metal when present, else CPU
         )
         _log.info(
-            "generator loaded model=%s load=%.2fs peak_rss=%.0fMB",
-            src.model, time.monotonic() - started, peak_rss_mb(),
+            "generator loaded model=%s load=%.2fs rss=%.0fMB peak=%.0fMB",
+            src.model, time.monotonic() - started, current_rss_mb(), peak_rss_mb(),
         )
 
     def unload(self) -> None:
@@ -89,7 +89,10 @@ class LlamaCppRuntime:
             )
         finally:
             self._llama = None  # ALWAYS end unloaded — a later load() re-initialises
-        _log.info("generator freed model=%s peak_rss=%.0fMB", self._source.model, peak_rss_mb())
+        _log.info(
+            "generator freed model=%s rss=%.0fMB peak=%.0fMB",
+            self._source.model, current_rss_mb(), peak_rss_mb(),
+        )
 
     def complete(self, prompt: str, *, max_tokens: int) -> str:
         src = self._source
@@ -108,7 +111,7 @@ class LlamaCppRuntime:
             )
             text = out["choices"][0]["text"]
         _log.info(
-            "generated chat=%s max_tokens=%d in %.2fs peak_rss=%.0fMB",
-            src.chat, max_tokens, time.monotonic() - started, peak_rss_mb(),
+            "generated chat=%s max_tokens=%d in %.2fs",
+            src.chat, max_tokens, time.monotonic() - started,
         )
         return text
