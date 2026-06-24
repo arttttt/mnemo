@@ -111,14 +111,23 @@ Using mnemo on its own memory surfaced one consistent signal: the write/storage 
 research/improvements. Sources are the tagged feedback memories [[feedback/mcp-retrieval-ux]] and
 [[feedback/type-discipline]], re‑validated live on the SQLite + `sqlite-vec` + bge‑small path.
 
-### Self‑describing relevance score
-**Why:** the `search` `score` is a reciprocal‑rank‑fusion value (k=60, ≈`1/(60+rank)` per channel), so every hit
-sits in a narrow ~0.016–0.033 band and is **not** a similarity / confidence. A consuming agent naturally misreads
-it as relevance confidence — in dogfooding it caused a *false* diagnosis ("weak embedder") when the embedder was
-fine. The sharpest single recall wart: opaque **and** misleadable.
-**What:** make the signal interpretable — label `score` as RRF in the tool/result schema, and/or also return the
-raw per‑channel similarity + rank, and/or normalise to a documented [0,1]. Research which form a consuming agent
-actually uses as a threshold.
+### `search` relevance score — RESOLVED by REMOVAL
+**Why:** the `search` `score` was a reciprocal‑rank‑fusion value (k=60, ≈`1/(60+rank)` per channel) — every hit in
+a narrow ~0.016–0.033 band, **not** a similarity / confidence. A consuming agent misreads it as relevance
+confidence; in dogfooding it caused a *false* diagnosis ("weak embedder") when the embedder was fine. Opaque
+**and** misleadable.
+**What (done):** the field is **removed from the search response**, not relabeled. The alternatives were weighed
+and rejected:
+- *Rename `score` → `rrf`*: honest, but leaves the agent with no usable relevance number — and it does not need one.
+- *A "real" similarity/confidence scalar*: a HYBRID (dense + lexical/FTS) hit has no honest single relevance number —
+  a cosine value under‑represents a lexical‑leg hit, re‑creating the same misread.
+- *An internal relevance floor / refusal on `search`*: rejected. The consumer is a capable LLM agent that READS each
+  hit's content, judges relevance itself, and controls breadth via its own `limit`. A miscalibrated floor would DROP
+  the real answer (unrecoverable — strictly worse than the noise the agent filters out), and the threshold has no
+  production ground truth to calibrate against. (A floor is meaningless for `browse` — there is no query.)
+The RRF value stays **internal** (it only orders the hits — the list order conveys the ranking). Retrieval‑quality
+leverage is the **bank** (consolidation: dedup + staleness) and a **feedback loop**, not an exposed score. Refusal /
+faithfulness gates remain a RECALL (generator) concern, not a `search` one.
 
 ### Graph navigation at the MCP surface (`get` / `neighbors`)
 **Why:** memory is densely linked (`[[topic_key]]` wikilinks), but there is no way to *traverse* relationships

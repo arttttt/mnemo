@@ -25,7 +25,6 @@ class PresentStage:
         results = [
             SearchResult(
                 id=item.memory.id,
-                score=round(item.score, 4),
                 type=item.memory.type.value,
                 scope=item.memory.scope.value,
                 project=item.memory.project,
