@@ -90,11 +90,12 @@ delete_project("checkout-api")                                     # delete it A
 ### Deletion — `delete` / `delete_project` / `purge`
 Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.
 ```python
-delete(ids=["..."])         # remove specific memories
+delete(ids=["..."])                # remove specific memories
+delete(ids=["..."], cascade=True)  # also remove every OLDER version they supersede (the whole lineage)
 delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
 purge()                     # remove everything: memories and the project registry
 ```
-A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records.
+A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage, since superseded versions aren't returned by `search`/`browse` and so can't be enumerated and deleted by id.
 
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
