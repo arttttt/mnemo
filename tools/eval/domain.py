@@ -1,24 +1,239 @@
 #!/usr/bin/env python3
-"""Project-fact domain eval (п3) — the REAL go/no-go readout for mnemo. NOT BUILT YET.
+"""Project-fact domain eval (п3) — mnemo's go/no-go readout on its REAL job.
 
-LoCoMo (eval.locomo) only validates the machinery against a public standard; it is
-conversational, not mnemo's domain. This eval measures mnemo on its actual job — project-fact
-memory — and is where reranker / fusion / gate decisions are finally settled.
-
-Plan (see docs/FEEDBACK "Benchmark harness"): an in-repo, versioned fixture built from mnemo's
-own dogfooded bank + a hand-authored question set, each question tagged with gold source memory
-id(s) and a gold answer (or REFUSE). Three deliberate slices:
-  - answerable  — the answer is in the bank; gold = source id(s) + expected answer.
-  - irrelevant  — nothing answers it; gold = REFUSE (the abstention slice).
-  - superseded  — a newer version exists; gold = the CURRENT value, not the stale one.
-Reuses the same Tier-1 metrics as eval.locomo (Recall@k / MRR + Any/Complete + the abstention
-curve) on the isolated harness, so it slots onto tools.eval.core with a domain loader.
+LoCoMo (eval.locomo) only validates the harness against a conversational standard. This eval
+measures mnemo on project-fact memory: it ingests the self-contained fixture into an ISOLATED
+store, runs the search path per question, and scores by slice:
+  - answerable / superseded: Recall@k / MRR + Any/Complete against the gold memory keys (the
+    shared Bucket); superseded ALSO checks the stale version does not out-rank the current one.
+  - irrelevant (REFUSE): the abstention readout — the two candidate input-gate signals, raw dense
+    cosine AND lexical corroboration, on answerable vs irrelevant, so the refusal threshold is a
+    CURVE, not one number (the LoCoMo run showed cosine alone can't separate on-topic traps).
+The chosen prod reranker (bge) is opt-in via --reranker (over-fetch a pool, rerank, re-score) —
+the go/no-go for wiring it into search. Reuses tools.eval.core + tools.eval.metrics. Run:
+    python -m tools.eval.domain --embedder pplx
+    python -m tools.eval.domain --embedder pplx --reranker bge
+    python -m tools.eval.domain --embedder hash         # machinery smoke (no model)
 """
-import sys
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import tempfile
+from collections import defaultdict
+from pathlib import Path
+
+from mnemo.application.use_cases.create_project import ProjectAlreadyExists
+
+from tools.eval import core
+from tools.eval.domain_fixture import Fixture, load_fixture
+from tools.eval.models import RERANKERS, build_reranker
+
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "domain_v1.json"
+
+
+def ingest(container, fixture: Fixture) -> dict[str, str]:
+    """Ingest the corpus in array order (a reused topic_key supersedes its predecessor). Returns
+    the store-id -> fixture-key bridge used to score search hits against gold keys."""
+    for slug in fixture.projects:
+        try:
+            container.create_project.execute(slug)
+        except ProjectAlreadyExists:
+            pass
+    key_by_id: dict[str, str] = {}
+    skipped = 0
+    for memory in fixture.memories:
+        try:
+            result = container.remember.execute(
+                content=memory.content, type=memory.type, scope=memory.scope, project=memory.project,
+                tags=list(memory.tags), related_files=list(memory.related_files), topic_key=memory.topic_key,
+            )
+        except ValueError:
+            skipped += 1  # over the per-type cap (pre-cap snapshot data) — skip; a gold miss if targeted
+            continue
+        key_by_id[result.id] = memory.key
+    if skipped:
+        print(f"  skipped {skipped} memories over the per-type cap (pre-cap snapshot data)")
+    return key_by_id
+
+
+def _ranked_keys(hits, key_by_id: dict[str, str]) -> list[str]:
+    """Hits as their fixture keys, in rank order (every hit comes from our own ingest)."""
+    return [key_by_id[h.id] for h in hits if h.id in key_by_id]
+
+
+def _first_index(keys: list[str], targets: set[str]) -> int | None:
+    return next((i for i, key in enumerate(keys) if key in targets), None)
+
+
+def _rerank_fn(reranker):
+    """Wrap a reranker (.rank(query, docs) -> scores) as rerank(query, hits) -> hits reordered by
+    score — so evaluate() stays agnostic to which reranker/runtime produced the scores."""
+    def rerank(query, hits):
+        scores = reranker.rank(query, [h.content for h in hits])
+        return [hit for _, hit in sorted(zip(scores, hits), key=lambda pair: pair[0], reverse=True)]
+    return rerank
+
+
+def _corroboration_tradeoff(positives: list[int], negatives: list[int]) -> dict:
+    def rate(xs, c):
+        return round(sum(x < c for x in xs) / max(len(xs), 1), 3)
+
+    return {
+        "mean_answerable": round(sum(positives) / max(len(positives), 1), 2),
+        "mean_irrelevant": round(sum(negatives) / max(len(negatives), 1), 2),
+        "by_refuse_below": [
+            {"refuse_if_below": c, "false_refuse_on_answerable": rate(positives, c),
+             "true_refuse_on_irrelevant": rate(negatives, c)}
+            for c in (1, 2, 3)
+        ],
+    }
+
+
+def evaluate(container, fixture: Fixture, key_by_id, k_list, rerank=None, pool=None) -> dict:
+    """Score the fixture. `rerank(query, hits) -> reordered hits` is the optional prod reranker
+    (bge); None = the pure search path. `pool` over-fetches before reranking (defaults to max k).
+    Returns a JSON-serializable report."""
+    limit = pool or max(k_list)
+    topk = max(k_list)
+    answerable, superseded = core.Bucket(), core.Bucket()
+    stale_in_topk = stale_at_or_above = n_sup = 0
+    cos: dict = defaultdict(list)
+    corr: dict = defaultdict(list)
+    per_question = []
+
+    for q in fixture.questions:
+        hits = container.search.execute(
+            query=q.question, scope="project", project=q.project, limit=limit
+        )
+        if rerank is not None and hits:
+            hits = rerank(q.question, hits)
+        keys = _ranked_keys(hits, key_by_id)
+        gold = set(q.gold_keys)
+
+        if hits:
+            top = hits[0].content
+            cos[q.slice].append(core.cosine(container.embedder.encode(q.question),
+                                            container.embedder.encode(top)))
+            corr[q.slice].append(core.corroboration(q.question, top))
+
+        if q.slice == "answerable":
+            answerable.add([{key} for key in keys], gold, k_list)
+        elif q.slice == "superseded":
+            superseded.add([{key} for key in keys], gold, k_list)
+            n_sup += 1
+            window = keys[:topk]
+            sp = _first_index(window, set(q.stale_keys))
+            gp = _first_index(window, gold)
+            if sp is not None:
+                stale_in_topk += 1
+                if gp is None or sp <= gp:
+                    stale_at_or_above += 1
+        per_question.append({"id": q.id, "slice": q.slice, "gold_rank": _first_index(keys, gold)})
+
+    pos_cos = cos["answerable"] + cos["superseded"]
+    pos_corr = corr["answerable"] + corr["superseded"]
+    return {
+        "answerable": answerable.summary(k_list),
+        "superseded": {**superseded.summary(k_list), "n_superseded": n_sup,
+                       "stale_in_topk": stale_in_topk, "stale_at_or_above_gold": stale_at_or_above},
+        "abstention": {
+            "cosine": core.abstention_curve(pos_cos, cos["irrelevant"]),
+            "corroboration": _corroboration_tradeoff(pos_corr, corr["irrelevant"]),
+        },
+        "per_question": per_question,
+    }
+
+
+def print_report(report: dict, meta: dict, k_list: list[int]) -> None:
+    bar = "=" * 72
+    print(f"\n{bar}\nDomain eval (п3) — project-fact memory, search path only\n{bar}")
+    print(f"embedder={meta['embedder']}  reranker={meta['reranker']}  "
+          f"memories={meta['n_memories']}  questions={meta['n_questions']}")
+
+    def retrieval(name, summary):
+        if not summary.get("n"):
+            return
+        head = "  ".join(f"@{k}".rjust(6) for k in k_list)
+        recall = "  ".join(f"{summary['recall_at_k'][k]:.3f}".rjust(6) for k in k_list)
+        anyk = "  ".join(f"{summary['any_at_k'][k]:.3f}".rjust(6) for k in k_list)
+        print(f"\n{name} (n={summary['n']})   MRR={summary['mrr']:.3f}")
+        print("  k     " + head)
+        print("  recall" + recall)
+        print("  any   " + anyk)
+
+    retrieval("ANSWERABLE", report["answerable"])
+    sup = report["superseded"]
+    retrieval("SUPERSEDED", sup)
+    if sup.get("n_superseded"):
+        print(f"  stale-in-top-{max(k_list)}: {sup['stale_in_topk']}/{sup['n_superseded']}  "
+              f"stale-at-or-above-gold: {sup['stale_at_or_above_gold']}/{sup['n_superseded']}")
+
+    print("\nABSTENTION  (refuse on irrelevant without false-refusing answerable)")
+    cos = report["abstention"]["cosine"]
+    if "curve" in cos:
+        print(f"  raw cosine    mean: answerable={cos['mean_cosine_answerable']} "
+              f"irrelevant={cos['mean_cosine_adversarial']}")
+        for pt in cos["curve"]:
+            if pt["T"] in (0.3, 0.4, 0.5, 0.6):
+                print(f"    T={pt['T']}  false-refuse(ans)={pt['false_refusal_on_answerable']:.2f}  "
+                      f"true-refuse(irr)={pt['true_refusal_on_adversarial']:.2f}")
+    else:
+        print(f"  raw cosine    {cos.get('note', 'n/a')}")
+    cor = report["abstention"]["corroboration"]
+    print(f"  corroboration mean: answerable={cor['mean_answerable']} irrelevant={cor['mean_irrelevant']}")
+    for pt in cor["by_refuse_below"]:
+        print(f"    refuse if <{pt['refuse_if_below']} terms  "
+              f"false-refuse(ans)={pt['false_refuse_on_answerable']:.2f}  "
+              f"true-refuse(irr)={pt['true_refuse_on_irrelevant']:.2f}")
+    print(bar)
 
 
 def main() -> None:
-    sys.exit("tools.eval.domain (п3) is not built yet — see the module docstring for the plan.")
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--embedder", default="pplx", choices=["pplx", "hash"])
+    p.add_argument("--fixture", type=Path, default=_FIXTURE)
+    p.add_argument("--reranker", choices=sorted(RERANKERS), default=None,
+                   help="apply the named prod reranker (over-fetch a pool, rerank, re-score)")
+    p.add_argument("--pool", type=int, default=30, help="over-fetch pool size when reranking")
+    p.add_argument("--store-dir", type=Path, default=None)
+    p.add_argument("--models-dir", default=os.path.expanduser("~/.mnemo/models"))
+    p.add_argument("--k", default="1,3,5,10")
+    p.add_argument("--out", type=Path)
+    args = p.parse_args()
+
+    k_list = sorted({int(x) for x in args.k.split(",")})
+    fixture = load_fixture(args.fixture)
+
+    tmp = None
+    if args.store_dir is None:
+        tmp = tempfile.TemporaryDirectory(prefix="mnemo-domain-")
+        store_dir = Path(tmp.name)
+    else:
+        store_dir = args.store_dir
+
+    print(f"isolated store: {store_dir}  embedder={args.embedder}  fixture={args.fixture.name}")
+    container = core.isolated_container(store_dir, args.embedder, args.models_dir)
+    key_by_id = ingest(container, fixture)
+    print(f"ingested {len(key_by_id)} memories; querying {len(fixture.questions)} questions…")
+
+    rerank = pool = None
+    if args.reranker:
+        print(f"reranking with {args.reranker} (over-fetch pool {args.pool})")
+        rerank = _rerank_fn(build_reranker(args.reranker, args.models_dir))
+        pool = args.pool
+    report = evaluate(container, fixture, key_by_id, k_list, rerank=rerank, pool=pool)
+    meta = {"embedder": args.embedder, "reranker": args.reranker or "off",
+            "n_memories": len(fixture.memories), "n_questions": len(fixture.questions), "k": k_list}
+    print_report(report, meta, k_list)
+
+    core.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = args.out or core.RESULTS_DIR / f"domain_{args.embedder}_{meta['reranker']}.json"
+    out.write_text(json.dumps({"meta": meta, "report": report}, indent=2))
+    print(f"wrote {out}")
+    if tmp is not None:
+        tmp.cleanup()
 
 
 if __name__ == "__main__":

@@ -10,12 +10,17 @@ install; data/outputs are gitignored).
 tools/eval/
   core.py          # isolated mnemo Container + manifest I/O + LoCoMo dataset loaders (mnemo)
   metrics.py       # PURE (no mnemo): Recall@k / MRR / AnyEvidence@k / CompleteEvidence@k,
-                   #   the top-1 A/B Tally, score_candidates / report_ab, abstention curve
+                   #   the top-1 A/B Tally, score_candidates / report_ab, abstention curve,
+                   #   lexical corroboration
   rerankers.py     # in-process reranker backends (ONNX CPU, GGUF Metal) + sanity_check
+  models.py        # config-driven reranker registry (RerankerSpec + build_reranker, runtime-abstracted)
   locomo.py        # CLI: LoCoMo Tier-1 retrieval benchmark (search path, no recall)
   dump_candidates.py  # CLI: dump hybrid top-N candidates -> candidates.json (once, reusable)
   rerank_ab.py     # CLI: reranker top-1 A/B over candidates.json (ONNX / GGUF backends)
-  domain.py        # CLI: project-fact domain eval (п3) — the real go/no-go — NOT BUILT YET
+  domain.py        # CLI: project-fact domain eval (п3) — the real go/no-go (retrieval + abstention)
+  domain_fixture.py   # pure loader + integrity validator for the domain fixture
+  fixtures/
+    domain_v1.json # checked-in domain corpus + question slices (answerable/irrelevant/superseded)
   scorers/         # offline scorers that read candidates.json with a non-stock runtime:
     jina_v3_mlx.py #   jina-reranker-v3 (MLX/Metal) — runs in an ISOLATED mlx venv
     qwen3.py       #   Qwen3-Reranker-0.6B (GGUF Q8/Metal)
@@ -71,7 +76,40 @@ jina-v2 (+10.8pp, ONNX CPU). bge also leads the neutral MIRACL multilingual benc
 the pick. Caveat: LoCoMo is conversational; the final decision belongs to the domain eval (п3).
 ```
 
-## п3 — domain eval (next)
+## п3 — domain eval (project-fact, the real go/no-go)
 
-`tools.eval.domain` is the stub for the project-fact eval that actually decides reranker /
-fusion / gate questions for mnemo. See its module docstring for the fixture plan.
+mnemo on its ACTUAL job: project-fact recall + safe abstention. A self-contained, checked-in
+fixture (`fixtures/domain_v1.json` — a fictional `orchard` service + `console` UI + global rules,
+27 memories) with a 26-question set across three slices: **answerable**, **irrelevant** (REFUSE;
+on-topic traps), and **superseded** (gold = the CURRENT version). Gold is referenced by a stable
+memory key, so the fixture survives re-ingestion. The runner ingests into an isolated store, runs
+the LLM-free search path, and scores per slice; the chosen prod reranker (bge) is opt-in.
+
+```bash
+uv run python -m tools.eval.domain --embedder pplx                 # Tier-1 retrieval + abstention
+uv run python -m tools.eval.domain --embedder pplx --reranker bge  # the reranker go/no-go
+uv run python -m tools.eval.domain --embedder hash                 # machinery smoke (no model)
+```
+
+Metrics: Recall@k / MRR + Any/Complete on `answerable`/`superseded` (the shared `Bucket`); a
+stale-leakage check on `superseded` (does an outdated version out-rank the current one); and the
+**abstention readout** — both candidate input-gate signals (raw dense cosine AND lexical
+corroboration) on answerable vs irrelevant, so the refusal threshold is a curve.
+
+**Findings (domain_v1, pplx):** retrieval is strong (answerable R@1 0.94, MRR 1.00). The chosen
+reranker **bge fixes the staleness case** (superseded R@1 0.67 → 1.00; an outdated note no longer
+out-ranks the current decision), roughly neutral on easy answerable@1 (small n). Both abstention
+signals separate (cosine ans 0.52 / irr 0.32; corroboration ans 2.8 / irr 1.4) — "accept on
+strong-cosine OR corroboration ≥ 2" is the promising input gate. Adding a reranker model is a
+one-line spec in `models.py` (runtimes are abstracted behind `.rank`).
+
+## Tests
+
+The harness is a separate developer add-on, not shipped product code, so its tests live under
+`tools/eval/tests/` and are **kept out of the project suite** (`testpaths = ["tests"]`). Run them
+explicitly:
+
+```bash
+uv run pytest tools/eval/tests        # eval tooling tests (fixture integrity, runner, registry)
+uv run pytest tests                   # the project suite (does NOT include the tooling tests)
+```

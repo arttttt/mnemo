@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -74,6 +75,24 @@ def cosine(a: list[float], b: list[float]) -> float:
     na = math.sqrt(sum(x * x for x in a)) or 1.0
     nb = math.sqrt(sum(y * y for y in b)) or 1.0
     return dot / (na * nb)
+
+
+_STOP = frozenset({
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "do", "does",
+    "we", "how", "what", "with", "its", "it", "at", "by", "be", "this", "that", "yet", "today",
+})
+
+
+def _content_terms(text: str) -> set[str]:
+    """Distinct content words (lowercased, len>=3, stop-words dropped) — what corroboration counts."""
+    return {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) >= 3 and t not in _STOP}
+
+
+def corroboration(query: str, text: str) -> int:
+    """How many DISTINCT query content-terms also appear in `text` (token overlap, not substring).
+    The codegraph corroboration signal: >=2 query terms covered = corroborated; <2 is an incidental
+    single-term match. Unlike the raw dense cosine, it needs almost no per-embedder calibration."""
+    return len(_content_terms(query) & _content_terms(text))
 
 
 def abstention_curve(positives: list[float], negatives: list[float]) -> dict:
