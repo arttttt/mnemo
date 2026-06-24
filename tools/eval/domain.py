@@ -42,12 +42,19 @@ def ingest(container, fixture: Fixture) -> dict[str, str]:
         except ProjectAlreadyExists:
             pass
     key_by_id: dict[str, str] = {}
+    skipped = 0
     for memory in fixture.memories:
-        result = container.remember.execute(
-            content=memory.content, type=memory.type, scope=memory.scope, project=memory.project,
-            tags=list(memory.tags), related_files=list(memory.related_files), topic_key=memory.topic_key,
-        )
+        try:
+            result = container.remember.execute(
+                content=memory.content, type=memory.type, scope=memory.scope, project=memory.project,
+                tags=list(memory.tags), related_files=list(memory.related_files), topic_key=memory.topic_key,
+            )
+        except ValueError:
+            skipped += 1  # over the per-type cap (pre-cap snapshot data) — skip; a gold miss if targeted
+            continue
         key_by_id[result.id] = memory.key
+    if skipped:
+        print(f"  skipped {skipped} memories over the per-type cap (pre-cap snapshot data)")
     return key_by_id
 
 
