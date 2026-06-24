@@ -238,3 +238,25 @@ def test_ancestor_closure_raises_on_a_supersede_cycle():
     by_id = {"a": {"supersedes": "b"}, "b": {"supersedes": "a"}}
     with pytest.raises(ValueError, match="cycle"):
         SqliteRepositoryImpl._ancestor_closure({"a"}, by_id)
+
+
+def test_cascade_delete_aborts_and_rolls_back_on_a_corrupt_cycle(tmp_path):
+    # End-to-end atomicity: if `supersedes` were ever corrupted into a cycle, a cascade
+    # delete must fail loudly AND leave the whole store untouched (one transaction, full
+    # rollback) — never spin or half-truncate the chain.
+    import sqlite3
+
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3 = _chain(repo, embedder)
+
+    # Corrupt the chain into a cycle (v1 -> v3, so v3 -> v2 -> v1 -> v3) via a raw write.
+    conn = sqlite3.connect(str(tmp_path / "memory.db"))
+    conn.execute("UPDATE memories SET supersedes = ? WHERE id = ?", (v3.id, v1.id))
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError, match="cycle"):
+        repo.delete([v3.id], cascade=True)
+
+    assert {m.id for m in repo.list_all()} == {v1.id, v2.id, v3.id}  # nothing was deleted
