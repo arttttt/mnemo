@@ -28,10 +28,12 @@ def _tools(tmp_path):
 
 
 def test_mcp_exposes_the_agent_tools(tmp_path):
+    tools = set(_tools(tmp_path))
     assert {
-        "remember", "search", "browse", "recall", "delete", "purge",
+        "remember", "search", "browse", "recall", "delete",
         "create_project", "delete_project", "update_project", "list_projects",
-    } <= set(_tools(tmp_path))
+    } <= tools
+    assert "purge" not in tools  # drop-everything is too destructive for the agent surface (CLI-only)
 
 
 def test_remember_advertises_allowed_types(tmp_path):
@@ -61,7 +63,6 @@ def test_only_required_params_are_marked_required(tmp_path):
     assert required["browse"] == []  # query-less: every param is optional
     assert required["recall"] == ["query", "project"]
     assert required["delete"] == ["ids"]
-    assert required["purge"] == []
     assert required["create_project"] == ["name"]
     assert required["delete_project"] == ["name"]
     assert required["update_project"] == ["name", "description"]
@@ -323,13 +324,3 @@ def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
     with pytest.raises(ToolError) as exc:
         _call(mcp, "remember", {"content": "a rule", "scope": "global", "project": "api"})
     assert "scope='global'" in str(exc.value)
-
-
-def test_mcp_purge(tmp_path):
-    mcp = build_mcp(_container(tmp_path))
-    _call(mcp, "create_project", {"name": "api"})
-    _call(mcp, "create_project", {"name": "other"})
-    _call(mcp, "remember", {"content": "alpha", "project": "api"})
-    _call(mcp, "remember", {"content": "beta", "project": "other"})
-
-    assert json.loads(_call(mcp, "purge", {})[0])["deleted"] == 2

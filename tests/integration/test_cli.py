@@ -138,8 +138,24 @@ def test_cli_delete_purge_and_stats(tmp_path, monkeypatch):
     assert stats["total"] == 3
     assert stats["pending"] == 0  # the CLI embeds inline (sync scheduler), so nothing pending
     assert json.loads(runner.invoke(app, ["delete", one]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["purge"]).stdout)["deleted"] == 2
+    assert json.loads(runner.invoke(app, ["purge", "--yes"]).stdout)["deleted"] == 2
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
+
+
+def test_cli_purge_confirmation_gate(tmp_path, monkeypatch):
+    # purge drops EVERYTHING, so it asks first: answering 'n' aborts and keeps the data,
+    # answering 'y' goes through. (--yes, tested above, skips the prompt non-interactively.)
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "keep me", "--project", "api"])
+
+    aborted = runner.invoke(app, ["purge"], input="n\n")
+    assert aborted.exit_code != 0  # declined → aborted, nothing deleted
+    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1
+
+    confirmed = runner.invoke(app, ["purge"], input="y\n")
+    assert confirmed.exit_code == 0, confirmed.output
+    # (the prompt text shares stdout, so verify the effect via stats rather than parsing it)
+    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0  # everything gone
 
 
 def test_cli_delete_cascade_removes_the_whole_lineage(tmp_path, monkeypatch):

@@ -16,8 +16,9 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑4 (SHOULD).** Dedup on write: drop **exact** duplicates only (hash of normalized content). Near‑similar
   memories are **not** suppressed on write — search returns them; the background worker may merge/flag genuine
   duplicates later (with context).
-- **FR‑5 (MUST).** Deletion: `delete(ids)`, `clear(project)`, `purge()` — **hard**, available to both the agent
-  and the CLI. No soft‑delete/inactivation.
+- **FR‑5 (MUST).** Deletion: `delete(ids)`, `clear(project)` — **hard**, available to both the agent
+  and the CLI. Wiping everything (`purge()`) is **CLI‑only**, behind a confirmation prompt (too destructive
+  for the agent surface). No soft‑delete/inactivation.
 
 ### Search and retrieval
 - **FR‑6 (MUST).** Semantic search over local embeddings.

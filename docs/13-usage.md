@@ -113,8 +113,10 @@ mnemo setup --dry-run       # show what it would do, write nothing
 ```
 
 Supported clients: **claude-code**, **codex**, **kimi-code** (via each one's official `mcp add`), and
-**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has five tools:
-**`remember`**, **`search`**, **`delete`**, **`clear`**, and **`purge`**.
+**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has the mnemo
+memory tools — **`remember`**, **`search`**, **`browse`**, **`recall`**, **`delete`**, and the project
+tools (`create-project` / `update-project` / `list-projects` / `delete-project`). Wiping everything
+(`purge`) is intentionally **CLI‑only**.
 
 Prefer to wire it by hand? Point the client's MCP config (stdio transport) at `mnemo-mcp`, e.g. for
 Claude Code:
