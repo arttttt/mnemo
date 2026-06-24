@@ -89,6 +89,16 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
+def test_mcp_search_hit_exposes_topic_key(tmp_path):
+    """A search hit carries topic_key so the agent can pivot to get / remember by key."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision",
+                            "project": "api", "topic_key": "auth/jwt"})
+    hit = json.loads(_call(mcp, "search", {"query": "jwt rotation", "project": "api"})[0])
+    assert hit["topic_key"] == "auth/jwt"
+
+
 def test_mcp_remember_enforces_the_per_type_cap(tmp_path):
     # A `rule` is capped at 128 tokens, a `decision` at 512: the SAME ~140-token content is
     # rejected as a rule but stored as a decision — enforced end-to-end through the MCP tool.

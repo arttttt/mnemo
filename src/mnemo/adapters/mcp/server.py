@@ -124,9 +124,10 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """Find memories by meaning, ranked by relevance.
 
         Returns a list of hits, each {id, type, scope, project, content, related_files,
-        created_at}, in rank order — there is no relevance score (read the hit content to
-        judge relevance). Use scope='all' for cross-project search. Optional filters (type,
-        tags, related_files, created_after) narrow the results.
+        created_at, topic_key}, in rank order — there is no relevance score (read the hit
+        content to judge relevance). `topic_key` lets you dereference a hit with `get` or
+        evolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.
+        Optional filters (type, tags, related_files, created_after) narrow the results.
         """
         results = container.search.execute(
             query=query,
