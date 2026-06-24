@@ -12,7 +12,7 @@ real task needs it. An agent should learn the surface in seconds.
 > answer over them (the **generator**). So recall builds on retrieval and adds generation: `search` returns the
 > hits, `recall` returns a written answer. Below, `recall` always means sense (2).
 
-### `recall(query, project) -> {project, summary, sources}` — opt‑in LLM synthesis
+### `recall(query, project, force?) -> {project, summary, sources}` — opt‑in LLM synthesis
 The one read tool that runs an LLM. It retrieves the memories most relevant to `query` (the same hybrid
 retrieval as `search`), then a local generator writes a concise answer using **only** those memories — replying
 exactly "No relevant memories found." when none are relevant (never outside knowledge). Returns the synthesized
@@ -20,6 +20,7 @@ exactly "No relevant memories found." when none are relevant (never outside know
 so the answer stays light on the caller's context. Unlike `search` (ranked hits) it returns a written answer. The
 write path stays LLM‑free; `recall` is the single opt‑in LLM read tool, and the generator is **transient** (loaded
 on demand, unloaded after). Disable synthesis entirely with `MNEMO_GENERATOR=off`.
+- **Experimental — `force` gate.** Because the answer is LLM‑generated it can be wrong, so `recall` is gated: `force` defaults to `false` and the call is **rejected** with a warning until you pass `force=true` to acknowledge it. Prefer `search`/`browse` for verbatim memories. The gate lives in the MCP tool and fires before any model loads.
 
 ### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, status}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)

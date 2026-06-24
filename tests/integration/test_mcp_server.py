@@ -125,13 +125,38 @@ def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
         _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
     )
 
-    result = json.loads(_call(mcp, "recall", {"query": "auth", "project": "api"})[0])
+    # force=True acknowledges the experimental LLM-synthesis gate (see the gate test below)
+    result = json.loads(_call(mcp, "recall", {"query": "auth", "project": "api", "force": True})[0])
 
     assert result["project"] == "api"
     assert result["summary"] == "auth uses jwt refresh rotation"  # the synthesized answer
     # the supporting memory comes back only as a light reference — id + type, never its content
     assert result["sources"] == [{"id": remembered["id"], "type": "decision"}]
     assert "sections" not in result  # full memory content is not dumped to the caller
+
+
+def test_mcp_recall_refuses_without_force(tmp_path):
+    """recall is experimental (LLM-synthesized, may be wrong); without force=true it
+    refuses with an actionable warning instead of silently invoking the model. The gate
+    fires before the use case runs, so no generator/model is touched."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))  # default (heavy) generator — must never be reached
+    _call(mcp, "create_project", {"name": "api"})
+
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "recall", {"query": "auth", "project": "api"})  # force defaults to False
+    message = str(exc.value)
+    assert "experimental" in message.lower()  # warns it may be wrong
+    assert "force=true" in message  # actionable: tells the caller how to proceed
+
+
+def test_mcp_recall_force_is_optional_and_concrete(tmp_path):
+    """force carries a default (not required) and exposes a concrete boolean type so the
+    tool schema stays clean for MCP clients."""
+    tool = _tools(tmp_path)["recall"]
+    assert tool.inputSchema.get("required", []) == ["query", "project"]  # force not required
+    assert tool.inputSchema["properties"]["force"]["type"] == "boolean"
 
 
 def test_mcp_delete_project_cascades(tmp_path):
