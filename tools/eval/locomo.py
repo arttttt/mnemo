@@ -46,7 +46,7 @@ def ingest(container, data, conversations, max_turns):
                 break
             result = container.remember.execute(
                 content=core.turn_content(turn.get("speaker", ""), date, turn),
-                type="discussion", scope="project", project=slug, tags=[f"dialog:{turn['dia_id']}"],
+                type="working-notes", scope="project", project=slug, tags=[f"dialog:{turn['dia_id']}"],
             )
             id_to_dia[result.id].add(turn["dia_id"])
             per_conv += 1
@@ -70,7 +70,11 @@ def evaluate(container, data, id_to_dia, k_list, conversations, abstention):
         slug = sample["sample_id"]
         for qa in sample["qa"]:
             evidence = set(qa.get("evidence") or [])
-            if not evidence:
+            is_adversarial = qa.get("category") == core.ADVERSARIAL
+            # Adversarial (cat 5) questions are unanswerable traps: no `evidence` by design, but they
+            # ARE the abstention negatives, so they must NOT be skipped. Only a non-adversarial
+            # question with no gold is unscorable.
+            if not evidence and not is_adversarial:
                 continue
             hits: list[SearchResult] = container.search.execute(
                 query=qa["question"], scope="project", project=slug, limit=limit
@@ -79,15 +83,15 @@ def evaluate(container, data, id_to_dia, k_list, conversations, abstention):
             n += 1
             if n % 200 == 0:
                 print(f"  queried {n}/{total}", flush=True)
-            if qa.get("category") == core.ADVERSARIAL:
+            if is_adversarial:
                 adversarial.add(ranked, evidence, k_list)
             else:
                 per_category[qa["category"]].add(ranked, evidence, k_list)
                 answerable.add(ranked, evidence, k_list)
             if abstention and hits:
-                top1 = core.cosine(container.embedder.encode(qa["question"]),
-                                   container.embedder.encode(hits[0].content))
-                (neg if qa.get("category") == core.ADVERSARIAL else pos).append(top1)
+                (neg if is_adversarial else pos).append(
+                    core.cosine(container.embedder.encode(qa["question"]),
+                                container.embedder.encode(hits[0].content)))
 
     report = {
         "n_questions": n,

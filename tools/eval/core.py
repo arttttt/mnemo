@@ -69,16 +69,19 @@ def turn_content(speaker: str, date: str, turn: dict) -> str:
 
 
 def eligible_questions(data: list[dict], conversations: int | None, *, answerable_only: bool):
-    """(slug, qa, sorted-evidence) triples worth scoring; answerable_only drops adversarial."""
+    """(slug, qa, sorted-evidence) triples worth scoring. answerable_only drops adversarial; with
+    it False, adversarial (cat 5) are KEPT even though they carry no evidence — they are the
+    abstention negatives. A non-adversarial question with no evidence is unscorable and dropped."""
     convs = data if conversations is None else data[:conversations]
     out = []
     for sample in convs:
         for qa in sample["qa"]:
-            if not qa.get("evidence"):
+            adversarial = qa.get("category") == ADVERSARIAL
+            if answerable_only and adversarial:
                 continue
-            if answerable_only and qa.get("category") == ADVERSARIAL:
+            if not adversarial and not qa.get("evidence"):
                 continue
-            out.append((sample["sample_id"], qa, sorted(set(qa["evidence"]))))
+            out.append((sample["sample_id"], qa, sorted(set(qa.get("evidence") or []))))
     return out
 
 
