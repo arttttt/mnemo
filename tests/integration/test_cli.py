@@ -223,6 +223,28 @@ def test_cli_recall_reports_a_broken_required_runtime_without_a_traceback(tmp_pa
     assert "Traceback" not in result.output
 
 
+def test_cli_search_fails_fast_on_a_dimension_mismatch(tmp_path, monkeypatch):
+    # End-to-end: bake the store at an odd dimension FIRST (the CLI's sqlite_path is
+    # MNEMO_DATA_DIR/memory.db), then run the hash embedder (dim 256) against it. The guard
+    # must turn the mismatch into a clean BadParameter, not a deep CHECK / sqlite-vec failure.
+    pytest.importorskip("sqlite_vec")
+    from tests.support.sqlite_store import open_store
+
+    open_store(tmp_path, dim=7)  # tmp_path/memory.db, memories CHECK baked at dim 7
+    monkeypatch.setenv("MNEMO_EMBEDDER", "hash")  # dim 256 ≠ 7
+    monkeypatch.setenv("MNEMO_RERANKER", "off")
+    monkeypatch.setenv("MNEMO_GENERATOR", "off")
+    monkeypatch.setenv("MNEMO_DATA_DIR", str(tmp_path))
+    from mnemo.adapters.cli.app import app
+
+    result = testing.CliRunner().invoke(app, ["search", "anything", "--scope", "all"])
+
+    assert result.exit_code != 0
+    assert "dimension mismatch" in result.output
+    assert "7" in result.output and "256" in result.output  # both dimensions surfaced
+    assert "Traceback" not in result.output                 # clean message, no stack trace
+
+
 def test_cli_create_project_then_store(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     created = runner.invoke(app, ["create-project", "newproj", "--description", "a new one"])
