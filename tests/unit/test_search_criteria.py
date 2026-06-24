@@ -59,6 +59,36 @@ def test_created_after_filters_by_instant_not_by_string():
     assert not SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+00:00").matches(memory)
 
 
+def test_status_defaults_to_active():
+    assert SearchCriteria(scope="all").status == "active"
+
+
+@pytest.mark.parametrize("status", ["active", "superseded", "all"])
+def test_status_accepts_the_three_values(status):
+    assert SearchCriteria(scope="all", status=status).status == status
+
+
+def test_status_rejects_an_unknown_value():
+    with pytest.raises(ValueError) as exc:
+        SearchCriteria(scope="all", status="archived")
+    assert "status" in str(exc.value)
+
+
+def test_matches_respects_status():
+    from mnemo.domain.memory import Memory
+
+    active = Memory.create("a", project="api")          # status defaults to active
+    superseded = Memory.create("s", project="api")
+    superseded.status = "superseded"
+
+    assert SearchCriteria(scope="all").matches(active)                      # default: active only
+    assert not SearchCriteria(scope="all").matches(superseded)
+    assert SearchCriteria(scope="all", status="superseded").matches(superseded)
+    assert not SearchCriteria(scope="all", status="superseded").matches(active)
+    assert SearchCriteria(scope="all", status="all").matches(active)       # all: both pass
+    assert SearchCriteria(scope="all", status="all").matches(superseded)
+
+
 @pytest.mark.parametrize("scope", ["global", "all"])
 def test_project_is_rejected_with_global_or_all_scope(scope):
     # scope is authoritative for these — a project would be silently dropped, so the

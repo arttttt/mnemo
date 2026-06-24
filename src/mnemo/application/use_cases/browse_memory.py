@@ -28,6 +28,7 @@ class BrowseMemoryUseCaseImpl:
         tags: list[str] | None = None,
         related_files: list[str] | None = None,
         created_after: str | None = None,
+        status: str = "active",
         limit: int = 10,
     ) -> list[BrowseResult]:
         criteria = SearchCriteria(
@@ -37,6 +38,7 @@ class BrowseMemoryUseCaseImpl:
             tags=tuple(tags or ()),
             related_files=tuple(related_files or ()),
             created_after=created_after,
+            status=status,
         )
         self._gate.check(criteria.scope, criteria.project)
         scored = self._repository.retrieve(Retrieval(criteria=criteria, limit=limit))
@@ -49,6 +51,8 @@ class BrowseMemoryUseCaseImpl:
                 content=item.memory.content,
                 related_files=item.memory.related_files,
                 created_at=item.memory.created_at,
+                topic_key=item.memory.topic_key,
+                status=item.memory.status,
             )
             for item in scored
         ]

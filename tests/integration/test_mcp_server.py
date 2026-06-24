@@ -306,6 +306,25 @@ def test_mcp_browse_requires_a_project_in_project_scope(tmp_path):
     assert "scope='project'" in str(exc.value)
 
 
+def test_mcp_browse_filters_by_status_and_exposes_topic_key(tmp_path):
+    """browse(status=...) surfaces superseded versions for audit; hits carry topic_key + status."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
+    _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})  # supersedes v1
+
+    active = [json.loads(b) for b in _call(mcp, "browse", {"project": "api"})]
+    assert [h["content"] for h in active] == ["auth v2"]  # default status=active → only the head
+    assert active[0]["topic_key"] == "auth/model" and active[0]["status"] == "active"
+
+    superseded = [json.loads(b) for b in _call(mcp, "browse", {"project": "api", "status": "superseded"})]
+    assert [h["content"] for h in superseded] == ["auth v1"]
+    assert superseded[0]["status"] == "superseded"
+
+    every = [json.loads(b) for b in _call(mcp, "browse", {"project": "api", "status": "all"})]
+    assert {h["content"] for h in every} == {"auth v1", "auth v2"}
+
+
 def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):
     """The write path enforces the same contract as the read path: a project-scoped
     remember with no project is a loud error, not a silently unreachable row."""

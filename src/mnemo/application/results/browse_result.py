@@ -17,3 +17,5 @@ class BrowseResult:
     content: str
     related_files: list[str]
     created_at: str
+    topic_key: str | None
+    status: str

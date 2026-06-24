@@ -21,6 +21,7 @@ MemoryTypeName = Literal[
 ]
 StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
+MemoryStatus = Literal["active", "superseded", "all"]
 
 
 def build_mcp(container: Optional[Container] = None, **settings):
@@ -165,6 +166,10 @@ def build_mcp(container: Optional[Container] = None, **settings):
             str,
             Field(description="Keep only memories created at or after this ISO-8601 instant (e.g. '2026-06-01' or '2026-06-01T00:00:00+00:00')."),
         ] = None,
+        status: Annotated[
+            MemoryStatus,
+            Field(description="Which versions to list: 'active' (default, current only), 'superseded' (only replaced), or 'all'."),
+        ] = "active",
         limit: Annotated[
             int,
             Field(ge=1, le=100, description="Maximum number of memories to return."),
@@ -175,7 +180,9 @@ def build_mcp(container: Optional[Container] = None, **settings):
         Use this for category retrieval ("all type=decision in this project") where
         a semantic query would only bias the order. No relevance ranking, so hits
         carry no score; they are ordered by recency. Each hit is {id, type, scope,
-        project, content, related_files, created_at}. Use `search` to find by meaning.
+        project, content, related_files, created_at, topic_key, status}. By default only
+        active memories; pass status='superseded'/'all' to audit replaced versions. Use
+        `search` to find by meaning.
         """
         results = container.browse.execute(
             scope=scope,
@@ -184,6 +191,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
             tags=tags,
             related_files=related_files,
             created_after=created_after,
+            status=status,
             limit=limit,
         )
         return [asdict(result) for result in results]

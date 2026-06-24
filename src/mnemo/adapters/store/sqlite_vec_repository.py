@@ -486,8 +486,13 @@ class SqliteRepositoryImpl:
 
     def _where(self, criteria: SearchCriteria) -> tuple[str, list[str]]:
         """Translate the criteria to a SQL WHERE, shared by both retrieval legs."""
-        clauses = ["m.status = 'active'"]
+        clauses: list[str] = []
         params: list[str] = []
+        if criteria.status == "active":
+            clauses.append("m.status = 'active'")
+        elif criteria.status == "superseded":
+            clauses.append("m.status = 'superseded'")
+        # 'all' → no status clause (active + superseded)
         if criteria.scope == "global":
             clauses.append("m.scope = 'global'")
         elif criteria.scope != "all":  # 'project' = this project OR global (soft scope)
@@ -510,7 +515,7 @@ class SqliteRepositoryImpl:
         if criteria.created_after is not None:
             clauses.append("m.created_at >= ?")
             params.append(criteria.created_after)
-        return " AND ".join(clauses), params
+        return (" AND ".join(clauses) or "1=1"), params
 
     def _read_one(
         self, conn: sqlite3.Connection, predicate: str, params: tuple
