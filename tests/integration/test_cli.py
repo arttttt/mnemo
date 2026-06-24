@@ -142,6 +142,26 @@ def test_cli_delete_purge_and_stats(tmp_path, monkeypatch):
     assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
 
 
+def test_cli_delete_cascade_removes_the_whole_lineage(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    # Build a supersede chain v1 <- v2 <- v3 under one topic_key (the CLI embeds inline).
+    runner.invoke(app, ["store", "auth v1", "--project", "api", "--topic-key", "auth/model"])
+    runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])
+    head = json.loads(
+        runner.invoke(
+            app, ["store", "auth v3", "--project", "api", "--topic-key", "auth/model"]
+        ).stdout
+    )["id"]
+
+    deleted = runner.invoke(app, ["delete", head, "--cascade"])
+    assert deleted.exit_code == 0, deleted.output
+    assert json.loads(deleted.stdout)["deleted"] == 3  # head + the two superseded versions
+
+    # the whole topic is gone (without --cascade only the head would have been removed)
+    found = runner.invoke(app, ["search", "auth", "--project", "api"])
+    assert json.loads(found.stdout) == []
+
+
 def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
