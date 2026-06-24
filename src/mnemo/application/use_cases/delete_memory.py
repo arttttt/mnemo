@@ -17,8 +17,8 @@ class DeleteMemoryUseCaseImpl:
         self._repository = repository
         self._projects = projects
 
-    def delete(self, ids: list[str]) -> DeletionResult:
-        return DeletionResult(deleted=self._repository.delete(ids))
+    def delete(self, ids: list[str], cascade: bool = False) -> DeletionResult:
+        return DeletionResult(deleted=self._repository.delete(ids, cascade=cascade))
 
     def purge(self) -> DeletionResult:
         """Full reset: every memory and link, and the project registry too (which

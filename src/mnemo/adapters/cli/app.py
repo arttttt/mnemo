@@ -299,9 +299,14 @@ def reindex(
 @app.command()
 def delete(
     ids: list[str] = typer.Argument(..., help="Ids of the memories to delete."),
+    cascade: bool = typer.Option(
+        False,
+        "--cascade",
+        help="Also delete every older memory each id supersedes, down to the chain root (the whole lineage).",
+    ),
 ) -> None:
-    """Permanently delete specific memories."""
-    result = build_container().delete.delete(ids)
+    """Permanently delete specific memories (with --cascade, their whole older lineage too)."""
+    result = build_container().delete.delete(ids, cascade=cascade)
     typer.echo(json.dumps(asdict(result)))
 
 

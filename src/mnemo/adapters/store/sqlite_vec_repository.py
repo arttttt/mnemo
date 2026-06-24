@@ -355,7 +355,30 @@ class SqliteRepositoryImpl:
         )
         return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
 
-    def delete(self, ids: list[str]) -> int:
+    @staticmethod
+    def _ancestor_closure(
+        seeds: set[str], by_id: dict[str, sqlite3.Row]
+    ) -> set[str]:
+        """Every transitive `supersedes` ancestor (the OLDER direction) of `seeds`, with the
+        seeds included — the exact set a cascade delete removes: each selected memory plus
+        all older members down to its chain root. `supersedes` is plain TEXT with no FK, so a
+        corrupt cycle would loop forever; a per-walk visited guard raises a clear error
+        instead (the caller's transaction then rolls back, leaving the store untouched)."""
+        closure = set(seeds)
+        for seed in seeds:
+            parent = by_id[seed]["supersedes"] if seed in by_id else None
+            walked: set[str] = set()
+            while parent is not None and parent not in walked:
+                walked.add(parent)
+                closure.add(parent)
+                parent = by_id[parent]["supersedes"] if parent in by_id else None
+            if parent is not None:  # stopped on an already-seen id → a cycle, not the root
+                raise ValueError(
+                    f"supersede cycle detected at '{parent}'; cascade delete aborted"
+                )
+        return closure
+
+    def delete(self, ids: list[str], cascade: bool = False) -> int:
         """Delete memories, keeping every surviving supersede chain consistent — in ONE
         transaction so a crash can't leave a half-healed chain:
         - SPLICE: a survivor whose `supersedes` points into the deleted set is repointed
@@ -363,17 +386,24 @@ class SqliteRepositoryImpl:
         - AUTO-PROMOTE: if a deleted row was the ACTIVE head of a (topic_key, project),
           the newest surviving member of that chain becomes active — so the topic_key is
           never left with history but no live record.
+        With `cascade=True`, each id is first expanded to itself plus every OLDER member it
+        transitively supersedes (down to the chain root): deleting a chain's head then removes
+        the whole lineage, while deleting an interior node removes it and all older members
+        and the newest survivor splices to a new root. The expansion happens INSIDE this one
+        transaction, so a failure rolls the whole delete back rather than half-truncate a chain.
         (delete_project / purge wipe whole chains via cascade, so neither applies there.)
         """
         if not ids:
             return 0
 
         def work(conn: sqlite3.Connection) -> int:
-            deleted = set(ids)
             rows = conn.execute(
                 "SELECT id, supersedes, status, topic_key, project, created_at FROM memories"
             ).fetchall()
             by_id = {row["id"]: row for row in rows}
+            deleted = set(ids)
+            if cascade:
+                deleted = self._ancestor_closure(deleted, by_id)
             survivors = [row for row in rows if row["id"] not in deleted]
 
             # SPLICE: repoint survivors around deleted ancestors (walk to the nearest survivor).
@@ -410,9 +440,10 @@ class SqliteRepositoryImpl:
             # Chunk the final delete: a single IN (...) over every id can exceed SQLite's
             # per-statement parameter cap. Every chunk runs in this one transaction, so the
             # delete stays atomic. (SPLICE/AUTO-PROMOTE above use per-row UPDATEs — no cap.)
+            target_ids = list(deleted)
             removed = 0
-            for start in range(0, len(ids), _DELETE_BATCH):
-                batch = ids[start:start + _DELETE_BATCH]
+            for start in range(0, len(target_ids), _DELETE_BATCH):
+                batch = target_ids[start:start + _DELETE_BATCH]
                 placeholders = ", ".join("?" for _ in batch)
                 removed += conn.execute(
                     f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(batch)

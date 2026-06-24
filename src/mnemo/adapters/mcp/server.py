@@ -235,9 +235,19 @@ def build_mcp(container: Optional[Container] = None, **settings):
     @mcp.tool()
     def delete(
         ids: Annotated[list[str], Field(description="Ids of the memories to delete.")],
+        cascade: Annotated[
+            bool,
+            Field(description="Also delete every OLDER memory each id transitively supersedes, down to the chain root (the whole lineage). Default false deletes only the given ids."),
+        ] = False,
     ) -> dict:
-        """Permanently delete specific memories. Returns {deleted}."""
-        return asdict(container.delete.delete(ids))
+        """Permanently delete specific memories. Returns {deleted}.
+
+        With cascade=true, each id is expanded to itself plus every older memory it
+        transitively supersedes (down to the chain root) — use it to drop a whole supersede
+        lineage at once. Superseded versions aren't returned by search/browse, so they can't
+        be found and deleted by id; cascade is how you remove them.
+        """
+        return asdict(container.delete.delete(ids, cascade=cascade))
 
     @mcp.tool()
     def purge() -> dict:

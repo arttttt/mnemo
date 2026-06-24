@@ -159,6 +159,24 @@ def test_mcp_recall_force_is_optional_and_concrete(tmp_path):
     assert tool.inputSchema["properties"]["force"]["type"] == "boolean"
 
 
+def test_mcp_delete_cascade_removes_the_whole_supersede_lineage(tmp_path):
+    """cascade=true deletes a memory plus every older version it supersedes — the whole
+    chain. An agent cannot do this by id: search/browse surface only the active head, so the
+    superseded versions are invisible and unenumerable."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
+    _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})
+    head = json.loads(
+        _call(mcp, "remember", {"content": "auth v3", "project": "api", "topic_key": "auth/model"})[0]
+    )
+
+    assert len(_call(mcp, "search", {"query": "auth", "project": "api"})) == 1  # only the head is visible
+    deleted = json.loads(_call(mcp, "delete", {"ids": [head["id"]], "cascade": True})[0])
+    assert deleted["deleted"] == 3  # head + the two superseded versions
+    assert _call(mcp, "search", {"query": "auth", "project": "api"}) == []  # the lineage is gone
+
+
 def test_mcp_delete_project_cascades(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})

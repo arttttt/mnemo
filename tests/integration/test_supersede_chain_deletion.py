@@ -11,6 +11,7 @@ import pytest
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.adapters.store.sqlite_vec_repository import SqliteRepositoryImpl
 from mnemo.domain.memory import Memory
 from tests.support.sqlite_store import open_store
 
@@ -153,3 +154,109 @@ def test_deleting_alternating_members_splices_each_gap_independently(tmp_path):
     assert by_id[v5.id].supersedes == v3.id, "v5 should splice past the deleted v4 to v3"
     active = repo.find_active_by_topic_key(_TOPIC, _PROJECT)
     assert active.id == v5.id
+
+
+# --- cascade: delete a member plus everything OLDER it supersedes, down to the root ---
+
+
+def test_cascade_deleting_the_head_removes_the_whole_lineage(tmp_path):
+    # Selecting the active head with cascade=True wipes the entire chain (head + all history):
+    # the closure walks head -> ... -> root, so the topic_key is retired with nothing left.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3 = _chain(repo, embedder)
+
+    assert repo.delete([v3.id], cascade=True) == 3  # head + the two older members
+
+    assert repo.find_active_by_topic_key(_TOPIC, _PROJECT) is None
+    assert list(repo.list_all()) == []
+
+
+def test_cascade_deleting_an_interior_node_drops_it_and_older_while_newer_survive(tmp_path):
+    # Cascade from an interior node removes it and every OLDER member; NEWER versions survive
+    # and the one just above the cut splices to a new root. The active head is untouched.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3, v4, v5 = _chain5(repo, embedder)
+
+    assert repo.delete([v3.id], cascade=True) == 3  # v3, v2, v1
+
+    by_id = {m.id: m for m in repo.list_all()}
+    assert set(by_id) == {v4.id, v5.id}, "only the members newer than the cut survive"
+    assert by_id[v4.id].supersedes is None, "the survivor above the cut becomes a new root"
+    assert by_id[v5.id].supersedes == v4.id, "newer lineage stays linked"
+    active = repo.find_active_by_topic_key(_TOPIC, _PROJECT)
+    assert active.id == v5.id, "cascading older members must not move the active head"
+
+
+def test_cascade_off_by_default_deletes_only_the_selected_node(tmp_path):
+    # The same selection without cascade removes a single node — the flag is the only
+    # difference, and it defaults off (backward-compatible).
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3, v4, v5 = _chain5(repo, embedder)
+
+    assert repo.delete([v3.id]) == 1  # cascade defaults to False
+
+    assert {m.id for m in repo.list_all()} == {v1.id, v2.id, v4.id, v5.id}
+
+
+def test_cascade_on_a_root_with_no_ancestors_deletes_just_it(tmp_path):
+    # Cascading the oldest member has nothing older to take: only the root goes, and its
+    # successor repoints to nothing — identical to a plain single delete of the root.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3 = _chain(repo, embedder)
+
+    assert repo.delete([v1.id], cascade=True) == 1
+
+    by_id = {m.id: m for m in repo.list_all()}
+    assert set(by_id) == {v2.id, v3.id}
+    assert by_id[v2.id].supersedes is None
+    assert repo.find_active_by_topic_key(_TOPIC, _PROJECT).id == v3.id
+
+
+def test_cascade_unions_overlapping_ancestor_sets_across_ids(tmp_path):
+    # Two ids from the same chain whose ancestor sets overlap: the closure is the UNION,
+    # deduplicated, so each older member is removed exactly once.
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3, v4, v5 = _chain5(repo, embedder)
+
+    # v4 -> {v4,v3,v2,v1}; v2 -> {v2,v1}; union = {v1,v2,v3,v4} (v1/v2 counted once).
+    assert repo.delete([v4.id, v2.id], cascade=True) == 4
+
+    by_id = {m.id: m for m in repo.list_all()}
+    assert set(by_id) == {v5.id}, "only the member newer than every cut survives"
+    assert by_id[v5.id].supersedes is None, "the lone survivor becomes a new root"
+    assert repo.find_active_by_topic_key(_TOPIC, _PROJECT).id == v5.id
+
+
+def test_ancestor_closure_raises_on_a_supersede_cycle():
+    # supersedes is plain TEXT with no FK, so a corrupt cycle (a <- b <- a) must not spin
+    # forever: the closure walk detects the revisit and raises, which rolls the delete back.
+    by_id = {"a": {"supersedes": "b"}, "b": {"supersedes": "a"}}
+    with pytest.raises(ValueError, match="cycle"):
+        SqliteRepositoryImpl._ancestor_closure({"a"}, by_id)
+
+
+def test_cascade_delete_aborts_and_rolls_back_on_a_corrupt_cycle(tmp_path):
+    # End-to-end atomicity: if `supersedes` were ever corrupted into a cycle, a cascade
+    # delete must fail loudly AND leave the whole store untouched (one transaction, full
+    # rollback) — never spin or half-truncate the chain.
+    import sqlite3
+
+    embedder = HashEmbedder()
+    repo, _ = open_store(tmp_path, embedder.dim, projects=(_PROJECT,))
+    v1, v2, v3 = _chain(repo, embedder)
+
+    # Corrupt the chain into a cycle (v1 -> v3, so v3 -> v2 -> v1 -> v3) via a raw write.
+    conn = sqlite3.connect(str(tmp_path / "memory.db"))
+    conn.execute("UPDATE memories SET supersedes = ? WHERE id = ?", (v3.id, v1.id))
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError, match="cycle"):
+        repo.delete([v3.id], cascade=True)
+
+    assert {m.id for m in repo.list_all()} == {v1.id, v2.id, v3.id}  # nothing was deleted
