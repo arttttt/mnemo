@@ -87,13 +87,12 @@ delete_project("checkout-api")                                     # delete it A
 - `list_projects() -> [{slug, description, created_at}]`, newest first; the reserved global scope is excluded.
 - `delete_project(name) -> {slug, description, created_at}` (the project removed). Deletes the project and, via the store's `ON DELETE CASCADE`, **all its memories — atomically**. Errors (with near‑match) on an unknown slug.
 
-### Deletion — `delete` / `delete_project` / `purge`
-Hard delete only (no soft‑delete). Available to **both the agent and the CLI**.
+### Deletion — `delete` / `delete_project`
+Hard delete only (no soft‑delete). Available to **both the agent and the CLI**. Wiping everything (`purge`) is **CLI‑only** (too destructive for the agent surface, and gated by a confirmation prompt) — see the operational section.
 ```python
 delete(ids=["..."])                # remove specific memories
 delete(ids=["..."], cascade=True)  # also remove every OLDER version they supersede (the whole lineage)
 delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
-purge()                     # remove everything: memories and the project registry
 ```
 A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage, since superseded versions aren't returned by `search`/`browse` and so can't be enumerated and deleted by id.
 
@@ -105,8 +104,9 @@ mnemo reindex [--dry-run]            # re-embed all memories; restarts the share
 mnemo consolidate [--project P]      # run background consolidation now (Phase 3)
 mnemo doctor                         # health: store/embedder/disk/warnings
 mnemo export / import                # portability (Phase 4)
+mnemo purge [--yes]                  # delete EVERYTHING: memories + project registry (prompts to confirm; CLI-only)
 ```
-(`delete` / `delete-project` / `purge`, and the project tools `create-project` / `update-project` / `list-projects`, are also available as CLI commands.)
+(`delete` / `delete-project`, and the project tools `create-project` / `update-project` / `list-projects`, are also available as CLI commands.)
 
 ## Design notes
 - One write verb, three read verbs (`search` by meaning, `browse` by filter, `recall` for an LLM‑synthesized answer), plus deletion — type/scope/filters are parameters.
