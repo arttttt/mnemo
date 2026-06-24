@@ -15,6 +15,8 @@ from mnemo.application.project_gate import UnknownProject
 from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
+from mnemo.infrastructure.container import Container
+from mnemo.infrastructure.dimension_guard import verify_store_dimension
 from mnemo.infrastructure.logging_config import configure_logging
 
 _TYPES = ", ".join(member.value for member in MemoryType)
@@ -33,6 +35,18 @@ def _installed_version() -> str:
 
 def _echo_version() -> None:
     typer.echo(_installed_version())
+
+
+def _guarded_container() -> Container:
+    """Build the container, then fail fast (cleanly) if the configured embedder's dimension
+    disagrees with the store's. NOT used by `reindex`, which must open a mismatched store to
+    repair it via set_dimension."""
+    container = build_container()
+    try:
+        verify_store_dimension(container.embedding_queue, container.embedder.dim)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc))
+    return container
 
 
 @app.command("version")
@@ -72,7 +86,7 @@ def store(
     ),
 ) -> None:
     """Store a memory. No LLM runs on write; prints {id, status}."""
-    container = build_container()
+    container = _guarded_container()
     try:
         result = container.remember.execute(
             content=content,
@@ -117,7 +131,7 @@ def search(
     ),
 ) -> None:
     """Search memories by meaning; prints ranked hits as JSON."""
-    container = build_container()
+    container = _guarded_container()
     try:
         results = container.search.execute(
             query=query,
@@ -196,7 +210,7 @@ def recall(
     configure_logging()
     started = time.monotonic()
     try:
-        bundle = build_container().recall.execute(project=project, query=query, limit=limit)
+        bundle = _guarded_container().recall.execute(project=project, query=query, limit=limit)
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
     except RuntimeError as exc:

@@ -25,6 +25,7 @@ from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.config import Config
+from mnemo.infrastructure.dimension_guard import verify_store_dimension
 from mnemo.infrastructure.logging_config import configure_logging
 
 _log = logging.getLogger("mnemo.service")
@@ -37,6 +38,10 @@ def main() -> None:
     # metadata; the service just reads it (see MetaSessionProvider).
     session_provider = MetaSessionProvider()
     container = build_container(config, session_provider=session_provider)
+    # Fail fast if the configured embedder's dimension disagrees with the store's baked one
+    # (e.g. MNEMO_EMBEDDER switched without a reindex) — otherwise the mismatch surfaces only
+    # deep, as a CHECK violation on write or a sqlite-vec error on query.
+    verify_store_dimension(container.embedding_queue, container.embedder.dim)
     # The service is long-running, so it embeds OFF the hot path: swap the inline
     # scheduler for the async worker pool and rewire the write use case to it. Recovery
     # is automatic — the workers drain the DB's pending rows on start.

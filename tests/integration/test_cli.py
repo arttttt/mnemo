@@ -199,8 +199,19 @@ def test_cli_recall_reports_a_broken_required_runtime_without_a_traceback(tmp_pa
                 "reinstall mnemo"
             )
 
+    # The guarded recall path reads these before recall runs; a None dimension means a
+    # fresh store, so the dimension guard is a no-op and the broken generator is what surfaces.
+    class _Queue:
+        def current_dim(self):
+            return None
+
+    class _Embedder:
+        dim = 1024
+
     class _Container:
         recall = _Boom()
+        embedding_queue = _Queue()
+        embedder = _Embedder()
 
     monkeypatch.setattr(
         "mnemo.adapters.cli.app.build_container", lambda *a, **k: _Container()
