@@ -3,14 +3,16 @@
 
 LoCoMo (eval.locomo) only validates the harness against a conversational standard. This eval
 measures mnemo on project-fact memory: it ingests the self-contained fixture into an ISOLATED
-store, runs the LLM-free search path per question, and scores by slice:
+store, runs the search path per question, and scores by slice:
   - answerable / superseded: Recall@k / MRR + Any/Complete against the gold memory keys (the
     shared Bucket); superseded ALSO checks the stale version does not out-rank the current one.
   - irrelevant (REFUSE): the abstention readout — the two candidate input-gate signals, raw dense
     cosine AND lexical corroboration, on answerable vs irrelevant, so the refusal threshold is a
     CURVE, not one number (the LoCoMo run showed cosine alone can't separate on-topic traps).
-Tier-1 (no generator). Reuses tools.eval.core (isolated harness) + tools.eval.metrics. Run:
+The chosen prod reranker (bge) is opt-in via --reranker (over-fetch a pool, rerank, re-score) —
+the go/no-go for wiring it into search. Reuses tools.eval.core + tools.eval.metrics. Run:
     python -m tools.eval.domain --embedder pplx
+    python -m tools.eval.domain --embedder pplx --reranker bge
     python -m tools.eval.domain --embedder hash         # machinery smoke (no model)
 """
 from __future__ import annotations
@@ -26,6 +28,7 @@ from mnemo.application.use_cases.create_project import ProjectAlreadyExists
 
 from tools.eval import core
 from tools.eval.domain_fixture import Fixture, load_fixture
+from tools.eval.models import RERANKERS, build_reranker
 
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "domain_v1.json"
 
@@ -57,6 +60,15 @@ def _first_index(keys: list[str], targets: set[str]) -> int | None:
     return next((i for i, key in enumerate(keys) if key in targets), None)
 
 
+def _rerank_fn(reranker):
+    """Wrap a reranker (.rank(query, docs) -> scores) as rerank(query, hits) -> hits reordered by
+    score — so evaluate() stays agnostic to which reranker/runtime produced the scores."""
+    def rerank(query, hits):
+        scores = reranker.rank(query, [h.content for h in hits])
+        return [hit for _, hit in sorted(zip(scores, hits), key=lambda pair: pair[0], reverse=True)]
+    return rerank
+
+
 def _corroboration_tradeoff(positives: list[int], negatives: list[int]) -> dict:
     def rate(xs, c):
         return round(sum(x < c for x in xs) / max(len(xs), 1), 3)
@@ -72,10 +84,12 @@ def _corroboration_tradeoff(positives: list[int], negatives: list[int]) -> dict:
     }
 
 
-def evaluate(container, fixture: Fixture, key_by_id, k_list, rerank=None) -> dict:
+def evaluate(container, fixture: Fixture, key_by_id, k_list, rerank=None, pool=None) -> dict:
     """Score the fixture. `rerank(query, hits) -> reordered hits` is the optional prod reranker
-    (bge); None = the pure search path. Returns a JSON-serializable report."""
-    limit = max(k_list)
+    (bge); None = the pure search path. `pool` over-fetches before reranking (defaults to max k).
+    Returns a JSON-serializable report."""
+    limit = pool or max(k_list)
+    topk = max(k_list)
     answerable, superseded = core.Bucket(), core.Bucket()
     stale_in_topk = stale_at_or_above = n_sup = 0
     cos: dict = defaultdict(list)
@@ -102,8 +116,9 @@ def evaluate(container, fixture: Fixture, key_by_id, k_list, rerank=None) -> dic
         elif q.slice == "superseded":
             superseded.add([{key} for key in keys], gold, k_list)
             n_sup += 1
-            sp = _first_index(keys[:limit], set(q.stale_keys))
-            gp = _first_index(keys[:limit], gold)
+            window = keys[:topk]
+            sp = _first_index(window, set(q.stale_keys))
+            gp = _first_index(window, gold)
             if sp is not None:
                 stale_in_topk += 1
                 if gp is None or sp <= gp:
@@ -172,6 +187,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--embedder", default="pplx", choices=["pplx", "hash"])
     p.add_argument("--fixture", type=Path, default=_FIXTURE)
+    p.add_argument("--reranker", choices=sorted(RERANKERS), default=None,
+                   help="apply the named prod reranker (over-fetch a pool, rerank, re-score)")
+    p.add_argument("--pool", type=int, default=30, help="over-fetch pool size when reranking")
     p.add_argument("--store-dir", type=Path, default=None)
     p.add_argument("--models-dir", default=os.path.expanduser("~/.mnemo/models"))
     p.add_argument("--k", default="1,3,5,10")
@@ -193,13 +211,18 @@ def main() -> None:
     key_by_id = ingest(container, fixture)
     print(f"ingested {len(key_by_id)} memories; querying {len(fixture.questions)} questions…")
 
-    report = evaluate(container, fixture, key_by_id, k_list)
-    meta = {"embedder": args.embedder, "reranker": "off",
+    rerank = pool = None
+    if args.reranker:
+        print(f"reranking with {args.reranker} (over-fetch pool {args.pool})")
+        rerank = _rerank_fn(build_reranker(args.reranker, args.models_dir))
+        pool = args.pool
+    report = evaluate(container, fixture, key_by_id, k_list, rerank=rerank, pool=pool)
+    meta = {"embedder": args.embedder, "reranker": args.reranker or "off",
             "n_memories": len(fixture.memories), "n_questions": len(fixture.questions), "k": k_list}
     print_report(report, meta, k_list)
 
     core.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = args.out or core.RESULTS_DIR / f"domain_{args.embedder}.json"
+    out = args.out or core.RESULTS_DIR / f"domain_{args.embedder}_{meta['reranker']}.json"
     out.write_text(json.dumps({"meta": meta, "report": report}, indent=2))
     print(f"wrote {out}")
     if tmp is not None:
