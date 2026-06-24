@@ -42,7 +42,9 @@ high‑water of activations), and a single 2048‑token encode bumps that to **~
 (measured). So while an agent is connected but **quiet** (not writing), the service holds the full embedder
 footprint instead of falling toward idle — the resting plateau does **not** drop on its own. (ORT arena tuning
 — `enable_cpu_mem_arena=False` or per‑run shrinkage — only lowers the long‑input *peak* ~1.5→1.0 GB; it does
-not return the resting plateau, which is the loaded model itself.)
+not return the resting plateau, which is the loaded model itself.) *Observability: the runtime lifecycle logs now
+report **current** RSS next to the peak, so a load/unload's real resident delta — and whether a free actually lands —
+is visible; previously they logged only the monotonic peak, which by construction never shows a release.*
 **What:** make the embedder transient like the generator — **lazily load** the ONNX session on first encode and
 **unload** it (drop the session → the OS reclaims the weights + arena) after an idle grace, reloading on demand.
 Embedding is already off the hot path (the async worker), so the reload cost is tolerable; a grace timer avoids
@@ -127,7 +129,23 @@ and rejected:
   production ground truth to calibrate against. (A floor is meaningless for `browse` — there is no query.)
 The RRF value stays **internal** (it only orders the hits — the list order conveys the ranking). Retrieval‑quality
 leverage is the **bank** (consolidation: dedup + staleness) and a **feedback loop**, not an exposed score. Refusal /
-faithfulness gates remain a RECALL (generator) concern, not a `search` one.
+faithfulness gates remain a RECALL (generator) concern, not a `search` one. Lexical **corroboration** (counting query
+terms a hit carries) was likewise weighed as an exposed/gating signal and **rejected for `search`** for the same
+reason — the agent already reads the hits — and kept, if anywhere, as a RECALL input‑gate lever (not a priority).
+
+### Bank consolidation — deferred; a read‑only audit, never a background auto‑writer
+**Why:** consolidation (near‑dup dedup + staleness/supersede) is the real retrieval leverage — the score item above
+points here — but the open question from the latest review is *how it runs*, not just *what it does*. A worker that
+**rewrites** the bank unattended is a standing failure point: a bad merge or a wrong supersede is **persistent
+poison** (the generation‑vs‑structure axis), and at single‑user scale there is **no feedback signal** to catch it.
+**Decision (2026‑06):** if/when pursued, consolidation is **read‑only and propose‑only** — a `mnemo audit` (built on
+the management surface below) that **surfaces** near‑dup clusters (SemDeDup: embed → cluster → cosine, LLM‑free) and
+staleness/supersede candidates (recency + topic, optional NLI) for the **human/agent to apply**, through the existing
+propose‑not‑apply seam (`ProposedMemory` / `Plan` / `Operation`) and **supersede‑not‑delete**. Never an unattended
+writer; **no abstractive merge** (extractive / classification only). **Deferred for now** — marginal at personal
+scale until there is real usage feedback to calibrate against; the lever that unblocks it first is a **feedback
+signal**, not more retrieval knobs. This qualifies the auto‑apply framing in *Retrieval robustness to write‑time
+mis‑typing* below: re‑typing too is **propose‑first**, not unattended auto‑apply, under the same stance.
 
 ### Graph navigation at the MCP surface (`get` / `neighbors`)
 **Why:** memory is densely linked (`[[topic_key]]` wikilinks), but there is no way to *traverse* relationships
@@ -170,9 +188,10 @@ and tune — per‑channel weighting, length normalisation, or down‑weighting 
 `type=rule` query ([[feedback/type-discipline]]). The root cause is a write‑time data error, not a retrieval bug,
 and a query‑side workaround ("also search `type=learning`") would only pollute the access pattern.
 **What:** fix at the source via a **re‑type op in the background consolidation worker**: under the determinism
-axiom, re‑typing is a cheap, reindex‑free, reversible filter‑facet correction — lean auto‑apply with
+axiom, re‑typing is a cheap, reindex‑free, reversible filter‑facet correction — a candidate for auto‑apply with
 `provenance=llm` and a before→after log, rather than flag‑only (which would create review noise for every typo).
-Settle the policy when the worker's op set is designed.
+Settle the policy when the worker's op set is designed — and against the **propose‑first / no‑unattended‑writes**
+stance in *Bank consolidation* above (re‑typing earns auto‑apply only once the read‑only audit proves it safe).
 
 ### Management surface — audit & correct memory *through the server*
 **Why:** auditing and correcting memory (find stale entries, supersede, re‑type, delete) must go through the

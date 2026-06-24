@@ -30,6 +30,21 @@ def test_unload_is_idempotent_when_nothing_is_loaded():
     assert runtime._llama is None
 
 
+def test_unload_logs_current_rss_below_peak_so_a_free_is_visible(caplog, monkeypatch):
+    # The bug this guards: a freed model logged the monotonic PEAK, so the line read as if
+    # memory had grown after the free. The freed line must report the live current RSS.
+    monkeypatch.setattr("llmkit.runtime.llama_cpp.current_rss_mb", lambda: 1800.0)
+    monkeypatch.setattr("llmkit.runtime.llama_cpp.peak_rss_mb", lambda: 7300.0)
+    runtime = LlamaCppRuntime(GgufSource(model="/x.gguf"))
+    runtime._llama = SimpleNamespace(close=lambda: None)
+
+    with caplog.at_level(logging.INFO, logger="llmkit.llama"):
+        runtime.unload()
+
+    freed = next(record.getMessage() for record in caplog.records if "freed" in record.getMessage())
+    assert "rss=1800MB" in freed and "peak=7300MB" in freed
+
+
 def test_load_resolves_the_configured_revision(tmp_path, monkeypatch):
     snapshot = tmp_path / "snapshot"
     snapshot.mkdir()

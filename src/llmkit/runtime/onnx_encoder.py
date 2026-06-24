@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from llmkit.ports.tokenizer import Encoding
-from llmkit.runtime._stats import peak_rss_mb
+from llmkit.runtime._stats import current_rss_mb, peak_rss_mb
 
 _log = logging.getLogger("llmkit.onnx")
 
@@ -71,8 +71,8 @@ class OnnxEncoderRuntime:
         self._session = session
         self._inputs = frozenset(spec.name for spec in session.get_inputs())
         _log.info(
-            "encoder loaded model=%s load=%.2fs peak_rss=%.0fMB",
-            src.repo, time.monotonic() - started, peak_rss_mb(),
+            "encoder loaded model=%s load=%.2fs rss=%.0fMB peak=%.0fMB",
+            src.repo, time.monotonic() - started, current_rss_mb(), peak_rss_mb(),
         )
 
     def unload(self) -> None:
@@ -80,7 +80,10 @@ class OnnxEncoderRuntime:
             return
         self._session = None
         self._inputs = frozenset()
-        _log.info("encoder freed model=%s peak_rss=%.0fMB", self._source.repo, peak_rss_mb())
+        _log.info(
+            "encoder freed model=%s rss=%.0fMB peak=%.0fMB",
+            self._source.repo, current_rss_mb(), peak_rss_mb(),
+        )
 
     def run(self, encodings: Sequence[Encoding]) -> EncoderOutput:
         """Run a batch of PRE-TOKENIZED inputs through the session. Each encoding is
@@ -108,7 +111,7 @@ class OnnxEncoderRuntime:
             feed["token_type_ids"] = stack(2)
         output = self._session.run(None, feed)[0]
         _log.info(
-            "encoder ran n=%d in %.3fs peak_rss=%.0fMB",
-            len(rows), time.monotonic() - started, peak_rss_mb(),
+            "encoder ran n=%d in %.3fs",
+            len(rows), time.monotonic() - started,
         )
         return EncoderOutput(output=output, attention_mask=mask)
