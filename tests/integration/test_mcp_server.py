@@ -30,7 +30,7 @@ def _tools(tmp_path):
 def test_mcp_exposes_the_agent_tools(tmp_path):
     tools = set(_tools(tmp_path))
     assert {
-        "remember", "search", "browse", "recall", "delete",
+        "remember", "search", "browse", "get", "recall", "delete",
         "create_project", "delete_project", "update_project", "list_projects",
     } <= tools
     assert "purge" not in tools  # drop-everything is too destructive for the agent surface (CLI-only)
@@ -333,6 +333,41 @@ def test_mcp_browse_filters_by_status_and_exposes_topic_key(tmp_path):
 
     every = [json.loads(b) for b in _call(mcp, "browse", {"project": "api", "status": "all"})]
     assert {h["content"] for h in every} == {"auth v1", "auth v2"}
+
+
+def test_mcp_get_dereferences_by_topic_key_with_its_chain(tmp_path):
+    """get(topic_key=...) returns the active head + its supersede chain via call_tool."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
+    head = json.loads(_call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})[0])
+
+    result = json.loads(_call(mcp, "get", {"topic_key": "auth/model", "project": "api"})[0])
+    assert result["id"] == head["id"] and result["content"] == "auth v2"
+    assert result["status"] == "active" and result["topic_key"] == "auth/model"
+    assert [e["status"] for e in result["chain"]] == ["active", "superseded"]
+    assert result["chain_total"] == 2
+
+
+def test_mcp_get_by_id_reaches_a_superseded_version(tmp_path):
+    """get(id=...) reaches a record search/browse cannot surface (a superseded version)."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    old = json.loads(_call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})[0])
+    _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})
+
+    result = json.loads(_call(mcp, "get", {"id": old["id"]})[0])
+    assert result["content"] == "auth v1" and result["status"] == "superseded"
+
+
+def test_mcp_get_missing_topic_key_is_a_loud_error(tmp_path):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    with pytest.raises(ToolError) as exc:
+        _call(mcp, "get", {"topic_key": "nope/x", "project": "api"})
+    assert "topic_key" in str(exc.value)
 
 
 def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):

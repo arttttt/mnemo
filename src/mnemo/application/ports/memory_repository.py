@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from mnemo.application.results.get_result import ChainEntry
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.types import Vector
@@ -41,6 +42,27 @@ class MemoryRepository(Protocol):
     def find_active_by_topic_key(
         self, topic_key: str, project: str | None
     ) -> Memory | None: ...
+
+    def find_by_id(self, memory_id: str) -> Memory | None:
+        """The memory with this id regardless of status (active or superseded), or None.
+        Ids are globally unique, so no scope/project is needed."""
+        ...
+
+    def chain(
+        self, topic_key: str, project: str | None, *, limit: int, after_id: str | None = None
+    ) -> list[ChainEntry]:
+        """The supersede lineage of (topic_key, project) — every version sharing the key —
+        newest first, each a light ChainEntry. `after_id` is a keyset cursor: return only
+        versions OLDER than that id. Bounded by `limit`."""
+        ...
+
+    def chain_length(self, topic_key: str, project: str | None) -> int:
+        """Total versions in the (topic_key, project) lineage."""
+        ...
+
+    def topic_keys(self, project: str | None) -> list[str]:
+        """Distinct topic_keys under `project` (any status) — near-match on a get miss."""
+        ...
 
     def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
         """Rank memories for a retrieval request: dense (`request.vector`) and/or

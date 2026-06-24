@@ -34,6 +34,7 @@ from mnemo.adapters.store.memory_serializer import from_dict, to_dict
 from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
 from mnemo.adapters.store.transaction import SnapshotRead
+from mnemo.application.results.get_result import ChainEntry
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
 from mnemo.application.search_criteria import SearchCriteria
@@ -295,6 +296,67 @@ class SqliteRepositoryImpl:
             predicate = "topic_key = ? AND status = 'active' AND project = ?"
             params = (topic_key, project)
         return self._read.execute(lambda conn: self._read_one(conn, predicate, params))
+
+    def find_by_id(self, memory_id: str) -> Memory | None:
+        return self._read.execute(
+            lambda conn: self._read_one(conn, "id = ?", (memory_id,))
+        )
+
+    def chain(
+        self, topic_key: str, project: str | None, *, limit: int, after_id: str | None = None
+    ) -> list[ChainEntry]:
+        # Walk the actual supersede pointers (newest -> oldest), so the order is the true
+        # lineage and never depends on created_at ties. The seed is the chain's active head,
+        # or — when paging — the version just OLDER than `after_id` (its `supersedes`).
+        def work(conn: sqlite3.Connection) -> list:
+            if after_id is not None:
+                row = conn.execute(
+                    "SELECT supersedes FROM memories WHERE id = ?", (after_id,)
+                ).fetchone()
+                seed = row[0] if row else None
+            else:
+                row = conn.execute(
+                    "SELECT id FROM memories WHERE topic_key = ? AND project = ?"
+                    " AND status = 'active'",
+                    (topic_key, project),
+                ).fetchone()
+                seed = row[0] if row else None
+            if seed is None:
+                return []
+            return conn.execute(
+                "WITH RECURSIVE lineage(id, status, created_at, supersedes) AS ("
+                "  SELECT id, status, created_at, supersedes FROM memories WHERE id = ?"
+                "  UNION ALL"
+                "  SELECT m.id, m.status, m.created_at, m.supersedes"
+                "    FROM memories m JOIN lineage l ON m.id = l.supersedes"
+                ") SELECT id, status, created_at FROM lineage LIMIT ?",
+                (seed, limit),
+            ).fetchall()
+
+        rows = self._read.execute(work)
+        return [
+            ChainEntry(id=row["id"], status=row["status"], created_at=row["created_at"])
+            for row in rows
+        ]
+
+    def chain_length(self, topic_key: str, project: str | None) -> int:
+        (count,) = self._read.execute(
+            lambda conn: conn.execute(
+                "SELECT count(*) FROM memories WHERE topic_key = ? AND project = ?",
+                (topic_key, project),
+            ).fetchone()
+        )
+        return count
+
+    def topic_keys(self, project: str | None) -> list[str]:
+        rows = self._read.execute(
+            lambda conn: conn.execute(
+                "SELECT DISTINCT topic_key FROM memories"
+                " WHERE project = ? AND topic_key IS NOT NULL",
+                (project,),
+            ).fetchall()
+        )
+        return [row[0] for row in rows]
 
     def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
         limit = request.limit

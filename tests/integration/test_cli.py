@@ -293,6 +293,19 @@ def test_cli_browse_status_lists_superseded(tmp_path, monkeypatch):
     assert hits[0]["status"] == "superseded" and hits[0]["topic_key"] == "auth/model"
 
 
+def test_cli_get_by_topic_key(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "auth v1", "--project", "api", "--topic-key", "auth/model"])
+    runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])
+
+    result = runner.invoke(app, ["get", "--topic-key", "auth/model", "--project", "api"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["content"] == "auth v2" and payload["status"] == "active"
+    assert payload["chain_total"] == 2
+    assert [e["status"] for e in payload["chain"]] == ["active", "superseded"]
+
+
 def test_cli_create_project_then_store(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     created = runner.invoke(app, ["create-project", "newproj", "--description", "a new one"])
