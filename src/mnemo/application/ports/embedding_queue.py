@@ -32,3 +32,9 @@ class EmbeddingQueue(Protocol):
         pending for re-computation. No-op when the dimension already matches. Used to
         migrate between embedders; content/metadata/links are preserved."""
         ...
+
+    def current_dim(self) -> int | None:
+        """The embedding dimension baked into the live store schema, or None when no
+        memories table exists yet. Symmetric to `set_dimension`: startup compares it with
+        the configured embedder's dim to fail fast on a mismatch instead of failing deep."""
+        ...

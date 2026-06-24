@@ -99,10 +99,10 @@ def test_sqlite_reindex_rebuilds_schema_dim(tmp_path):
     store = _sqlite(tmp_path, dim=256)
     repo, _ = store
     _remember(store, HashEmbedder(dim=256), "note one")
-    assert repo._current_dim() == 256
+    assert repo.current_dim() == 256
 
     _reindex(store, HashEmbedder(dim=128))
-    assert repo._current_dim() == 128  # the embedding-column CHECK was rebuilt
+    assert repo.current_dim() == 128  # the embedding-column CHECK was rebuilt
 
 
 def test_sqlite_set_dimension_is_atomic_on_failure(tmp_path, monkeypatch):
@@ -127,7 +127,7 @@ def test_sqlite_set_dimension_is_atomic_on_failure(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         repo.set_dimension(128)
 
-    assert repo._current_dim() == 256  # dimension unchanged — the swap rolled back
+    assert repo.current_dim() == 256  # dimension unchanged — the swap rolled back
     assert {m.id for m in repo.list_all()} == {m.id for m in kept}  # no rows lost
     # still fully queryable: the original table + FTS survived the rollback
     hits = _search(store, embedder).execute(query="beta note", scope="all")

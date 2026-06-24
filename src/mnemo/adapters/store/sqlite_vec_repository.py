@@ -141,7 +141,7 @@ class SqliteRepositoryImpl:
         # DB (one writer, one lock) — required for the FK cascade to run atomically.
         # The embedding dimension comes from config (the embedder) — the repository does
         # not learn or cache it. It is used once here to create the schema; the live
-        # dimension thereafter is read from the schema itself (see _current_dim).
+        # dimension thereafter is read from the schema itself (see current_dim).
         self._read = SqlReadExecutor(connections)
         self._write = SqlWriteExecutor(connections)
         # Ensure the schema EAGERLY at construction (= service/CLI startup): the links
@@ -205,7 +205,7 @@ class SqliteRepositoryImpl:
         until commit, so the table never disappears under a concurrent query (DB schema
         rule: never drop/recreate to change a table).
         """
-        if self._current_dim() == new_dim:
+        if self.current_dim() == new_dim:
             return
         self._write.execute(lambda conn: self._rebuild_to(conn, new_dim))
 
@@ -220,7 +220,7 @@ class SqliteRepositoryImpl:
         conn.execute("ALTER TABLE memories_new RENAME TO memories")
         self._rebuild_indexes_and_fts(conn)
 
-    def _current_dim(self) -> int | None:
+    def current_dim(self) -> int | None:
         """The dimension baked into the live schema (parsed from its CHECK clause)."""
         row = self._read.execute(
             lambda conn: conn.execute(
