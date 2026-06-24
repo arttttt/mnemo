@@ -358,8 +358,17 @@ def list_projects() -> None:
 
 
 @app.command()
-def purge() -> None:
-    """Permanently delete ALL memories."""
+def purge(
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the confirmation prompt (for non-interactive use)."
+    ),
+) -> None:
+    """Permanently delete ALL memories and the project registry. Prompts to confirm."""
+    if not yes:
+        typer.confirm(
+            "This permanently deletes ALL memories and the project registry. Continue?",
+            abort=True,
+        )
     result = build_container().delete.purge()
     typer.echo(json.dumps(asdict(result)))
 
