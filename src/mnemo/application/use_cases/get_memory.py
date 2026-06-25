@@ -8,16 +8,13 @@ silent empty, because the caller is dereferencing a handle it believes exists.
 """
 from __future__ import annotations
 
-import difflib
-
+from mnemo.application.near_match import did_you_mean, near_matches
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.get_result import ChainEntry, GetResult
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.domain.constants import GLOBAL_PROJECT
 from mnemo.domain.memory import Memory
-
-_MAX_SUGGESTIONS = 5
 
 
 class GetMemoryUseCaseImpl:
@@ -95,11 +92,7 @@ class GetMemoryUseCaseImpl:
         column = GLOBAL_PROJECT if scope == "global" else project
         memory = self._repository.find_active_by_topic_key(topic_key, column)
         if memory is None:
-            suggestions = difflib.get_close_matches(
-                topic_key, self._repository.topic_keys(column),
-                n=_MAX_SUGGESTIONS, cutoff=0.0,
-            )
-            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+            hint = did_you_mean(near_matches(topic_key, self._repository.topic_keys(column)))
             where = "global" if scope == "global" else f"project {project!r}"
             raise ValueError(
                 f"no active memory with topic_key {topic_key!r} in {where}.{hint}"

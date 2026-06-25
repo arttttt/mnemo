@@ -6,30 +6,21 @@ I/O, so it lives in the application layer BESIDE the pure scope_contract (struct
 scope<->project rules), which it does not touch. global/all are scope-authoritative
 and exempt — global is not a project.
 
-Near-match is two-tier by design: TIER-1 (here) is difflib over the existing slugs,
-on the error path only; TIER-2 (semantic, over project descriptions) is deferred —
+Near-match is two-tier by design: TIER-1 (the shared `near_match` helper over the existing
+slugs, on the error path only); TIER-2 (semantic, over project descriptions) is deferred —
 see the project-entity/near-match-tier2 note.
 """
 from __future__ import annotations
 
-import difflib
-
+from mnemo.application.near_match import did_you_mean, near_matches
 from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.domain.scope import Scope
 
-_MAX_CANDIDATES = 5
-
 
 def near_match_candidates(projects: ProjectRepository, slug: str) -> list[str]:
-    """The registered slugs closest to `slug` — TIER-1 near-match (difflib, top-N, no
-    threshold). Used on the error path of the gate and of delete_project so a typo'd
-    slug suggests the real one instead of silently failing."""
-    return difflib.get_close_matches(
-        slug,
-        [registered.slug for registered in projects.list_all()],
-        n=_MAX_CANDIDATES,
-        cutoff=0.0,  # top-N closest, no threshold — recovery beats hiding suggestions
-    )
+    """The registered slugs closest to `slug`, so a typo'd slug suggests the real one
+    instead of failing silently. Used on the error path of the gate and of delete_project."""
+    return near_matches(slug, [registered.slug for registered in projects.list_all()])
 
 
 class UnknownProject(Exception):
@@ -38,7 +29,7 @@ class UnknownProject(Exception):
     def __init__(self, slug: str, candidates: list[str]) -> None:
         self.slug = slug
         self.candidates = candidates
-        suffix = f" Did you mean: {', '.join(candidates)}?" if candidates else ""
+        suffix = did_you_mean(candidates)
         super().__init__(
             f"unknown project {slug!r} — create it with create_project, or use an "
             f"existing slug.{suffix}"
