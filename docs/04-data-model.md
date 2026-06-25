@@ -8,16 +8,15 @@ Type is a **parameter** of a single write tool — not a separate tool per type 
 | Type | What it captures |
 |---|---|
 | `decision` | Architecture/approach choice, alternatives considered, rationale |
-| `debug` | Root cause, applied fix, affected files |
 | `progress` | Where we left off, what's done, what's next |
-| `feature` | Design notes, implementation approach |
 | `research` | Findings, evaluations, references |
-| `code-snippet` | Working patterns, reusable solutions |
 | `rule` | Behavioral rules for the agent (per‑project or global) |
 | `learning` | A lesson learned, gotchas, the non‑obvious |
-| `discussion` | Agreements, notes from discussions |
-| `design` | Architecture diagrams, system design |
 | `working-notes` | Scratch pad, temporary context (default if `type` omitted) |
+
+Five earlier types were **retired** and remapped on load by a one‑time migration:
+`debug`→`learning`, `design`/`feature`→`decision`, `code-snippet`/`discussion`→`working-notes`. The set is kept
+deliberately small so the type is an obvious, low‑friction choice (a `rule` is also capped far tighter — see below).
 
 ## Scopes (local / global / session) — project isolation + global, cross‑project on request
 

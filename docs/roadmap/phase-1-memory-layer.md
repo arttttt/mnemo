@@ -145,7 +145,7 @@ mechanism that keeps history; deletion physically removes.
 
 **What.** Three hard operations, as MCP tools and CLI commands:
 - `delete(ids)` — remove specific memories.
-- `clear(project)` — remove all memories of one project (the project is required, so "all" can't happen by accident).
+- `delete_project(name)` — remove a project and all its memories (one atomic cascade; the project is required, so "all" can't happen by accident).
 - `purge()` — remove everything.
 
 **Done when.**

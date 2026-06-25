@@ -114,7 +114,7 @@ mnemo setup --dry-run       # show what it would do, write nothing
 
 Supported clients: **claude-code**, **codex**, **kimi-code** (via each one's official `mcp add`), and
 **cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has the mnemo
-memory tools — **`remember`**, **`search`**, **`browse`**, **`recall`**, **`delete`**, and the project
+memory tools — **`remember`**, **`search`**, **`browse`**, **`get`**, **`recall`**, **`delete`**, and the project
 tools (`create-project` / `update-project` / `list-projects` / `delete-project`). Wiping everything
 (`purge`) is intentionally **CLI‑only**.
 

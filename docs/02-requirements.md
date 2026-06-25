@@ -6,7 +6,7 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 
 ### Memory storage
 - **FR‑1 (MUST).** Store typed "memories" (see [04-data-model.md](04-data-model.md)):
-  `decision, debug, progress, feature, research, code-snippet, rule, learning, discussion, design, working-notes`.
+  `decision, progress, research, rule, learning, working-notes`.
 - **FR‑2 (MUST).** Each memory holds: `content`, `type`, `project`, `related_files[]`, `tags[]`,
   `session_id`, `created_at`, `hash`. (`importance` is **post‑MVP** — not in the MVP model.)
 - **FR‑3 (MUST).** Scopes: `project` (local) and `global`. Isolation is **soft** — projects organize memory,
@@ -16,9 +16,10 @@ Notation: **MUST** — required for v1, **SHOULD** — desirable, **MAY** — op
 - **FR‑4 (SHOULD).** Dedup on write: drop **exact** duplicates only (hash of normalized content). Near‑similar
   memories are **not** suppressed on write — search returns them; the background worker may merge/flag genuine
   duplicates later (with context).
-- **FR‑5 (MUST).** Deletion: `delete(ids)`, `clear(project)` — **hard**, available to both the agent
+- **FR‑5 (MUST).** Deletion: `delete(ids)`, `delete_project(name)` — **hard**, available to both the agent
   and the CLI. Wiping everything (`purge()`) is **CLI‑only**, behind a confirmation prompt (too destructive
-  for the agent surface). No soft‑delete/inactivation.
+  for the agent surface). No soft‑delete/inactivation. (There is no per‑project `clear`; `delete_project` is the
+  unit of bulk deletion — see [04-data-model.md](04-data-model.md).)
 
 ### Search and retrieval
 - **FR‑6 (MUST).** Semantic search over local embeddings.
