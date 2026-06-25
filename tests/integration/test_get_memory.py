@@ -98,3 +98,14 @@ def test_get_requires_exactly_one_of_id_or_topic_key(tmp_path):
         get.execute(id="x", topic_key="y")  # both
     with pytest.raises(ValueError, match="exactly one"):
         get.execute()  # neither
+
+
+def test_get_by_id_rejects_scope_or_project(tmp_path):
+    # id is global — passing project/scope is contradictory and is a loud error, not ignored.
+    remember, get = _setup(tmp_path)
+    m = remember.execute(content="a note", project="api")
+    with pytest.raises(ValueError, match="global lookup"):
+        get.execute(id=m.id, project="api")     # project doesn't apply to a global id
+    with pytest.raises(ValueError, match="global lookup"):
+        get.execute(id=m.id, scope="global")    # nor does a non-default scope
+    assert get.execute(id=m.id).id == m.id       # a bare id (default scope, no project) is fine

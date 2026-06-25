@@ -194,7 +194,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
     def get(
         id: Annotated[
             str,
-            Field(description="Exact memory id (global, unique). Mutually exclusive with topic_key; id is the stronger key and ignores scope/project."),
+            Field(description="Exact memory id (global, unique). Mutually exclusive with topic_key; id is the stronger key — with id, scope/project must not be set."),
         ] = None,
         topic_key: Annotated[
             str,
@@ -206,7 +206,7 @@ def build_mcp(container: Optional[Container] = None, **settings):
         ] = None,
         scope: Annotated[
             StoreScope,
-            Field(description="Where the topic_key lives: 'project' (default, needs project) or 'global'. Ignored with id."),
+            Field(description="Where the topic_key lives: 'project' (default, needs project) or 'global'. Must not be set with id (id is global)."),
         ] = "project",
         chain_limit: Annotated[
             int,

@@ -205,7 +205,7 @@ def get(
         None, "--project", "-p", help="Project the topic_key lives in (required for --scope project)."
     ),
     scope: str = typer.Option(
-        "project", "--scope", "-s", help="'project' (default) or 'global' — where the topic_key lives. Ignored with --id."
+        "project", "--scope", "-s", help="'project' (default) or 'global' — where the topic_key lives. Must not be set with --id (id is global)."
     ),
     chain_limit: int = typer.Option(
         10, "--chain-limit", min=1, max=100, help="Max chain versions (newest first)."

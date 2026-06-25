@@ -40,11 +40,11 @@ class GetMemoryUseCaseImpl:
                 "pass exactly one of id or topic_key — they are mutually exclusive "
                 "(id is the exact record; topic_key resolves a chain's active head)"
             )
-        resolved = (
-            self._resolve_by_id(id)
-            if id is not None
-            else self._resolve_by_topic_key(topic_key, scope, project)
-        )
+        if id is not None:
+            self._reject_scope_with_id(scope, project)
+            resolved = self._resolve_by_id(id)
+        else:
+            resolved = self._resolve_by_topic_key(topic_key, scope, project)
         chain, chain_total = self._chain_of(resolved, chain_limit, chain_after)
         return GetResult(
             id=resolved.id,
@@ -67,6 +67,17 @@ class GetMemoryUseCaseImpl:
             # Ids are opaque, so there is no useful near-match to suggest.
             raise ValueError(f"no memory with id {memory_id!r}")
         return memory
+
+    @staticmethod
+    def _reject_scope_with_id(scope: str, project: str | None) -> None:
+        # id is a global, exact handle — scope/project do not apply. Reject a contradictory
+        # request loudly rather than silently ignore the field (scope='project' is the
+        # default, so only a project or an explicit non-default scope counts as "set").
+        if project is not None or scope != "project":
+            raise ValueError(
+                "id is a global lookup — it resolves the exact record on its own; drop "
+                "project/scope, or use topic_key to resolve within a project/global scope"
+            )
 
     def _resolve_by_topic_key(
         self, topic_key: str, scope: str, project: str | None
