@@ -67,7 +67,7 @@ pursued — the official Gemma 4 QAT GGUFs (near‑lossless Q4, `UD‑Q4_K_XL`) 
 were prioritised because quantization quality matters more than the MLX speed gain there; the
 embedder is the remaining MLX opportunity.
 
-### Fail‑fast on an embedder/store dimension mismatch
+### Fail‑fast on an embedder/store dimension mismatch — **shipped**
 **Why:** the store bakes its embedding dimension at first write (`CHECK(vec_length(embedding) == N)`); the
 `dim` passed to the repository is only used to create a *fresh* schema and is **not** reconciled with an
 existing store. If the two disagree the only signal is a cryptic deep error — a `CHECK` violation on write or
@@ -75,14 +75,14 @@ sqlite‑vec's `Vector dimension mismatch` on query. The common trigger (a stale
 dimension after a reindex) is already closed (0.2.4 restarts the service after reindex); what remains is the
 manual case — switching `MNEMO_EMBEDDER` to a different‑dimension model **without** running `mnemo reindex`.
 Low priority, but a power‑user footgun that fails opaquely.
-**What:** a defensive check that compares `embedder.dim` against the store's baked dimension and **fails fast**
-with an actionable message ("store is dim 1024, embedder is dim 384 — run `mnemo reindex`, or pin
-`MNEMO_EMBEDDER` to a 1024‑dim model"). **Do NOT auto‑reindex** (a heavy, data‑touching op — the user decides).
-Add a `current_dim()` read to the repository port (symmetric to `set_dimension`) and run the check at
-**service start** (next to the migration hook) — crucially **NOT** in the repository constructor /
-`build_container`, or it would break `mnemo reindex` itself, which must open a mismatched store to fix it via
-`set_dimension`. Optionally extend the check to the CLI `store`/`search` commands (but never `reindex`) to
-cover the direct‑CLI path too. From dogfooding FEEDBACK item 2.
+**What (shipped, 0.3.11):** `infrastructure/dimension_guard.py` `verify_store_dimension(queue, embedder_dim)`
+compares `embedder.dim` against the store's baked dimension — read via a new public `current_dim()` on the
+EmbeddingQueue port (symmetric to `set_dimension`) — and **fails fast** with an actionable error ("the store is
+dim 1024, the configured embedder is dim 384. Run `mnemo reindex`, or pin `MNEMO_EMBEDDER` to a matching model").
+**No auto‑reindex** (the user decides). It runs **one layer out of `build_container`** (which `reindex` must call
+to open a mismatched store and repair it via `set_dimension`): at **service start** (`service.py`, after
+`build_container`) and on the CLI read/write commands (`store`/`search`/`recall`, via `_guarded_container`) —
+never inside `build_container` or on `reindex`. From dogfooding FEEDBACK item 2.
 
 ### Edit / re‑key an existing memory (evolve identical content under a new topic_key)
 **Why:** `remember` evolves a memory by reusing a `topic_key` with **changed** content (the topic_key upsert
