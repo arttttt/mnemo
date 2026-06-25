@@ -62,21 +62,19 @@ search("changes", scope="all", created_after="2026-06-01")      # created at/aft
   `status`** — `search` returns active heads only, so a status field would be a constant.
 - `MemoryHit = {id, type, scope, project, content, related_files, created_at, topic_key}`.
 
-### `browse(scope?, project?, type?, tags?, related_files?, created_after?, status?, limit?) -> list[BrowseHit]`
+### `browse(scope?, project?, type?, tags?, related_files?, created_after?, limit?) -> list[BrowseHit]`
 The query‑less companion to `search`: retrieve a **category**, newest first, with no relevance ranking. Use it
 when a semantic query would only bias the order ("all `type=decision` in this project", "everything tagged
 `feedback`"). Same filters and scoping rules as `search` (a `project` is required for `scope="project"`).
 ```python
-browse(project="checkout-api")                       # newest ACTIVE memories in the project + global
-browse(project="checkout-api", type="decision")      # all active decisions, newest first
+browse(project="checkout-api")                       # newest memories in the project + global
+browse(project="checkout-api", type="decision")      # all decisions, newest first
 browse(scope="all", tags=["feedback"])               # a category across every project
-browse(project="checkout-api", status="superseded")  # audit: only replaced versions
 ```
-- No `query`, no ranking: hits are ordered by recency, so there is **no `score`**.
-- `status`: `active` (default — current versions only) | `superseded` (only replaced) | `all`. The lever for
-  **auditing** replaced versions; `search` has no such filter (it is always active).
+- No `query`, no ranking: hits are ordered by recency, so there is **no `score`**. Browse lists **active** memories
+  only; to reach a superseded version, dereference it with `get` (by `id`, or a `topic_key`'s chain).
 - `BrowseHit = {id, type, scope, project, content, related_files, created_at, topic_key, status}` — `MemoryHit` plus
-  `topic_key`/`status` for audit; neither carries a relevance score.
+  `topic_key`/`status`; neither carries a relevance score.
 
 ### `get(id? | topic_key?, project?, scope?, chain_limit?, chain_after?) -> GetMemory`
 Dereference **one** memory exactly — by global `id` or by `topic_key` — and get its **supersede chain** (version
@@ -90,7 +88,7 @@ get(topic_key="auth/jwt-model", project="checkout-api", chain_limit=5, chain_aft
 ```
 - **`id` and `topic_key` are mutually exclusive** — pass exactly one (both, or neither, is a loud error). `id` is the
   stronger key: a globally‑unique, immutable handle resolving the exact record of **any** status (so it reaches a
-  **superseded** version `search`/`browse` won't surface); it ignores `scope`/`project`. `topic_key` resolves the
+  **superseded** version `search`/`browse` won't surface); with `id`, `scope`/`project` must not be set. `topic_key` resolves the
   chain's **active head** within a `project` (or `scope="global"`) — the same scope↔project contract as the read tools.
 - A **miss is a loud error** (with near‑match suggestions for a `topic_key`), not a silent empty — you are
   dereferencing a handle you believe exists (e.g. a stale `[[wikilink]]`).
@@ -122,7 +120,7 @@ delete(ids=["..."])                # remove specific memories
 delete(ids=["..."], cascade=True)  # also remove every OLDER version they supersede (the whole lineage)
 delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
 ```
-A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage in one call — superseded versions are hidden from default `search`/`browse` (surface them with `browse(status=…)` or `get`), so cascade is the convenient way to remove the lineage by its head.
+A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage in one call — superseded versions are hidden from `search`/`browse` (surface them with `get` — by `id`, or a `topic_key`'s chain), so cascade is the convenient way to remove the lineage by its head.
 
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:

@@ -195,18 +195,20 @@ axiom, re‑typing is a cheap, reindex‑free, reversible filter‑facet correct
 Settle the policy when the worker's op set is designed — and against the **propose‑first / no‑unattended‑writes**
 stance in *Bank consolidation* above (re‑typing earns auto‑apply only once the read‑only audit proves it safe).
 
-### Management surface — audit & correct memory *through the server* (read side **shipped**)
+### Management surface — audit & correct memory *through the server* (dereference read **shipped**)
 **Why:** auditing and correcting memory (find stale entries, supersede, re‑type, delete) must go through the
 **real service** — the one owner of the store — but the MCP read surface couldn't support the AUDIT half: no fetch
 by `id`/`topic_key`, and `search`/`browse` exposed neither `topic_key` nor `status`. So a sweep over the memories
 forced a **direct read of the SQLite file** — a side‑channel around the store's owner (observed in a real audit).
-**What (read side shipped):** the audit READ is now expressible through the server — `get(id | topic_key)` (the
-record + its supersede chain, reaching superseded versions), `browse(status=active|superseded|all)`, and
-`topic_key`/`status` surfaced on the hits. The direct‑SQLite side‑channel is closed for reads. This is exactly the
-read substrate a future read‑only `mnemo audit` (see *Bank consolidation* above) would sit on.
-**What remains:** the *correcting* write ops (supersede / re‑type / in‑place edit) exposed through the service — see
-the re‑type item above and *Edit / re‑key*. Management writes must go through the service too, like `remember` /
-`delete` already do.
+**What (dereference read shipped):** the per‑handle audit READ is now expressible through the server — `get(id |
+topic_key)` (the record + its supersede chain, reaching a superseded version by id or via a topic_key's chain), and
+`topic_key`/`status` surfaced on the hits. This closes the direct‑SQLite side‑channel for *dereferencing* a known
+memory, and is the read substrate a future read‑only `mnemo audit` (see *Bank consolidation* above) would sit on.
+**What remains:** (1) a category‑level **superseded sweep** — listing replaced/stale memories you don't know in
+advance (a `browse` status facet) — was intentionally **not** shipped: its only consumer is the deferred audit pass,
+so it would run ahead of demand. (2) the *correcting* write ops (supersede / re‑type / in‑place edit) through the
+service — see the re‑type item above and *Edit / re‑key*. Management writes must go through the service too, like
+`remember` / `delete` already do.
 
 ### Deferred indefinitely
 **Why:** out of the local, single‑user, lightweight scope mnemo targets.
