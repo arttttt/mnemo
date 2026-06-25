@@ -123,9 +123,10 @@ def build_mcp(container: Optional[Container] = None, **settings):
         """Find memories by meaning, ranked by relevance.
 
         Returns a list of hits, each {id, type, scope, project, content, related_files,
-        created_at}, in rank order — there is no relevance score (read the hit content to
-        judge relevance). Use scope='all' for cross-project search. Optional filters (type,
-        tags, related_files, created_after) narrow the results.
+        created_at, topic_key}, in rank order — there is no relevance score (read the hit
+        content to judge relevance). `topic_key` lets you dereference a hit with `get` or
+        evolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.
+        Optional filters (type, tags, related_files, created_after) narrow the results.
         """
         results = container.search.execute(
             query=query,
@@ -175,7 +176,8 @@ def build_mcp(container: Optional[Container] = None, **settings):
         Use this for category retrieval ("all type=decision in this project") where
         a semantic query would only bias the order. No relevance ranking, so hits
         carry no score; they are ordered by recency. Each hit is {id, type, scope,
-        project, content, related_files, created_at}. Use `search` to find by meaning.
+        project, content, related_files, created_at, topic_key, status}. Use `search` to
+        find by meaning, or `get` to dereference one id/topic_key.
         """
         results = container.browse.execute(
             scope=scope,
@@ -187,6 +189,55 @@ def build_mcp(container: Optional[Container] = None, **settings):
             limit=limit,
         )
         return [asdict(result) for result in results]
+
+    @mcp.tool()
+    def get(
+        id: Annotated[
+            str,
+            Field(description="Exact memory id (global, unique). Mutually exclusive with topic_key; id is the stronger key — with id, scope/project must not be set."),
+        ] = None,
+        topic_key: Annotated[
+            str,
+            Field(description="Resolve a memory by its stable topic_key — the active head plus its version chain. Needs project (or scope='global'). Mutually exclusive with id."),
+        ] = None,
+        project: Annotated[
+            str,
+            Field(description="Project the topic_key lives in. Required when scope='project' (the default); omit for scope='global'."),
+        ] = None,
+        scope: Annotated[
+            StoreScope,
+            Field(description="Where the topic_key lives: 'project' (default, needs project) or 'global'. Must not be set with id (id is global)."),
+        ] = "project",
+        chain_limit: Annotated[
+            int,
+            Field(ge=1, le=100, description="Max supersede-chain versions to return (newest first)."),
+        ] = 10,
+        chain_after: Annotated[
+            str,
+            Field(description="Chain cursor: the id of the last (oldest) chain entry you saw; returns the next-older window."),
+        ] = None,
+    ) -> dict:
+        """Dereference ONE memory by exact id or topic_key — its full record plus its
+        supersede chain (version history). Deterministic, no LLM, no ranking.
+
+        Pass id OR topic_key, not both (id is the exact record of any status; topic_key
+        resolves the chain's active head). A `[[wikilink]]` IS a topic_key, so
+        get(topic_key="...") dereferences it. Returns {id, type, scope, project, content,
+        related_files, created_at, topic_key, status, supersedes, chain, chain_total}: `chain`
+        is the version lineage (newest first, light {id, status, created_at}, capped at
+        chain_limit) and `chain_total` is the full length (page older versions with
+        chain_after). A miss is a loud error (with near-match suggestions for a topic_key).
+        Use `search` to find by meaning, `browse` to list a category.
+        """
+        result = container.get.execute(
+            id=id,
+            topic_key=topic_key,
+            project=project,
+            scope=scope,
+            chain_limit=chain_limit,
+            chain_after=chain_after,
+        )
+        return asdict(result)
 
     @mcp.tool()
     def recall(

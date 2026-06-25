@@ -12,6 +12,7 @@ from mnemo.application.use_cases.interfaces.browse_memory import BrowseMemoryUse
 from mnemo.application.use_cases.interfaces.create_project import CreateProjectUseCase
 from mnemo.application.use_cases.interfaces.delete_memory import DeleteMemoryUseCase
 from mnemo.application.use_cases.interfaces.delete_project import DeleteProjectUseCase
+from mnemo.application.use_cases.interfaces.get_memory import GetMemoryUseCase
 from mnemo.application.use_cases.interfaces.list_projects import ListProjectsUseCase
 from mnemo.application.use_cases.interfaces.recall_project import RecallProjectUseCase
 from mnemo.application.use_cases.interfaces.remember_memory import RememberMemoryUseCase
@@ -31,6 +32,7 @@ class Container:
     remember: RememberMemoryUseCase
     search: SearchMemoryUseCase
     browse: BrowseMemoryUseCase
+    get: GetMemoryUseCase
     recall: RecallProjectUseCase
     delete: DeleteMemoryUseCase
     create_project: CreateProjectUseCase

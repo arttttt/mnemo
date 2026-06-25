@@ -49,6 +49,8 @@ class BrowseMemoryUseCaseImpl:
                 content=item.memory.content,
                 related_files=item.memory.related_files,
                 created_at=item.memory.created_at,
+                topic_key=item.memory.topic_key,
+                status=item.memory.status,
             )
             for item in scored
         ]

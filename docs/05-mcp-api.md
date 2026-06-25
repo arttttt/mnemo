@@ -58,19 +58,45 @@ search("changes", scope="all", created_after="2026-06-01")      # created at/aft
 - Project scope is a **hard filter** (the named project + `global`); other projects are excluded from the default scope. Cross‑project search is the explicit `scope="all"` (see [04-data-model.md](04-data-model.md)).
 - Hits come in **rank order** (the list order is the ranking); there is **no relevance score** — the underlying
   RRF value is opaque and easily misread as a confidence, so it stays internal. Read the hit content to judge it.
-- `MemoryHit = {id, type, scope, project, content, related_files, created_at}`.
+- Hits carry `topic_key` (dereference a hit with `get`, or evolve it with `remember(topic_key=…)`) but **no
+  `status`** — `search` returns active heads only, so a status field would be a constant.
+- `MemoryHit = {id, type, scope, project, content, related_files, created_at, topic_key}`.
 
 ### `browse(scope?, project?, type?, tags?, related_files?, created_after?, limit?) -> list[BrowseHit]`
 The query‑less companion to `search`: retrieve a **category**, newest first, with no relevance ranking. Use it
 when a semantic query would only bias the order ("all `type=decision` in this project", "everything tagged
 `feedback`"). Same filters and scoping rules as `search` (a `project` is required for `scope="project"`).
 ```python
-browse(project="checkout-api")                   # newest memories in the project + global
-browse(project="checkout-api", type="decision")  # all decisions, newest first
-browse(scope="all", tags=["feedback"])           # a category across every project
+browse(project="checkout-api")                       # newest memories in the project + global
+browse(project="checkout-api", type="decision")      # all decisions, newest first
+browse(scope="all", tags=["feedback"])               # a category across every project
 ```
-- No `query`, no ranking: hits are ordered by recency, so there is **no `score`**.
-- `BrowseHit = {id, type, scope, project, content, related_files, created_at}` — the same fields as `MemoryHit`; neither carries a relevance score.
+- No `query`, no ranking: hits are ordered by recency, so there is **no `score`**. Browse lists **active** memories
+  only; to reach a superseded version, dereference it with `get` (by `id`, or a `topic_key`'s chain).
+- `BrowseHit = {id, type, scope, project, content, related_files, created_at, topic_key, status}` — `MemoryHit` plus
+  `topic_key`/`status`; neither carries a relevance score.
+
+### `get(id? | topic_key?, project?, scope?, chain_limit?, chain_after?) -> GetMemory`
+Dereference **one** memory exactly — by global `id` or by `topic_key` — and get its **supersede chain** (version
+history). Deterministic (an indexed point lookup, no LLM, no ranking): the counterpart to semantic `search` and
+filtered `browse`. A `[[wikilink]]` **is** a `topic_key`, so this is how you follow one.
+```python
+get(id="9af3…")                                          # the exact record (any status), by global id
+get(topic_key="auth/jwt-model", project="checkout-api")  # the chain's ACTIVE head + its history
+get(topic_key="rule/x", scope="global")                  # a global topic_key
+get(topic_key="auth/jwt-model", project="checkout-api", chain_limit=5, chain_after="…")  # page older versions
+```
+- **`id` and `topic_key` are mutually exclusive** — pass exactly one (both, or neither, is a loud error). `id` is the
+  stronger key: a globally‑unique, immutable handle resolving the exact record of **any** status (so it reaches a
+  **superseded** version `search`/`browse` won't surface); with `id`, `scope`/`project` must not be set. `topic_key` resolves the
+  chain's **active head** within a `project` (or `scope="global"`) — the same scope↔project contract as the read tools.
+- A **miss is a loud error** (with near‑match suggestions for a `topic_key`), not a silent empty — you are
+  dereferencing a handle you believe exists (e.g. a stale `[[wikilink]]`).
+- **Chain.** `chain` is the version lineage walked along the `supersedes` pointers, **newest → oldest**, as **light**
+  entries `{id, status, created_at}` (no content — fetch a specific old version with another `get(id=…)`). Capped at
+  `chain_limit` (default 10) and paged with `chain_after` (the id of the last entry you saw → the next‑older window);
+  `chain_total` is the full depth, so you know whether to page.
+- `GetMemory = {id, type, scope, project, content, related_files, created_at, topic_key, status, supersedes, chain, chain_total}`.
 
 ### Projects — `create_project` / `update_project` / `list_projects` / `delete_project`
 A project is a **registered entity**, not just a slug on a memory: you must create it before writing to it, so a
@@ -94,7 +120,7 @@ delete(ids=["..."])                # remove specific memories
 delete(ids=["..."], cascade=True)  # also remove every OLDER version they supersede (the whole lineage)
 delete_project("x")         # remove a project and ALL its memories (one atomic cascade)
 ```
-A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage, since superseded versions aren't returned by `search`/`browse` and so can't be enumerated and deleted by id.
+A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage in one call — superseded versions are hidden from `search`/`browse` (surface them with `get` — by `id`, or a `topic_key`'s chain), so cascade is the convenient way to remove the lineage by its head.
 
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
@@ -109,7 +135,7 @@ mnemo purge [--yes]                  # delete EVERYTHING: memories + project reg
 (`delete` / `delete-project`, and the project tools `create-project` / `update-project` / `list-projects`, are also available as CLI commands.)
 
 ## Design notes
-- One write verb, three read verbs (`search` by meaning, `browse` by filter, `recall` for an LLM‑synthesized answer), plus deletion — type/scope/filters are parameters.
+- One write verb, **four** read verbs (`search` by meaning, `browse` by filter, `get` by exact id/topic_key, `recall` for an LLM‑synthesized answer), plus deletion — type/scope/filters are parameters. The read split is by **mode** (semantic / filter‑survey / exact‑dereference / synthesis), not one tool per entity.
 - Projects are **registered first‑class entities** (`create_project`/`update_project`/`list_projects`/`delete_project`); writing to or reading an unknown project is a hard error with near‑match suggestions, so a typo can't create a phantom project. `delete_project` deletes the project and its memories in one DB cascade.
 - `search` defaults to **hybrid** (dense + lexical) so exact matches (function names, error codes) aren't missed.
 - `remember` is fast and idempotent by `hash` / `topic_key`.

@@ -194,6 +194,42 @@ def browse(
 
 
 @app.command()
+def get(
+    id: Optional[str] = typer.Option(
+        None, "--id", help="Exact memory id (global). Mutually exclusive with --topic-key."
+    ),
+    topic_key: Optional[str] = typer.Option(
+        None, "--topic-key", "-k", help="Resolve by topic_key (active head + chain). Needs --project or --scope global."
+    ),
+    project: Optional[str] = typer.Option(
+        None, "--project", "-p", help="Project the topic_key lives in (required for --scope project)."
+    ),
+    scope: str = typer.Option(
+        "project", "--scope", "-s", help="'project' (default) or 'global' — where the topic_key lives. Must not be set with --id (id is global)."
+    ),
+    chain_limit: int = typer.Option(
+        10, "--chain-limit", min=1, max=100, help="Max chain versions (newest first)."
+    ),
+    chain_after: Optional[str] = typer.Option(
+        None, "--chain-after", help="Chain cursor: id of the last (oldest) entry you saw."
+    ),
+) -> None:
+    """Dereference one memory by id or topic_key — full record + supersede chain; prints JSON."""
+    try:
+        result = build_container().get.execute(
+            id=id,
+            topic_key=topic_key,
+            project=project,
+            scope=scope,
+            chain_limit=chain_limit,
+            chain_after=chain_after,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc))
+    typer.echo(json.dumps(asdict(result), indent=2, ensure_ascii=False))
+
+
+@app.command()
 def recall(
     project: str = typer.Argument(..., help="Project whose memory to recall."),
     query: str = typer.Argument(..., help="What to recall about — a question or topic."),

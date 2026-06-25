@@ -3,6 +3,9 @@
 No relevance score: the list ORDER is the ranking, and the underlying RRF value is opaque and
 misleadable (a consuming agent misreads it as a confidence), so it stays internal — the caller
 reads the hit content to judge relevance. See docs/05-mcp-api.md.
+
+Carries `topic_key` (search returns active heads, so no `status` — it is always "active") so a
+hit can be dereferenced with `get` or evolved with `remember(topic_key=...)`.
 """
 from __future__ import annotations
 
@@ -18,3 +21,4 @@ class SearchResult:
     content: str
     related_files: list[str]
     created_at: str
+    topic_key: str | None

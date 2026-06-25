@@ -31,6 +31,7 @@ class PresentStage:
                 content=item.memory.content,
                 related_files=item.memory.related_files,
                 created_at=item.memory.created_at,
+                topic_key=item.memory.topic_key,
             )
             for item in scored
         ]
