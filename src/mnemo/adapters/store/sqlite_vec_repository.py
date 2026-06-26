@@ -31,7 +31,7 @@ from sqlite_vec import serialize_float32
 
 from mnemo.adapters.store.executors import SqlReadExecutor, SqlWriteExecutor
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
-from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
+from mnemo.application.fusion.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
 from mnemo.adapters.store.transaction import SnapshotRead
 from mnemo.application.results.get_result import ChainEntry

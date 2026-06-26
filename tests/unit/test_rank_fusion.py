@@ -1,5 +1,5 @@
 """Reciprocal-rank fusion: the pure hybrid-search fusion, tested in isolation."""
-from mnemo.adapters.store.rank_fusion import reciprocal_rank_fusion
+from mnemo.application.fusion.rank_fusion import reciprocal_rank_fusion
 
 
 def test_rank_one_in_both_lists_outscores_rank_one_in_one_list():
