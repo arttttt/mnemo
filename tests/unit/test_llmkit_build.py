@@ -5,6 +5,7 @@ import pytest
 
 from llmkit.build import build_embedder, build_generator, build_reranker
 from llmkit.capabilities.llama_cpp_generator import LlamaCppGenerator
+from llmkit.capabilities.llama_cpp_reranker import LlamaCppReranker
 from llmkit.capabilities.onnx_reranker import OnnxReranker
 from llmkit.config import ModelConfig
 from llmkit.lifecycle.residency import Resident
@@ -15,6 +16,12 @@ from llmkit.runtime.onnx_encoder import OnnxSource
 def test_build_reranker_from_an_onnx_source():
     reranker = build_reranker(ModelConfig(source=OnnxSource(repo="some/repo"), residency=Resident()))
     assert isinstance(reranker, OnnxReranker)  # nothing loaded — construction is lazy
+
+
+def test_build_reranker_from_a_gguf_source():
+    # A GGUF source dispatches to the llama.cpp RANK-mode reranker (no model loaded — lazy).
+    reranker = build_reranker(ModelConfig(source=GgufSource(model="some/repo")))
+    assert isinstance(reranker, LlamaCppReranker)
 
 
 def test_build_embedder_sizes_the_pool():
@@ -30,6 +37,11 @@ def test_build_generator_from_a_gguf_source():
     assert isinstance(generator, LlamaCppGenerator)
 
 
-def test_build_reranker_rejects_a_mismatched_source():
+def test_build_embedder_rejects_a_mismatched_source():
     with pytest.raises(ValueError):
-        build_reranker(ModelConfig(source=GgufSource(model="some/repo")))
+        build_embedder(ModelConfig(source=GgufSource(model="some/repo")), dim=8)
+
+
+def test_build_generator_rejects_a_mismatched_source():
+    with pytest.raises(ValueError):
+        build_generator(ModelConfig(source=OnnxSource(repo="some/repo")))
