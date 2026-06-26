@@ -3,6 +3,8 @@ name = "mnemo"
 version = "0.3.15"
 description = "Local, on-demand memory for AI coding agents (MCP)."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.2.0",
