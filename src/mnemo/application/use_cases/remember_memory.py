@@ -65,14 +65,18 @@ class RememberMemoryUseCaseImpl:
         # Length guard: keep a memory within its TYPE's cap (a rule is far tighter than the rest)
         # AND inside the embedder's window (a memory is one vector) — the effective limit is the
         # stricter of the two. Reject with an explicit error (never truncate, never auto-split) so
-        # the caller — already an LLM — can split it deliberately. The token count is cheap and
-        # stays on the hot path; only the encode is deferred.
+        # the caller — already an LLM — can resolve it deliberately: tighten the wording to fit
+        # first (one focused memory beats many fragments), and split only when it genuinely can't
+        # be condensed. The token count is cheap and stays on the hot path; only the encode is
+        # deferred.
         cap = min(memory.type.max_tokens, self._token_window.max_input)
         tokens = self._token_window.count_tokens(memory.content)
         if tokens > cap:
             raise ValueError(
                 f"content is {tokens} tokens, over the {cap}-token limit for a "
-                f"'{memory.type.value}' memory; split it into smaller, focused memories"
+                f"'{memory.type.value}' memory; tighten the wording to be more concise and "
+                f"precise so it fits, and split it into smaller, focused memories only if it "
+                f"genuinely can't be condensed"
             )
 
         # Exact duplicate: identical normalized content already ACTIVE in this same
