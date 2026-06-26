@@ -7,6 +7,7 @@ pytest.importorskip("mcp")
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.mcp.server import build_mcp
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.use_cases.recall_project import RecallProjectUseCaseImpl
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
@@ -127,7 +128,8 @@ def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
     container = _container(tmp_path)
     # Inject a stub generator (the default is the real GGUF model — too heavy for this test).
     container.recall = RecallProjectUseCaseImpl(
-        container.repository, container.embedder, reranker=None, generator=_StubGenerator(),
+        container.repository, container.embedder, Fuser(),
+        reranker=None, generator=_StubGenerator(),
         rerank_top_k=20, generator_max_tokens=128,
     )
     mcp = build_mcp(container)

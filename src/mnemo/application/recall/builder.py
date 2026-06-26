@@ -11,6 +11,7 @@ from __future__ import annotations
 from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.pipeline.pipeline import Pipeline
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
@@ -25,13 +26,14 @@ from mnemo.application.recall.synthesize_stage import SynthesizeStage
 def build_recall_pipeline(
     repository: MemoryRepository,
     embedder: TextEmbedder,
+    fuser: Fuser,
     *,
     reranker: Reranker | None = None,
     generator: Generator | None = None,
     top_k: int = 20,
     max_tokens: int = 512,
 ) -> Pipeline[RecallRequest, RecallBundle]:
-    stages = [GatherStage(repository, embedder)]
+    stages = [GatherStage(repository, embedder, fuser)]
     if reranker is not None:
         stages.append(RerankStage(reranker, top_k=top_k))
     stages.append(AssembleStage())

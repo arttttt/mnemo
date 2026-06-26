@@ -26,10 +26,12 @@ class GatherStage:
     requires: frozenset[str] = frozenset()
     provides = frozenset({GATHERED.name})
 
-    def __init__(self, repository: MemoryRepository, embedder: TextEmbedder) -> None:
+    def __init__(
+        self, repository: MemoryRepository, embedder: TextEmbedder, fuser: Fuser
+    ) -> None:
         self._repository = repository
         self._embedder = embedder
-        self._fuser = Fuser()
+        self._fuser = fuser
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
         request = ctx.get(RECALL_REQUEST)

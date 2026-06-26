@@ -72,6 +72,7 @@ def build_container(
         recall=RecallProjectUseCaseImpl(
             repository,
             embedder,
+            fuser,
             reranker=_build_reranker(config),
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,

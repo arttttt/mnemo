@@ -11,6 +11,7 @@ from __future__ import annotations
 from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.recall.builder import build_recall_pipeline
@@ -24,6 +25,7 @@ class RecallProjectUseCaseImpl:
         self,
         repository: MemoryRepository,
         embedder: TextEmbedder,
+        fuser: Fuser,
         *,
         reranker: Reranker | None = None,
         generator: Generator | None = None,
@@ -33,6 +35,7 @@ class RecallProjectUseCaseImpl:
         self._pipeline = build_recall_pipeline(
             repository,
             embedder,
+            fuser,
             reranker=reranker,
             generator=generator,
             top_k=rerank_top_k,
