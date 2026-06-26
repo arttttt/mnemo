@@ -4,19 +4,23 @@ FTS5) backend — the sole store. Offline and light; skipped where `sqlite-vec` 
 import pytest
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory import Memory
 from tests.support.sqlite_store import open_store
 
 _ALL = SearchCriteria(scope="all")
+_FUSER = Fuser()
 
 
 def _hits(repo, embedder, text, criteria, limit=5):
-    """Run a semantic retrieval the way the use case does (text + its embedding)."""
-    return repo.retrieve(
+    """Run a semantic retrieval the way the search pipeline does: the store returns the raw
+    channels, the application-layer Fuser ranks them."""
+    channels = repo.retrieve_channels(
         Retrieval(criteria=criteria, limit=limit, text=text, vector=embedder.encode(text))
     )
+    return _FUSER.fuse(channels, limit).pool
 
 
 def _sqlite(tmp_path):
@@ -109,6 +113,42 @@ def test_search_ranks_by_similarity(open_repo, embedder):
     assert "redis" in hits[0].memory.content
 
 
+def test_retrieve_channels_returns_both_raw_legs_with_scores(open_repo, embedder):
+    """The store hands back the two RAW legs unfused: dense scored by cosine SIMILARITY
+    (higher = better, in [0, 1] for the hash embedder) and lexical by raw BM25 — for the
+    application Fuser to merge."""
+    repo = open_repo()
+    target = _store(repo, embedder, "redis cache eviction policy", project="api")
+    _store(repo, embedder, "postgres migration plan", project="api")
+
+    channels = repo.retrieve_channels(
+        Retrieval(criteria=_ALL, limit=5, text="redis cache",
+                  vector=embedder.encode("redis cache"))
+    )
+    assert channels.dense and channels.lexical  # both legs populated
+    # dense is best-first by similarity (descending), every score a similarity not a distance
+    dense_scores = [hit.score for hit in channels.dense]
+    assert dense_scores == sorted(dense_scores, reverse=True)
+    assert all(0.0 <= score <= 1.0 for score in dense_scores)
+    # the lexical leg finds the exact-token memory via BM25
+    assert target.id in {hit.memory.id for hit in channels.lexical}
+
+
+def test_retrieve_channels_respects_criteria(open_repo, embedder):
+    """Both legs filter on the same criteria — an out-of-scope memory appears in neither."""
+    repo = open_repo()
+    keep = _store(repo, embedder, "redis cache eviction", project="api")
+    _store(repo, embedder, "redis cache eviction notes", project="other")
+
+    criteria = SearchCriteria(scope="project", project="api")
+    channels = repo.retrieve_channels(
+        Retrieval(criteria=criteria, limit=5, text="redis cache",
+                  vector=embedder.encode("redis cache"))
+    )
+    found = {hit.memory.id for hit in channels.dense} | {hit.memory.id for hit in channels.lexical}
+    assert found == {keep.id}
+
+
 def test_search_scopes_to_project(open_repo, embedder):
     repo = open_repo()
     keep = _store(repo, embedder, "redis cache eviction", project="api")
@@ -147,7 +187,7 @@ def test_search_recency_excludes_old(open_repo, embedder):
     _store(repo, embedder, "fresh note", project="api")
 
     future_cutoff = SearchCriteria(scope="all", created_after="2999-01-01T00:00:00+00:00")
-    assert _hits(repo, embedder, "fresh note", future_cutoff, limit=5) == []
+    assert _hits(repo, embedder, "fresh note", future_cutoff, limit=5) == ()
 
 
 def test_created_after_filters_by_utc_instant(open_repo, embedder):
@@ -163,23 +203,22 @@ def test_created_after_filters_by_utc_instant(open_repo, embedder):
 
     # bound 12:00+03:00 == 09:00 UTC → only the 11:00 memory is at/after it
     criteria = SearchCriteria(scope="all", created_after="2026-06-19T12:00:00+03:00")
-    hits = repo.retrieve(Retrieval(criteria=criteria, limit=10))  # filter-only browse
-    assert {hit.memory.id for hit in hits} == {late.id}
+    memories = repo.browse(criteria, 10)  # filter-only browse
+    assert {m.id for m in memories} == {late.id}
 
 
-def test_browse_lists_by_recency_with_no_score(open_repo, embedder):
-    """A retrieval with no text and no vector is a filter-only browse: newest
-    first, no relevance ranking (score 0.0), no embedding needed."""
+def test_browse_lists_by_recency(open_repo, embedder):
+    """Browse is filter-only: active memories, newest first, no relevance ranking,
+    no embedding needed."""
     repo = open_repo()
     one = _store(repo, embedder, "first note", project="api")
     two = _store(repo, embedder, "second note", project="api")
     three = _store(repo, embedder, "third note", project="api")
 
-    hits = repo.retrieve(Retrieval(criteria=_ALL, limit=10))
-    created = [hit.memory.created_at for hit in hits]
+    memories = repo.browse(_ALL, 10)
+    created = [m.created_at for m in memories]
     assert created == sorted(created, reverse=True)  # newest first
-    assert {hit.memory.id for hit in hits} == {one.id, two.id, three.id}
-    assert all(hit.score == 0.0 for hit in hits)  # order conveys recency, not a score
+    assert {m.id for m in memories} == {one.id, two.id, three.id}
 
 
 def test_browse_respects_scope_and_includes_pending(open_repo, embedder):
@@ -190,8 +229,8 @@ def test_browse_respects_scope_and_includes_pending(open_repo, embedder):
     repo.add(pending)  # no vector — browse still surfaces it (no vector needed)
 
     criteria = SearchCriteria(scope="project", project="api")
-    hits = repo.retrieve(Retrieval(criteria=criteria, limit=10))
-    assert {hit.memory.id for hit in hits} == {mine.id, pending.id}
+    memories = repo.browse(criteria, 10)
+    assert {m.id for m in memories} == {mine.id, pending.id}
 
 
 def test_pending_vector_lifecycle(open_repo, embedder):

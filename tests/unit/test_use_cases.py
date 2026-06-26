@@ -5,6 +5,7 @@ pytest.importorskip("sqlite_vec")
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.project_gate import ProjectGate, UnknownProject
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
@@ -28,7 +29,7 @@ def _build_wiring(tmp_path):
     return (
         repo,
         RememberMemoryUseCaseImpl(repo, scheduler, embedder, session, gate),
-        SearchMemoryUseCaseImpl(repo, embedder, gate),
+        SearchMemoryUseCaseImpl(repo, embedder, gate, Fuser()),
         DeleteMemoryUseCaseImpl(repo, projects),
         DeleteProjectUseCaseImpl(projects),
         BrowseMemoryUseCaseImpl(repo, gate),

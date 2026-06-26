@@ -31,9 +31,9 @@ from sqlite_vec import serialize_float32
 
 from mnemo.adapters.store.executors import SqlReadExecutor, SqlWriteExecutor
 from mnemo.adapters.store.memory_serializer import from_dict, to_dict
-from mnemo.application.fusion.rank_fusion import reciprocal_rank_fusion
 from mnemo.adapters.store.sqlite_connections import SqliteConnections
 from mnemo.adapters.store.transaction import SnapshotRead
+from mnemo.application.fusion.results import ChannelResults
 from mnemo.application.results.get_result import ChainEntry
 from mnemo.application.retrieval import Retrieval
 from mnemo.application.scored_memory import ScoredMemory
@@ -358,12 +358,14 @@ class SqliteRepositoryImpl:
         )
         return [row[0] for row in rows]
 
-    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
+    def retrieve_channels(self, request: Retrieval) -> ChannelResults:
+        """Run the two RAW hybrid legs and hand them back UNFUSED — dense by cosine
+        similarity, lexical by BM25 — for the application-layer Fuser to merge and score.
+        The repository ranks within each channel but does not fuse: ranking policy lives
+        outside the store."""
         limit = request.limit
         if limit <= 0:
-            return []
-        if request.text is None and request.vector is None:
-            return self._browse(request.criteria, limit)
+            return ChannelResults(dense=(), lexical=())
         where, params = self._where(request.criteria)
         candidate = limit * _CANDIDATE_MULTIPLIER
         match = _match_query(request.text)
@@ -391,22 +393,24 @@ class SqliteRepositoryImpl:
 
         dense, lexical = self._read.execute(work, strategy=SnapshotRead())
 
-        rows_by_id = {row["id"]: row for row in dense}
-        for row in lexical:
-            rows_by_id.setdefault(row["id"], row)
-
-        fused = reciprocal_rank_fusion(
-            [[row["id"] for row in dense], [row["id"] for row in lexical]]
+        # Convert the dense distance to a SIMILARITY (higher = better) so the channel's
+        # score is directly comparable; the lexical leg keeps the raw BM25 rank.
+        return ChannelResults(
+            dense=tuple(
+                ScoredMemory(memory=self._to_memory(row), score=1.0 - row["_distance"])
+                for row in dense
+            ),
+            lexical=tuple(
+                ScoredMemory(memory=self._to_memory(row), score=row["_rank"])
+                for row in lexical
+            ),
         )
-        ranked = sorted(fused.items(), key=lambda item: item[1], reverse=True)[:limit]
-        return [
-            ScoredMemory(memory=self._to_memory(rows_by_id[memory_id]), score=score)
-            for memory_id, score in ranked
-        ]
 
-    def _browse(self, criteria: SearchCriteria, limit: int) -> list[ScoredMemory]:
+    def browse(self, criteria: SearchCriteria, limit: int) -> list[Memory]:
         """Filter-only retrieval, newest first — no query, no ranking. Pending
-        (un-embedded) memories are included; the score is 0.0 (order conveys recency)."""
+        (un-embedded) memories are included; order conveys recency, so there is no score."""
+        if limit <= 0:
+            return []
         where, params = self._where(criteria)
         rows = self._read.execute(
             lambda conn: conn.execute(
@@ -415,7 +419,7 @@ class SqliteRepositoryImpl:
                 (*params, limit),
             ).fetchall()
         )
-        return [ScoredMemory(memory=self._to_memory(row), score=0.0) for row in rows]
+        return [self._to_memory(row) for row in rows]
 
     @staticmethod
     def _ancestor_closure(

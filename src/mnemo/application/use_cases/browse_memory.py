@@ -1,15 +1,14 @@
 """List active memories by filter, newest first — retrieval without a query.
 
 No embedding and no relevance ranking: a filter-only browse (type / tags / scope /
-recency) ordered by recency, distinct from the semantic `search`. Builds a
-`Retrieval` with neither text nor vector, so the store takes its browse path.
+recency) ordered by recency, distinct from the semantic `search`. Calls the store's
+`browse` path directly — no query, so no fusion or scoring.
 """
 from __future__ import annotations
 
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.browse_result import BrowseResult
-from mnemo.application.retrieval import Retrieval
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory_type import MemoryType
 
@@ -39,18 +38,18 @@ class BrowseMemoryUseCaseImpl:
             created_after=created_after,
         )
         self._gate.check(criteria.scope, criteria.project)
-        scored = self._repository.retrieve(Retrieval(criteria=criteria, limit=limit))
+        memories = self._repository.browse(criteria, limit)
         return [
             BrowseResult(
-                id=item.memory.id,
-                type=item.memory.type.value,
-                scope=item.memory.scope.value,
-                project=item.memory.project,
-                content=item.memory.content,
-                related_files=item.memory.related_files,
-                created_at=item.memory.created_at,
-                topic_key=item.memory.topic_key,
-                status=item.memory.status,
+                id=memory.id,
+                type=memory.type.value,
+                scope=memory.scope.value,
+                project=memory.project,
+                content=memory.content,
+                related_files=memory.related_files,
+                created_at=memory.created_at,
+                topic_key=memory.topic_key,
+                status=memory.status,
             )
-            for item in scored
+            for memory in memories
         ]

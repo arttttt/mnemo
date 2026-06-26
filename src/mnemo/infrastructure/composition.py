@@ -8,6 +8,7 @@ from llmkit.ports.reranker import Reranker
 
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.project_repository import ProjectRepository
@@ -53,6 +54,8 @@ def build_container(
     # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
     scheduler = SyncEmbeddingScheduler(embedder, repository)
     gate = ProjectGate(projects)
+    # One stateless Fuser merges the store's raw hybrid legs for both search and recall.
+    fuser = Fuser()
     return Container(
         config=config,
         embedder=embedder,
@@ -63,7 +66,7 @@ def build_container(
         remember=RememberMemoryUseCaseImpl(
             repository, scheduler, embedder, session_provider, gate,
         ),
-        search=SearchMemoryUseCaseImpl(repository, embedder, gate),
+        search=SearchMemoryUseCaseImpl(repository, embedder, gate, fuser),
         browse=BrowseMemoryUseCaseImpl(repository, gate),
         get=GetMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(

@@ -100,9 +100,11 @@ def test_migration_adds_fks_seeds_registry_and_preserves_data(tmp_path):
     # FTS index was rebuilt — a still-stored token is lexically findable
     from mnemo.application.retrieval import Retrieval
     from mnemo.application.search_criteria import SearchCriteria
-    hits = repo.retrieve(Retrieval(criteria=SearchCriteria(scope="all"), limit=5, text="zzqqx",
-                                   vector=embedder.encode("zzqqx")))
-    assert any("zzqqx" in h.memory.content for h in hits)
+    channels = repo.retrieve_channels(
+        Retrieval(criteria=SearchCriteria(scope="all"), limit=5, text="zzqqx",
+                  vector=embedder.encode("zzqqx"))
+    )
+    assert any("zzqqx" in hit.memory.content for hit in channels.lexical)
 
 
 def test_migration_makes_the_fk_enforced(tmp_path):

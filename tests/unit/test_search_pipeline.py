@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.results.search_result import SearchResult
 from mnemo.application.search.builder import build_search_pipeline
 from mnemo.application.search.request import SearchRequest
@@ -39,7 +40,7 @@ def test_returns_search_results_for_the_query(tmp_path):
         Memory.create("jwt refresh rotation", type="decision", project="api"),
         Memory.create("fixed the race", type="learning", project="api"),
     )
-    results = build_search_pipeline(repo, embedder).run(_request("jwt refresh rotation"))
+    results = build_search_pipeline(repo, embedder, Fuser()).run(_request("jwt refresh rotation"))
 
     assert results
     assert all(isinstance(r, SearchResult) for r in results)
@@ -56,7 +57,7 @@ def test_scopes_to_the_project_but_includes_global_memories(tmp_path):
         Memory.create("other project", type="decision", project="other"),
         Memory.create("a global rule", type="rule", scope="global"),
     )
-    results = build_search_pipeline(repo, embedder).run(_request("anything"))
+    results = build_search_pipeline(repo, embedder, Fuser()).run(_request("anything"))
 
     contents = {r.content for r in results}
     assert contents == {"api decision", "a global rule"}  # 'other' excluded, global kept
@@ -69,6 +70,6 @@ def test_limit_caps_the_number_of_results(tmp_path):
         embedder,
         *[Memory.create(f"note {i}", type="working-notes", project="api") for i in range(5)],
     )
-    results = build_search_pipeline(repo, embedder).run(_request("notes", limit=2))
+    results = build_search_pipeline(repo, embedder, Fuser()).run(_request("notes", limit=2))
 
     assert len(results) == 2

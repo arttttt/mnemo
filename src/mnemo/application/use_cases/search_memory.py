@@ -7,6 +7,7 @@ then runs the pipeline. The hybrid ranking and result shaping live in the stages
 """
 from __future__ import annotations
 
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.project_gate import ProjectGate
@@ -19,10 +20,14 @@ from mnemo.domain.memory_type import MemoryType
 
 class SearchMemoryUseCaseImpl:
     def __init__(
-        self, repository: MemoryRepository, embedder: TextEmbedder, gate: ProjectGate
+        self,
+        repository: MemoryRepository,
+        embedder: TextEmbedder,
+        gate: ProjectGate,
+        fuser: Fuser,
     ) -> None:
         self._gate = gate
-        self._pipeline = build_search_pipeline(repository, embedder)
+        self._pipeline = build_search_pipeline(repository, embedder, fuser)
 
     def execute(
         self,
