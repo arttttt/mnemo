@@ -1,7 +1,7 @@
 [project]
 name = "mnemo"
 version = "0.3.15"
-description = "Local, on-demand memory for AI coding agents (MCP)."
+description = "Local-first memory for AI coding agents — typed, deterministic, project-scoped"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
