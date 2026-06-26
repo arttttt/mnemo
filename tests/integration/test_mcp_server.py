@@ -18,6 +18,7 @@ def _container(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
+        reranker="off",  # keep the MCP wiring test offline: the default reranker is a GGUF download
         sqlite_path=str(tmp_path / "memory.db"),
     )
     return build_container(config)

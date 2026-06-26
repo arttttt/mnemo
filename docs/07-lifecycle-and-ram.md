@@ -86,8 +86,9 @@ MNEMO_MODELS_DIR=~/.mnemo/models     # where models are cached (pplx -> ~/.mnemo
 MNEMO_EMBED_MAX_TOKENS=2048          # embedder window cap; over it a memory is rejected (split it)
 MNEMO_EMBED_WORKERS=1                # embed worker threads = embedder instance-pool size = max parallel encodes (the RAM knob)
 # Recall synthesis (now) + consolidation (Phase 3) generator — multilingual; see 06-models.md, 08-consolidation.md.
-MNEMO_RERANKER=off                          # cross-encoder reranker repo, or "off" (default: off — none beat the embedder)
-MNEMO_RERANKER_REVISION=<commit>            # required immutable revision when a reranker repo is enabled
+MNEMO_RERANKER=gpustack/bge-reranker-v2-m3-GGUF  # default: bge-reranker-v2-m3 Q8 GGUF on llama.cpp/Metal (the A/B winner); GGUF/ONNX repo/path, or "off"
+MNEMO_RERANKER_FILE=*Q8_0.gguf              # GGUF glob in the repo
+MNEMO_RERANKER_REVISION=<commit>            # optional override; the default bge is pinned in code, custom HF repos require this
 MNEMO_NLI=<model>                           # contradiction NLI (cross-encoder); not yet chosen (Phase 3)
 MNEMO_GENERATOR=unsloth/gemma-4-E2B-it-qat-GGUF  # synthesis generator GGUF repo/path, or "off"
 MNEMO_GENERATOR_REVISION=<commit>            # optional override; default Gemma is pinned in code, custom HF repos require this

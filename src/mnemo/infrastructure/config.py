@@ -13,6 +13,13 @@ DEFAULT_GENERATOR = "unsloth/gemma-4-E2B-it-qat-GGUF"
 # Immutable Hugging Face commit selected and validated by the generator benchmark.
 DEFAULT_GENERATOR_REVISION = "db01ae3ceeca98487bf3569814f832f5023cd48c"
 
+# The default reranker: bge-reranker-v2-m3 (XLM-R cross-encoder), Q8 GGUF on llama.cpp/Metal —
+# the LoCoMo + MIRACL A/B winner (bench/reranker-selection), built behind llmkit's GGUF reranker.
+DEFAULT_RERANKER = "gpustack/bge-reranker-v2-m3-GGUF"
+DEFAULT_RERANKER_FILE = "*Q8_0.gguf"  # GGUF glob in the repo
+# Immutable Hugging Face commit so switching weights is a deliberate, pinned change.
+DEFAULT_RERANKER_REVISION = "3093af03b1a635e67b084b1d8c03c5f5e020fd05"
+
 def _int_env(name: str, default: str, *, minimum: int, maximum: int | None = None) -> int:
     """Parse a MNEMO_* integer at the config boundary, failing fast with a named, range-checked
     error — so a typo or out-of-range value surfaces at startup instead of an opaque later crash
@@ -73,10 +80,11 @@ class Config:
     embed_max_retries: int = 3                 # retries before a memory is left lexical-only
     embed_drain_timeout: float = 30.0          # how long idle-exit waits for the queue to drain
     # Recall pipeline models (benchmark-selected). Set any to "off" to drop that stage.
-    # Reranker is OFF by default: on our small, clean memory domain no reranker beat the
-    # embedder alone — revisit once a project's bank grows (set MNEMO_RERANKER to a repo).
-    reranker: str = "off"                                        # MNEMO_RERANKER: ONNX cross-encoder repo / "off"
-    reranker_revision: str | None = None                          # MNEMO_RERANKER_REVISION: required when enabled
+    # Reranker: bge-reranker-v2-m3 Q8 GGUF on llama.cpp/Metal (the A/B winner) by default, loaded
+    # Transient (gated, load-on-call) — see composition._build_reranker. "off" drops the stage.
+    reranker: str = DEFAULT_RERANKER                              # MNEMO_RERANKER: GGUF/ONNX cross-encoder repo / path / "off"
+    reranker_file: str = DEFAULT_RERANKER_FILE                    # MNEMO_RERANKER_FILE: GGUF glob in the repo
+    reranker_revision: str | None = None                          # MNEMO_RERANKER_REVISION: defaults to the pin for DEFAULT_RERANKER
     # Generator: Gemma 4 E2B-it, official QAT GGUF (near-lossless Q4) — best faithful synthesis
     # per the bench, at the lightest RAM; driven through its chat template (see _build_generator).
     generator: str = DEFAULT_GENERATOR                            # MNEMO_GENERATOR: HF GGUF repo / path / "off"
@@ -113,7 +121,8 @@ class Config:
             embed_queue_max=_int_env("MNEMO_EMBED_QUEUE_MAX", "256", minimum=1),
             embed_max_retries=_int_env("MNEMO_EMBED_MAX_RETRIES", "3", minimum=0),
             embed_drain_timeout=_float_env("MNEMO_EMBED_DRAIN_TIMEOUT", "30", minimum=0),
-            reranker=os.environ.get("MNEMO_RERANKER", "off"),
+            reranker=os.environ.get("MNEMO_RERANKER", DEFAULT_RERANKER),
+            reranker_file=os.environ.get("MNEMO_RERANKER_FILE", DEFAULT_RERANKER_FILE),
             reranker_revision=os.environ.get("MNEMO_RERANKER_REVISION") or None,
             generator=os.environ.get("MNEMO_GENERATOR", DEFAULT_GENERATOR),
             generator_revision=os.environ.get("MNEMO_GENERATOR_REVISION") or None,

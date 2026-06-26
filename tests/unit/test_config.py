@@ -1,7 +1,11 @@
 """Config.from_env validation — every numeric MNEMO_* fails fast with a named, range-checked error."""
 import pytest
 
-from mnemo.infrastructure.config import Config
+from mnemo.infrastructure.config import (
+    DEFAULT_RERANKER,
+    DEFAULT_RERANKER_FILE,
+    Config,
+)
 
 # Every numeric MNEMO_* the fixture must clear so a polluted shell can't skew the defaults.
 NUMERIC_VARS = [
@@ -69,6 +73,13 @@ def test_defaults_are_valid(env):
     assert config.embed_workers == 1
     assert config.embed_max_retries == 3
     assert config.idle_check_interval_seconds == 5.0
+
+
+def test_reranker_defaults_to_the_bge_gguf():
+    # The dataclass default (independent of the environment) is the bge GGUF cross-encoder.
+    config = Config(data_dir="/tmp", embedder="hash")
+    assert config.reranker == DEFAULT_RERANKER
+    assert config.reranker_file == DEFAULT_RERANKER_FILE
 
 
 @pytest.mark.parametrize("name,value", REJECTED)
