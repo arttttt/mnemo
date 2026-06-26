@@ -1,24 +1,42 @@
 # mnemo
 
-**Local memory for AI coding agents. On‑demand. Strictly offline. Built for 10+ agents on a 16 GB machine.**
+Local‑first memory for AI coding agents — typed, deterministic, project‑scoped.
 
 ## What it is
 
-A persistent memory layer for agents (Claude Code, Cursor, Windsurf, any MCP client) that
-remembers decisions, bugs, progress, and rules across sessions. What sets it apart:
+A persistent memory layer for AI coding agents (Claude Code, Cursor, Windsurf, any MCP client) that
+remembers decisions, bugs, progress, and rules across sessions, so you don't re‑explain your project
+every time.
 
-- **strictly local** — zero cloud calls; embeddings and LLM run only on your machine;
-- **on‑demand** — nothing runs in the background; the service spins up under load and shuts down after a grace period;
-- **no Docker daemon** — embedded storage inside a single process (SQLite + `sqlite-vec`);
-- **lightweight** — ~1 GB RAM while active, ~0 when idle; a small model (Qwen3‑4B / Gemma 4) runs only during background consolidation;
-- **concurrent** — one shared service serves 10+ agents; writes are cheap (embed + insert, no LLM on the hot path);
-- **simple** — a small set of MCP tools (`remember` / `search` / `browse` / `recall` / `delete`, plus project management); project‑scoped reads with first‑class cross‑project search on request (`scope=all`).
+- **local‑first** — the embedder and the optional `recall` model run on your machine; external model
+  providers are a possible option, not a requirement;
+- **deterministic** — a write is a local embedding + insert, with no LLM in the loop. mnemo never runs
+  a model over your memories to extract, merge, or summarize them, and nothing rewrites them in the
+  background; a stored memory changes only on an explicit `supersede` / `topic_key` signal;
+- **on‑demand** — nothing runs in the background; the shared service starts under load and exits after
+  an idle grace period;
+- **no Docker, no external DB** — the whole store is one process over SQLite + `sqlite-vec` + FTS5;
+- **typed & project‑scoped** — `decision / progress / rule / learning / research / working-notes`,
+  scoped per project, with first‑class cross‑project search on request (`scope=all`);
+- **small MCP surface** — one write (`remember`) and four reads (`search` by meaning, `browse` by
+  filter, `get` by id/topic_key, `recall` for an LLM‑synthesized answer), plus `delete` and project
+  tools.
 
-## Core principles
+## How writes work
 
-1. **No LLM on the write path.** A write = local embedding + upsert. The LLM runs only in the background, in batches.
-2. **One shared process, started on demand.** Not 10 stdio processes hitting one file — one service + thin shims.
-3. **Heavy things are transient.** The generative model is loaded only for a consolidation window, then unloaded.
-4. **Typed memory, project scoping.** `decision / debug / progress / rule / ...` across `project` / `global` / (optional) `session` scopes — reads isolate by project (plus always‑visible `global`); cross‑project search is first‑class but opt‑in (`scope=all`).
-5. **Tiny, obvious API.** Two everyday verbs (`remember` / `search`) plus a query‑less `browse`; deletion (`delete` / `delete_project`) is on the agent surface and the CLI, while wiping everything (`purge`) is CLI‑only; type/scope are parameters, not extra tools.
-6. **The default path works after one install.** The pplx and recall runtimes ship together; additional specialist models must earn their place.
+A write is a local embedding + insert — no LLM on the path. Many memory tools run an LLM on every
+write to extract or summarize what was said, and some keep rewriting it in the background; mnemo
+doesn't, so what you store is what you get back. The only LLM in the system is the opt‑in `recall`
+read tool: it loads a small model on demand to synthesize an answer over retrieved memories, then
+unloads it, and it never changes what's stored (`recall` is gated behind an explicit `force` flag).
+
+## Retrieval quality
+
+Retrieval is tested in‑repo (`tools/eval/`) against public benchmarks (LoCoMo, LongMemEval) and a
+real project‑fact set, where it compares favorably with other open‑source memory servers on Recall@k
+and abstention.
+
+## Install & use
+
+See [docs/13-usage.md](docs/13-usage.md) for install, the CLI, and one‑command MCP client setup
+(`mnemo setup`). The full tool surface is in [docs/05-mcp-api.md](docs/05-mcp-api.md).
