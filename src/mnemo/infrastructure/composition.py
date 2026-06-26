@@ -14,6 +14,7 @@ from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.application.ports.session_provider import SessionProvider
 from mnemo.application.project_gate import ProjectGate
+from mnemo.application.search.rerank_policy import RerankPolicy
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
@@ -56,6 +57,9 @@ def build_container(
     gate = ProjectGate(projects)
     # One stateless Fuser merges the store's raw hybrid legs for both search and recall.
     fuser = Fuser()
+    # One reranker, shared by search (confidence-gated) and recall. None when configured
+    # "off" (the default / offline), so both paths degrade to no-rerank.
+    reranker = _build_reranker(config)
     return Container(
         config=config,
         embedder=embedder,
@@ -66,14 +70,16 @@ def build_container(
         remember=RememberMemoryUseCaseImpl(
             repository, scheduler, embedder, session_provider, gate,
         ),
-        search=SearchMemoryUseCaseImpl(repository, embedder, gate, fuser),
+        search=SearchMemoryUseCaseImpl(
+            repository, embedder, gate, fuser, reranker=reranker, policy=RerankPolicy()
+        ),
         browse=BrowseMemoryUseCaseImpl(repository, gate),
         get=GetMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(
             repository,
             embedder,
             fuser,
-            reranker=_build_reranker(config),
+            reranker=reranker,
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,
             generator_max_tokens=config.generator_max_tokens,

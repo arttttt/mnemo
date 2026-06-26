@@ -25,7 +25,7 @@ class RerankerSpec:
 RERANKERS: dict[str, RerankerSpec] = {
     "bge": RerankerSpec(
         name="bge", runtime="gguf",
-        repo="gpustack/bge-reranker-v2-m3-GGUF", file="bge-reranker-v2-m3-Q8_0.gguf", window=2048,
+        repo="gpustack/bge-reranker-v2-m3-GGUF", file="bge-reranker-v2-m3-Q8_0.gguf", window=1024,
         note="prod reranker — bge-reranker-v2-m3, XLM-R cross-encoder, Q8 GGUF on Metal",
     ),
 }

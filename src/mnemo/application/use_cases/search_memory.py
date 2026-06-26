@@ -7,12 +7,15 @@ then runs the pipeline. The hybrid ranking and result shaping live in the stages
 """
 from __future__ import annotations
 
+from llmkit.ports.reranker import Reranker
+
 from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.search_result import SearchResult
 from mnemo.application.search.builder import build_search_pipeline
+from mnemo.application.search.rerank_policy import RerankPolicy
 from mnemo.application.search.request import SearchRequest
 from mnemo.application.search_criteria import SearchCriteria
 from mnemo.domain.memory_type import MemoryType
@@ -25,9 +28,13 @@ class SearchMemoryUseCaseImpl:
         embedder: TextEmbedder,
         gate: ProjectGate,
         fuser: Fuser,
+        reranker: Reranker | None = None,
+        policy: RerankPolicy | None = None,
     ) -> None:
         self._gate = gate
-        self._pipeline = build_search_pipeline(repository, embedder, fuser)
+        self._pipeline = build_search_pipeline(
+            repository, embedder, fuser, reranker=reranker, policy=policy
+        )
 
     def execute(
         self,
