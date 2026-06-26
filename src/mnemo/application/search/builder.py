@@ -22,11 +22,6 @@ from mnemo.application.search.rerank_stage import RerankStage
 from mnemo.application.search.request import SEARCH_REQUEST, SearchRequest
 from mnemo.application.search.retrieve_stage import RetrieveStage
 
-# When a reranker is wired, retrieval over-fetches this many candidates so the cross-encoder
-# has a real pool to re-order; presentation trims back to the user's limit.
-SEARCH_RERANK_POOL = 50
-
-
 def build_search_pipeline(
     repository: MemoryRepository,
     embedder: TextEmbedder,
@@ -37,7 +32,7 @@ def build_search_pipeline(
 ) -> Pipeline[SearchRequest, list[SearchResult]]:
     if reranker is not None:
         stages = [
-            RetrieveStage(repository, embedder, fuser, pool=SEARCH_RERANK_POOL),
+            RetrieveStage(repository, embedder, fuser, over_fetch=True),
             RerankStage(reranker, policy or RerankPolicy()),
             PresentStage(),
         ]

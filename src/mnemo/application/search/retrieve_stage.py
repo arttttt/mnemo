@@ -3,10 +3,10 @@
 Reads the seeded ``SEARCH_REQUEST`` and runs the hybrid retrieval — embed the query, fetch
 the raw dense + lexical (FTS) legs from the store, then fuse them with the shared ``Fuser``,
 filtered by the request's ``criteria``. Produces the fused, scored candidates (``RETRIEVED``)
-for presentation AND the per-query confidence ``SIGNALS`` an optional rerank gate reads. A
-``pool`` over-fetch (set when a reranker is wired) widens the candidate set the fuser ranks
-over; otherwise it fuses to the request's ``limit``. The first stage of the
-retrieve -> (rerank?) -> present pipeline.
+for presentation AND the per-query confidence ``SIGNALS`` an optional rerank gate reads. When a
+reranker is wired (``over_fetch``) the candidate set is widened to a k-scaled pool
+(``scaled_pool``) so the reranker has headroom; otherwise it fuses to the request's ``limit``.
+The first stage of the retrieve -> (rerank?) -> present pipeline.
 """
 from __future__ import annotations
 
@@ -24,6 +24,15 @@ RETRIEVED: Slot[tuple[ScoredMemory, ...]] = Slot("retrieved")
 # The confidence signals live with their producer (this stage); the rerank gate reads them.
 SIGNALS: Slot[RetrievalSignals] = Slot("signals")
 
+# Over-fetch pool for reranking: scale with the requested k so the reranker has headroom
+# (pool − k) without reading the whole store for a small page. min 20 / cap 50 / factor 5 →
+# k=1→20, k=5→25, k=10→50 (the bench/reranker-pool-and-k sweep — NOT a flat constant).
+_POOL_MIN, _POOL_CAP, _POOL_FACTOR = 20, 50, 5
+
+
+def scaled_pool(k: int) -> int:
+    return min(_POOL_CAP, max(_POOL_MIN, _POOL_FACTOR * k))
+
 
 class RetrieveStage:
     key = "retrieve"
@@ -36,16 +45,16 @@ class RetrieveStage:
         embedder: TextEmbedder,
         fuser: Fuser,
         *,
-        pool: int | None = None,
+        over_fetch: bool = False,
     ) -> None:
         self._repository = repository
         self._embedder = embedder
         self._fuser = fuser
-        self._pool = pool
+        self._over_fetch = over_fetch
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
         request = ctx.get(SEARCH_REQUEST)
-        n = self._pool or request.limit
+        n = scaled_pool(request.limit) if self._over_fetch else request.limit
         retrieval = Retrieval(
             criteria=request.criteria,
             limit=n,
