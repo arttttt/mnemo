@@ -7,6 +7,9 @@ silent update — use update_project to change a description).
 from __future__ import annotations
 
 from mnemo.application.ports.project_repository import ProjectRepository
+from mnemo.application.ports.token_counter import TokenCounter
+from mnemo.application.project_description import enforce_description_cap
+from mnemo.application.token_budget import TokenBudget
 from mnemo.domain.project import Project
 
 
@@ -19,12 +22,14 @@ class ProjectAlreadyExists(Exception):
 
 
 class CreateProjectUseCaseImpl:
-    def __init__(self, projects: ProjectRepository) -> None:
+    def __init__(self, projects: ProjectRepository, token_counter: TokenCounter) -> None:
         self._projects = projects
+        self._budget = TokenBudget(token_counter)
 
     def execute(self, name: str, description: str | None = None) -> Project:
         if self._projects.exists(name):
             raise ProjectAlreadyExists(name)
+        enforce_description_cap(self._budget, description)
         project = Project.create(name, description)
         self._projects.create(project)
         return project

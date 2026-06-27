@@ -338,3 +338,25 @@ def test_cli_update_and_list_projects(tmp_path, monkeypatch):
     assert listed.exit_code == 0, listed.output
     slugs = {p["slug"] for p in json.loads(listed.stdout)}
     assert {"api", "other"} <= slugs
+
+
+def test_cli_create_project_rejects_an_over_budget_description(tmp_path, monkeypatch):
+    # The 128-token description cap is enforced through the real CLI -> container -> use case:
+    # over-budget exits non-zero with a clean message (not a traceback) and nothing is registered.
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    over = " ".join(["word"] * 129)  # hash embedder counts one token per word -> over the 128 cap
+    result = runner.invoke(app, ["create-project", "fresh", "--description", over])
+    assert result.exit_code != 0
+    assert "128-token limit" in result.output
+    assert "Traceback" not in result.output
+    # the slug is free to register once the description fits
+    assert runner.invoke(app, ["create-project", "fresh", "-d", "a small service"]).exit_code == 0
+
+
+def test_cli_update_project_rejects_an_over_budget_description(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)  # pre-registers "api"
+    result = runner.invoke(app, ["update-project", "api", " ".join(["w"] * 200)])
+    assert result.exit_code != 0
+    assert "128-token limit" in result.output
+    assert "Traceback" not in result.output
+    assert runner.invoke(app, ["update-project", "api", "the api service"]).exit_code == 0

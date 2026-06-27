@@ -11,3 +11,7 @@ DEFAULT_RECALL_LIMIT = 15
 # rather than signal, and the cap bounds the rerank over-fetch pool. browse (a filter list,
 # e.g. "every decision") is intentionally not capped this tight.
 SEARCH_LIMIT_MAX = 20
+# A project's description is a short human- and (later) semantically-matched blurb — held to the
+# same tight budget as a `rule` memory (MemoryType.RULE.max_tokens) so it stays a precise summary,
+# not prose. Enforced in the create/update-project use cases (counting needs the token counter).
+PROJECT_DESCRIPTION_MAX_TOKENS = 128
