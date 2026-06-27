@@ -87,9 +87,9 @@ def build_container(
             generator_max_tokens=config.generator_max_tokens,
         ),
         delete=DeleteMemoryUseCaseImpl(repository, projects),
-        create_project=CreateProjectUseCaseImpl(projects),
+        create_project=CreateProjectUseCaseImpl(projects, embedder),
         delete_project=DeleteProjectUseCaseImpl(projects),
-        update_project=UpdateProjectUseCaseImpl(projects),
+        update_project=UpdateProjectUseCaseImpl(projects, embedder),
         list_projects=ListProjectsUseCaseImpl(projects),
     )
 

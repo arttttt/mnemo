@@ -382,7 +382,7 @@ def update_project(
     """Set or change a project's description."""
     try:
         project = build_container().update_project.execute(name, description)
-    except UnknownProject as exc:
+    except (UnknownProject, ValueError) as exc:
         raise typer.BadParameter(str(exc))
     typer.echo(json.dumps(asdict(project)))
 

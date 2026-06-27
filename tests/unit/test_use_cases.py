@@ -343,7 +343,7 @@ def test_update_project_sets_description(tmp_path):
 
     projects = _registry(tmp_path)
     projects.create(Project.create("api"))
-    updated = UpdateProjectUseCaseImpl(projects).execute("api", "the api service")
+    updated = UpdateProjectUseCaseImpl(projects, HashEmbedder()).execute("api", "the api service")
     assert updated.description == "the api service"
     assert projects.get("api").description == "the api service"
 
@@ -354,8 +354,28 @@ def test_update_project_unknown_is_rejected_with_candidates(tmp_path):
     projects = _registry(tmp_path)
     projects.create(Project.create("api"))
     with pytest.raises(UnknownProject) as exc:
-        UpdateProjectUseCaseImpl(projects).execute("ap", "x")  # typo of "api"
+        UpdateProjectUseCaseImpl(projects, HashEmbedder()).execute("ap", "x")  # typo of "api"
     assert "api" in exc.value.candidates
+
+
+def test_create_project_rejects_an_over_budget_description(tmp_path):
+    from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
+
+    projects = _registry(tmp_path)
+    over = " ".join(["word"] * 129)  # hash embedder counts one token per word → 129 > the 128 cap
+    with pytest.raises(ValueError, match=r"project description is 129 tokens, over the 128-token limit"):
+        CreateProjectUseCaseImpl(projects, HashEmbedder()).execute("api", over)
+    assert not projects.exists("api")  # rejected before the project is registered
+
+
+def test_update_project_rejects_an_over_budget_description(tmp_path):
+    from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
+
+    projects = _registry(tmp_path)
+    projects.create(Project.create("api", "short"))
+    with pytest.raises(ValueError, match=r"over the 128-token limit"):
+        UpdateProjectUseCaseImpl(projects, HashEmbedder()).execute("api", " ".join(["w"] * 200))
+    assert projects.get("api").description == "short"  # unchanged when the new description is rejected
 
 
 def test_list_projects_lists_registered_excluding_global(tmp_path):

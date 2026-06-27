@@ -13,6 +13,7 @@ from mnemo.application.ports.token_window import TokenWindow
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.results.remember_result import RememberResult
 from mnemo.application.scope_contract import validate_scope_project
+from mnemo.application.token_budget import TokenBudget
 from mnemo.domain.constants import DEFAULT_TYPE
 from mnemo.domain.memory import Memory
 from mnemo.domain.memory_type import MemoryType
@@ -31,6 +32,7 @@ class RememberMemoryUseCaseImpl:
         self._repository = repository
         self._scheduler = scheduler
         self._token_window = token_window
+        self._budget = TokenBudget(token_window)
         self._session_provider = session_provider
         self._gate = gate
 
@@ -69,15 +71,14 @@ class RememberMemoryUseCaseImpl:
         # first (one focused memory beats many fragments), and split only when it genuinely can't
         # be condensed. The token count is cheap and stays on the hot path; only the encode is
         # deferred.
-        cap = min(memory.type.max_tokens, self._token_window.max_input)
-        tokens = self._token_window.count_tokens(memory.content)
-        if tokens > cap:
-            raise ValueError(
-                f"content is {tokens} tokens, over the {cap}-token limit for a "
-                f"'{memory.type.value}' memory; tighten the wording to be more concise and "
-                f"precise so it fits, and split it into smaller, focused memories only if it "
-                f"genuinely can't be condensed"
-            )
+        self._budget.ensure_within(
+            memory.content,
+            min(memory.type.max_tokens, self._token_window.max_input),
+            subject="content",
+            qualifier=f" for a '{memory.type.value}' memory",
+            advice="tighten the wording to be more concise and precise so it fits, and split it "
+            "into smaller, focused memories only if it genuinely can't be condensed",
+        )
 
         # Exact duplicate: identical normalized content already ACTIVE in this same
         # scope/project — don't spawn a row. The lookup is project-scoped (the same
