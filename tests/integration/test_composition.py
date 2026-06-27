@@ -108,7 +108,8 @@ def test_default_reranker_wires_the_bge_gguf_with_its_pinned_revision(monkeypatc
 
     monkeypatch.setattr("llmkit.build.build_reranker", capture)
 
-    _build_reranker(Config(data_dir="/tmp", embedder="hash"))  # default reranker = DEFAULT_RERANKER
+    # Opt in to the bge GGUF (no longer the default) — the build path under MNEMO_RERANKER.
+    _build_reranker(Config(data_dir="/tmp", embedder="hash", reranker=DEFAULT_RERANKER))
 
     source = captured["config"].source
     assert source.model == DEFAULT_RERANKER
@@ -118,7 +119,10 @@ def test_default_reranker_wires_the_bge_gguf_with_its_pinned_revision(monkeypatc
 
 
 def test_reranker_off_builds_nothing():
+    # Explicit "off" AND the default (reranker is off by default) both build no reranker, so the
+    # search pipeline degrades to no-rerank with nothing set.
     assert _build_reranker(Config(data_dir="/tmp", embedder="hash", reranker="off")) is None
+    assert _build_reranker(Config(data_dir="/tmp", embedder="hash")) is None
 
 
 def test_local_gguf_reranker_does_not_need_a_revision(tmp_path, monkeypatch):
