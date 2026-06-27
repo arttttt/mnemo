@@ -11,6 +11,7 @@ import pytest
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
@@ -34,7 +35,7 @@ def test_gathers_a_projects_memory_grouped_by_type(tmp_path):
         Memory.create("fixed the race", type="learning", project="api"),
         Memory.create("auth adr", type="decision", project="api"),
     )
-    bundle = build_recall_pipeline(repo, embedder).run(RecallRequest(project="api", query="state"))
+    bundle = build_recall_pipeline(repo, embedder, Fuser()).run(RecallRequest(project="api", query="state"))
 
     assert bundle.project == "api"
     assert bundle.total == 3
@@ -54,7 +55,7 @@ def test_scopes_to_the_project_but_includes_global_memories(tmp_path):
         Memory.create("other project", type="decision", project="other"),
         Memory.create("a global rule", type="rule", scope="global"),
     )
-    bundle = build_recall_pipeline(repo, embedder).run(RecallRequest(project="api", query="anything"))
+    bundle = build_recall_pipeline(repo, embedder, Fuser()).run(RecallRequest(project="api", query="anything"))
 
     contents = {m.content for section in bundle.sections for m in section.memories}
     assert contents == {"api decision", "a global rule"}  # 'other' excluded, global kept
@@ -67,7 +68,7 @@ def test_limit_caps_the_number_of_gathered_memories(tmp_path):
         embedder,
         *[Memory.create(f"note {i}", type="working-notes", project="api") for i in range(5)],
     )
-    bundle = build_recall_pipeline(repo, embedder).run(
+    bundle = build_recall_pipeline(repo, embedder, Fuser()).run(
         RecallRequest(project="api", query="notes", limit=2)
     )
     assert bundle.total == 2

@@ -26,7 +26,7 @@ def test_concurrent_writes_and_reads_lose_nothing(tmp_path):
 
     def read(_):
         # Runs alongside the writers; must not error (and never sees a torn DB).
-        return repo.retrieve(
+        return repo.retrieve_channels(
             Retrieval(criteria=_ALL, limit=5, text="redis cache",
                       vector=embedder.encode("redis cache"))
         )

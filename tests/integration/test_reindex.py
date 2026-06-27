@@ -8,6 +8,7 @@ pytest.importorskip("sqlite_vec")
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.project_gate import ProjectGate
 from mnemo.application.use_cases.reindex_memories import ReindexMemories
 from mnemo.application.use_cases.remember_memory import RememberMemoryUseCaseImpl
@@ -37,7 +38,7 @@ def _remember(store, embedder, content, **kwargs):
 
 def _search(store, embedder):
     repo, registry = store
-    return SearchMemoryUseCaseImpl(repo, embedder, ProjectGate(registry))
+    return SearchMemoryUseCaseImpl(repo, embedder, ProjectGate(registry), Fuser())
 
 
 def _reindex(store, embedder):

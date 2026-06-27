@@ -103,8 +103,9 @@ fabricated facts when merging). Selection is on a local benchmark (see
 (`UD‑Q4_K_XL`, near‑lossless Q4) — best faithful synthesis at the lightest RAM, multilingual, Apache‑2.0,
 driven through its chat template. The QAT quant lifts the small model's grounding to match a larger one at
 about half the RAM; models that produced degenerate or hallucinated output were eliminated. To skip synthesis
-on a RAM‑tight machine, set `MNEMO_GENERATOR=off`. (The reranker is off by default — no reranker beat the
-embedder alone on the small, clean domain.)
+on a RAM‑tight machine, set `MNEMO_GENERATOR=off`. (The reranker defaults to **bge‑reranker‑v2‑m3** — the
+XLM‑R cross‑encoder Q8 GGUF run on llama.cpp/Metal, the LoCoMo + MIRACL A/B winner — loaded *transiently* and
+only when a search is ambiguous enough to earn it; set `MNEMO_RERANKER=off` to drop the stage.)
 
 ### Structured-output reliability on a small model
 JSON validity is a *solved* problem at any size with **grammar/guided decoding** (llama.cpp GBNF or

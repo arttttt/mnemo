@@ -6,6 +6,7 @@ import pytest
 pytest.importorskip("sqlite_vec")
 
 from mnemo.adapters.embedding.hash_embedder import HashEmbedder
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.recall.builder import build_recall_pipeline
 from mnemo.application.recall.request import RecallRequest
 from mnemo.domain.memory import Memory
@@ -37,7 +38,7 @@ def test_query_reranks_gathered_by_relevance_and_trims_to_top_k(tmp_path):
         Memory.create("logging format change", type="decision", project="api"),
         Memory.create("auth session cookie note", type="working-notes", project="api"),
     )
-    pipeline = build_recall_pipeline(repo, embedder, reranker=_KeywordReranker(), top_k=2)
+    pipeline = build_recall_pipeline(repo, embedder, Fuser(), reranker=_KeywordReranker(), top_k=2)
     bundle = pipeline.run(RecallRequest(project="api", query="auth"))
 
     # the two 'auth' memories outrank the logging one, which is trimmed by top_k

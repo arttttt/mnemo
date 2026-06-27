@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from mnemo.application.fusion.results import ChannelResults
 from mnemo.application.results.get_result import ChainEntry
 from mnemo.application.retrieval import Retrieval
-from mnemo.application.scored_memory import ScoredMemory
+from mnemo.application.search_criteria import SearchCriteria
 from mnemo.application.types import Vector
 from mnemo.domain.memory import Memory
 
@@ -64,9 +65,18 @@ class MemoryRepository(Protocol):
         """Distinct topic_keys under `project` (any status) — near-match on a get miss."""
         ...
 
-    def retrieve(self, request: Retrieval) -> list[ScoredMemory]:
-        """Rank memories for a retrieval request: dense (`request.vector`) and/or
-        lexical (`request.text`) legs fused, filtered by `request.criteria`."""
+    def retrieve_channels(self, request: Retrieval) -> ChannelResults:
+        """The two RAW hybrid-retrieval legs for a query request — dense (`request.vector`,
+        ranked by cosine similarity) and lexical (`request.text`, ranked by BM25), each
+        best-first and filtered by `request.criteria`. The store does NOT fuse: the
+        application-layer `Fuser` merges the legs and derives the confidence signals, so
+        ranking stays out of the repository (it only persists and reconstructs entities)."""
+        ...
+
+    def browse(self, criteria: SearchCriteria, limit: int) -> list[Memory]:
+        """Filter-only retrieval with NO query — active memories matching `criteria`,
+        newest first (recency order, no relevance ranking). Pending (un-embedded) rows
+        are included, since browse needs no vector."""
         ...
 
     def delete(self, ids: list[str], cascade: bool = False) -> int:

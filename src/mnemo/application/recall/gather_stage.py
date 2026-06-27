@@ -8,6 +8,7 @@ globally-scoped memories), capped at the request's ``limit``.
 """
 from __future__ import annotations
 
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.pipeline.context import PipelineContext
 from mnemo.application.pipeline.slot import Slot
 from mnemo.application.ports.embedder import TextEmbedder
@@ -25,9 +26,12 @@ class GatherStage:
     requires: frozenset[str] = frozenset()
     provides = frozenset({GATHERED.name})
 
-    def __init__(self, repository: MemoryRepository, embedder: TextEmbedder) -> None:
+    def __init__(
+        self, repository: MemoryRepository, embedder: TextEmbedder, fuser: Fuser
+    ) -> None:
         self._repository = repository
         self._embedder = embedder
+        self._fuser = fuser
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
         request = ctx.get(RECALL_REQUEST)
@@ -38,5 +42,6 @@ class GatherStage:
             text=request.query,
             vector=self._embedder.encode(request.query),
         )
-        scored = self._repository.retrieve(retrieval)
-        return ctx.set(GATHERED, tuple(item.memory for item in scored))
+        channels = self._repository.retrieve_channels(retrieval)
+        fused = self._fuser.fuse(channels, request.limit)
+        return ctx.set(GATHERED, tuple(item.memory for item in fused.pool))

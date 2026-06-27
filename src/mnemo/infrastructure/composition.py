@@ -8,11 +8,13 @@ from llmkit.ports.reranker import Reranker
 
 from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
+from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.ports.embedder import TextEmbedder
 from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.project_repository import ProjectRepository
 from mnemo.application.ports.session_provider import SessionProvider
 from mnemo.application.project_gate import ProjectGate
+from mnemo.application.search.rerank_policy import RerankPolicy
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.create_project import CreateProjectUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
@@ -26,6 +28,8 @@ from mnemo.application.use_cases.update_project import UpdateProjectUseCaseImpl
 from mnemo.infrastructure.config import (
     DEFAULT_GENERATOR,
     DEFAULT_GENERATOR_REVISION,
+    DEFAULT_RERANKER,
+    DEFAULT_RERANKER_REVISION,
     Config,
 )
 from mnemo.infrastructure.container import Container
@@ -53,6 +57,11 @@ def build_container(
     # async scheduler so writes stay cheap (docs/03-architecture.md, deferred embedding).
     scheduler = SyncEmbeddingScheduler(embedder, repository)
     gate = ProjectGate(projects)
+    # One stateless Fuser merges the store's raw hybrid legs for both search and recall.
+    fuser = Fuser()
+    # One reranker, shared by search (confidence-gated) and recall. None when configured
+    # "off" (the default / offline), so both paths degrade to no-rerank.
+    reranker = _build_reranker(config)
     return Container(
         config=config,
         embedder=embedder,
@@ -63,13 +72,16 @@ def build_container(
         remember=RememberMemoryUseCaseImpl(
             repository, scheduler, embedder, session_provider, gate,
         ),
-        search=SearchMemoryUseCaseImpl(repository, embedder, gate),
+        search=SearchMemoryUseCaseImpl(
+            repository, embedder, gate, fuser, reranker=reranker, policy=RerankPolicy()
+        ),
         browse=BrowseMemoryUseCaseImpl(repository, gate),
         get=GetMemoryUseCaseImpl(repository, gate),
         recall=RecallProjectUseCaseImpl(
             repository,
             embedder,
-            reranker=_build_reranker(config),
+            fuser,
+            reranker=reranker,
             generator=_build_generator(config),
             rerank_top_k=config.rerank_top_k,
             generator_max_tokens=config.generator_max_tokens,
@@ -133,19 +145,32 @@ def _build_store(
 def _build_reranker(config: Config) -> Reranker | None:
     if config.reranker == "off":
         return None
-    if config.reranker_revision is None:
-        raise ValueError(
-            "MNEMO_RERANKER_REVISION is required when MNEMO_RERANKER names a Hugging Face repo"
-        )
     from llmkit.build import build_reranker
     from llmkit.config import ModelConfig
     from llmkit.lifecycle.residency import Transient
-    from llmkit.runtime.onnx_encoder import OnnxSource
+    from llmkit.runtime.llama_cpp import GgufSource
 
-    # cache_dir reuses the models dir so reranker weights live alongside the embedder's.
+    # The default reranker is bge-reranker-v2-m3 Q8 GGUF on llama.cpp/Metal (the A/B winner);
+    # its revision pin is implicit. A custom HF repo must pin its own immutable revision; a
+    # local GGUF path needs none. (Same revision contract as the generator.)
+    revision = config.reranker_revision
+    if revision is None and config.reranker == DEFAULT_RERANKER:
+        revision = DEFAULT_RERANKER_REVISION
+    if revision is None and not Path(config.reranker).exists():
+        raise ValueError(
+            "MNEMO_RERANKER_REVISION is required when MNEMO_RERANKER names a custom "
+            "Hugging Face repo"
+        )
+
+    # Transient = load-on-call, free after: the reranker is GATED (only ambiguous searches reach
+    # it), so keeping it resident would hold ~1 GB for a stage most queries skip. cache_dir reuses
+    # the models dir so reranker weights live alongside the embedder's.
     return build_reranker(
         ModelConfig(
-            source=OnnxSource(repo=config.reranker, revision=config.reranker_revision),
+            source=GgufSource(
+                model=config.reranker, filename=config.reranker_file,
+                revision=revision, context_tokens=1024,
+            ),
             residency=Transient(),
             cache_dir=config.models_dir or None,
         )

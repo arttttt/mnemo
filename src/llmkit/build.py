@@ -7,6 +7,7 @@ one of them; the generator has its own runtime.
 from __future__ import annotations
 
 from llmkit.capabilities.llama_cpp_generator import LlamaCppGenerator
+from llmkit.capabilities.llama_cpp_reranker import LlamaCppReranker
 from llmkit.capabilities.onnx_embedder import OnnxEmbedder
 from llmkit.capabilities.onnx_reranker import OnnxReranker
 from llmkit.config import ModelConfig
@@ -16,6 +17,7 @@ from llmkit.ports.generator import Generator
 from llmkit.ports.reranker import Reranker
 from llmkit.runtime.hf_tokenizer import HfTokenizer
 from llmkit.runtime.llama_cpp import GgufSource, LlamaCppRuntime
+from llmkit.runtime.llama_cpp_rank import LlamaCppRerankRuntime
 from llmkit.runtime.onnx_encoder import OnnxEncoderRuntime, OnnxSource
 
 
@@ -47,6 +49,18 @@ def build_embedder(config: ModelConfig, *, dim: int, normalize: bool = True) -> 
 
 
 def build_reranker(config: ModelConfig) -> Reranker:
+    # The source type picks the cross-encoder backend: a GGUF runs on llama.cpp in RANK mode
+    # (GPU/Metal), an ONNX source runs on the shared CPU encoder. The GGUF runtime pre-joins
+    # the pair itself, so it needs no tokenizer.
+    if isinstance(config.source, GgufSource):
+        source, cache = config.source, config.cache_dir
+        return LlamaCppReranker(
+            ResidencyManager(
+                lambda: LlamaCppRerankRuntime(source, cache_dir=cache),
+                config.residency,
+                size=config.pool_size,
+            )
+        )
     return OnnxReranker(_onnx_manager(config), _onnx_tokenizer(config))
 
 

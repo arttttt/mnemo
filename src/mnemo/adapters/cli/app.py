@@ -13,7 +13,7 @@ import typer
 
 from mnemo.adapters.cli.confirmation import confirm_or_abort
 from mnemo.application.project_gate import UnknownProject
-from mnemo.domain.constants import DEFAULT_RECALL_LIMIT
+from mnemo.domain.constants import DEFAULT_RECALL_LIMIT, SEARCH_LIMIT_MAX
 from mnemo.domain.memory_type import MemoryType
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
@@ -128,7 +128,7 @@ def search(
         None, "--created-after", help="Keep only memories created at or after this ISO-8601 instant (e.g. 2026-06-01)."
     ),
     limit: int = typer.Option(
-        10, "--limit", "-l", min=1, max=100, help="Maximum number of hits."
+        10, "--limit", "-l", min=1, max=SEARCH_LIMIT_MAX, help="Maximum number of hits."
     ),
 ) -> None:
     """Search memories by meaning; prints ranked hits as JSON."""

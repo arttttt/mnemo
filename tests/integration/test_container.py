@@ -10,6 +10,7 @@ def test_container_wires_working_use_cases(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
+        reranker="off",  # keep the wiring test offline: the default reranker is a GGUF download
         sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
@@ -26,6 +27,7 @@ def test_container_stamps_one_session_id_through_the_wiring(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
+        reranker="off",  # keep the wiring test offline: the default reranker is a GGUF download
         sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
@@ -44,6 +46,7 @@ def test_delete_project_cascades_through_the_wiring(tmp_path):
     config = Config(
         data_dir=str(tmp_path),
         embedder="hash",
+        reranker="off",  # keep the wiring test offline: the default reranker is a GGUF download
         sqlite_path=str(tmp_path / "memory.db"),
     )
     container = build_container(config)
