@@ -1,7 +1,11 @@
-"""CLI controller: human-facing commands and operational tooling over the use cases."""
+"""CLI controller: human-facing commands and operational tooling over the use cases.
+
+Each command computes its result, then hands it to the presentation layer
+(:mod:`mnemo.adapters.cli.output`), which renders human-readable text by default and
+the bare JSON payload under ``--json`` (for agents and scripts).
+"""
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections import Counter
@@ -11,6 +15,7 @@ from typing import Optional
 
 import typer
 
+from mnemo.adapters.cli import output
 from mnemo.adapters.cli.confirmation import confirm_or_abort
 from mnemo.application.project_gate import UnknownProject
 from mnemo.domain.constants import DEFAULT_RECALL_LIMIT, SEARCH_LIMIT_MAX
@@ -34,10 +39,6 @@ def _installed_version() -> str:
     return package_version(_PACKAGE_NAME)
 
 
-def _echo_version() -> None:
-    typer.echo(_installed_version())
-
-
 def _guarded_container() -> Container:
     """Build the container, then fail fast (cleanly) if the configured embedder's dimension
     disagrees with the store's. NOT used by `reindex`, which must open a mismatched store to
@@ -51,9 +52,10 @@ def _guarded_container() -> Container:
 
 
 @app.command("version")
-def show_version() -> None:
+def show_version(json_out: bool = output.json_option()) -> None:
     """Show the installed mnemo version."""
-    _echo_version()
+    version = _installed_version()
+    output.render({"version": version}, version, as_json=json_out)
 
 
 @app.command()
@@ -85,8 +87,9 @@ def store(
     related_files: Optional[list[str]] = typer.Option(
         None, "--file", help="File path this memory concerns (repeatable)."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
-    """Store a memory. No LLM runs on write; prints {id, status}."""
+    """Store a memory. No LLM runs on write; reports {id, status}."""
     container = _guarded_container()
     try:
         result = container.remember.execute(
@@ -100,7 +103,7 @@ def store(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(result)))
+    output.render(asdict(result), output.format_remember(result), as_json=json_out)
 
 
 @app.command()
@@ -130,8 +133,9 @@ def search(
     limit: int = typer.Option(
         10, "--limit", "-l", min=1, max=SEARCH_LIMIT_MAX, help="Maximum number of hits."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
-    """Search memories by meaning; prints ranked hits as JSON."""
+    """Search memories by meaning; ranked hits, newest relevance first."""
     container = _guarded_container()
     try:
         results = container.search.execute(
@@ -146,7 +150,7 @@ def search(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps([asdict(r) for r in results], indent=2, ensure_ascii=False))
+    output.render([asdict(r) for r in results], output.format_hits(results), as_json=json_out)
 
 
 @app.command()
@@ -175,8 +179,9 @@ def browse(
     limit: int = typer.Option(
         10, "--limit", "-l", min=1, max=100, help="Maximum number of memories."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
-    """List memories by filter, newest first (no query, no ranking); prints JSON."""
+    """List memories by filter, newest first (no query, no ranking)."""
     container = build_container()
     try:
         results = container.browse.execute(
@@ -190,7 +195,7 @@ def browse(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps([asdict(r) for r in results], indent=2, ensure_ascii=False))
+    output.render([asdict(r) for r in results], output.format_hits(results), as_json=json_out)
 
 
 @app.command()
@@ -213,8 +218,9 @@ def get(
     chain_after: Optional[str] = typer.Option(
         None, "--chain-after", help="Chain cursor: id of the last (oldest) entry you saw."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
-    """Dereference one memory by id or topic_key — full record + supersede chain; prints JSON."""
+    """Dereference one memory by id or topic_key — full record + supersede chain."""
     try:
         result = build_container().get.execute(
             id=id,
@@ -226,7 +232,7 @@ def get(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(result), indent=2, ensure_ascii=False))
+    output.render(asdict(result), output.format_get(result), as_json=json_out)
 
 
 @app.command()
@@ -237,6 +243,7 @@ def recall(
         DEFAULT_RECALL_LIMIT, "--limit", "-l", min=1, max=200,
         help="Number of the most query-relevant memories to ground the answer on.",
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Recall a project's memory as a query-focused answer (the CLI view of the `recall` MCP tool).
 
@@ -270,11 +277,11 @@ def recall(
             for memory in section.memories
         ],
     }
-    typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+    output.render(payload, output.format_recall(payload), as_json=json_out)
 
 
 @app.command()
-def stats() -> None:
+def stats(json_out: bool = output.json_option()) -> None:
     """Show how many memories are stored, by type, and how many await a vector.
 
     `pending` = memories with no embedding yet — lexically searchable but absent
@@ -284,14 +291,12 @@ def stats() -> None:
     container = build_container()
     memories = container.repository.list_all()
     by_type = Counter(memory.type.value for memory in memories)
-    typer.echo(json.dumps(
-        {
-            "total": len(memories),
-            "pending": container.embedding_queue.pending_count(),
-            "by_type": dict(by_type),
-        },
-        indent=2,
-    ))
+    payload = {
+        "total": len(memories),
+        "pending": container.embedding_queue.pending_count(),
+        "by_type": dict(by_type),
+    }
+    output.render(payload, output.format_stats(payload), as_json=json_out)
 
 
 @app.command()
@@ -299,6 +304,7 @@ def reindex(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be re-embedded; change nothing."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Re-embed every memory with the current embedder (run after switching embedders).
 
@@ -314,10 +320,12 @@ def reindex(
     container = build_container(config)
     target_dim = container.embedder.dim
     if dry_run:
-        typer.echo(json.dumps(
-            {"memories": len(container.repository.list_all()),
-             "target_dim": target_dim, "dry_run": True}
-        ))
+        payload = {
+            "memories": len(container.repository.list_all()),
+            "target_dim": target_dim,
+            "dry_run": True,
+        }
+        output.render(payload, output.format_reindex(payload), as_json=json_out)
         return
     # A running shared service holds the old store/dimension in memory: stop it before the
     # rebuild (so its open connection can't obstruct the table swap) and again after (in
@@ -327,10 +335,12 @@ def reindex(
         container.embedding_queue, container.embedder, container.scheduler
     ).execute()
     stopped_after = stop_service(config)
-    typer.echo(json.dumps(
-        {"reindexed": count, "dim": target_dim,
-         "service_restarted": stopped_before or stopped_after}
-    ))
+    payload = {
+        "reindexed": count,
+        "dim": target_dim,
+        "service_restarted": stopped_before or stopped_after,
+    }
+    output.render(payload, output.format_reindex(payload), as_json=json_out)
 
 
 @app.command()
@@ -341,10 +351,11 @@ def delete(
         "--cascade",
         help="Also delete every older memory each id supersedes, down to the chain root (the whole lineage).",
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Permanently delete specific memories (with --cascade, their whole older lineage too)."""
     result = build_container().delete.delete(ids, cascade=cascade)
-    typer.echo(json.dumps(asdict(result)))
+    output.render(asdict(result), output.format_deletion(result), as_json=json_out)
 
 
 @app.command()
@@ -353,45 +364,48 @@ def create_project(
     description: Optional[str] = typer.Option(
         None, "--description", "-d", help="What this project is (optional)."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Register a new project. Writing to an unregistered project is rejected."""
     try:
         project = build_container().create_project.execute(name, description)
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(project)))
+    output.render(asdict(project), output.format_project_created(project), as_json=json_out)
 
 
 @app.command()
 def delete_project(
     name: str = typer.Argument(..., help="Project slug to delete, with all its memories."),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Permanently delete a project and all its memories (and their links)."""
     try:
         project = build_container().delete_project.execute(name)
     except UnknownProject as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(project)))
+    output.render(asdict(project), output.format_project_deleted(project), as_json=json_out)
 
 
 @app.command()
 def update_project(
     name: str = typer.Argument(..., help="Project slug to update."),
     description: str = typer.Argument(..., help="New description for the project."),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Set or change a project's description."""
     try:
         project = build_container().update_project.execute(name, description)
     except (UnknownProject, ValueError) as exc:
         raise typer.BadParameter(str(exc))
-    typer.echo(json.dumps(asdict(project)))
+    output.render(asdict(project), output.format_project_updated(project), as_json=json_out)
 
 
 @app.command()
-def list_projects() -> None:
+def list_projects(json_out: bool = output.json_option()) -> None:
     """List the registered projects (newest first)."""
     projects = build_container().list_projects.execute()
-    typer.echo(json.dumps([asdict(p) for p in projects], indent=2, ensure_ascii=False))
+    output.render([asdict(p) for p in projects], output.format_projects(projects), as_json=json_out)
 
 
 @app.command()
@@ -399,6 +413,7 @@ def purge(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Skip the confirmation prompt (for non-interactive use)."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
     """Permanently delete ALL memories and the project registry. Prompts to confirm."""
     confirm_or_abort(
@@ -406,7 +421,7 @@ def purge(
         assume_yes=yes,
     )
     result = build_container().delete.purge()
-    typer.echo(json.dumps(asdict(result)))
+    output.render(asdict(result), output.format_deletion(result, purged=True), as_json=json_out)
 
 
 @app.command()
@@ -422,8 +437,14 @@ def setup(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be done; write nothing."
     ),
+    json_out: bool = output.json_option(),
 ) -> None:
-    """Wire an MCP client to mnemo, or detect installed clients and offer to."""
+    """Wire an MCP client to mnemo, or detect installed clients and offer to.
+
+    With --json the command is non-interactive (it never prompts): name a client or
+    pass --all to wire and get the result(s) as JSON; with neither, it reports the
+    detected clients as JSON instead of prompting.
+    """
     from mnemo.adapters.setup.client_registry import build_installers
     from mnemo.adapters.setup.selection import parse_selection
 
@@ -434,15 +455,31 @@ def setup(
         target = by_name.get(client)
         if target is None:
             raise typer.BadParameter(f"unknown client '{client}'. Known: {', '.join(by_name)}")
-        _apply([target], dry_run)
+        _apply([target], dry_run, as_json=json_out)
         return
 
     detected = [installer for installer in installers if installer.detect()]
     if not detected:
-        typer.echo(
-            "No supported MCP clients detected. Wire one explicitly: "
-            f"mnemo setup <{'|'.join(by_name)}>"
-        )
+        if json_out:
+            output.render([], "", as_json=True)
+        else:
+            typer.echo(
+                "No supported MCP clients detected. Wire one explicitly: "
+                f"mnemo setup <{'|'.join(by_name)}>"
+            )
+        return
+
+    if json_out:
+        # --json is non-interactive: act when told which (--all), or planned (--dry-run);
+        # otherwise just report what could be wired rather than block on a prompt.
+        if all_clients or dry_run:
+            _apply(detected, dry_run, as_json=True)
+        else:
+            output.render(
+                [{"client": i.name, "action": i.describe(), "detected": True} for i in detected],
+                "",
+                as_json=True,
+            )
         return
 
     typer.echo("Detected clients:")
@@ -459,15 +496,24 @@ def setup(
     _apply(chosen, dry_run=False)
 
 
-def _apply(installers, dry_run: bool) -> None:
-    if not installers:
-        typer.echo("Nothing to do.")
+def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
+    if dry_run:
+        plan = [{"client": i.name, "action": i.describe()} for i in installers]
+        if as_json:
+            output.render(plan, "", as_json=True)
+            return
+        if not plan:
+            typer.echo("Nothing to do.")
+        for item in plan:
+            typer.echo(f"[dry-run] {item['client']}: {item['action']}")
         return
-    for installer in installers:
-        if dry_run:
-            typer.echo(f"[dry-run] {installer.name}: {installer.describe()}")
-            continue
-        result = installer.install()
+    results = [installer.install() for installer in installers]
+    if as_json:
+        output.render([asdict(result) for result in results], "", as_json=True)
+        return
+    if not results:
+        typer.echo("Nothing to do.")
+    for result in results:
         mark = "✓" if result.status == "ok" else "✗"
         suffix = f"  ({result.message})" if result.message else ""
         typer.echo(f"{mark} {result.client}: {result.target}{suffix}")
