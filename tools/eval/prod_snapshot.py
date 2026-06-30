@@ -31,7 +31,7 @@ def search_cli(store_dir: Path, embedder: str, question: str, project: str, limi
     """Run the real `mnemo search` CLI against the snapshot store; return its JSON hits."""
     env = {**os.environ, "MNEMO_DATA_DIR": str(store_dir), "MNEMO_EMBEDDER": embedder}
     proc = subprocess.run(
-        ["mnemo", "search", question, "--project", project, "--limit", str(limit)],
+        ["mnemo", "search", question, "--project", project, "--limit", str(limit), "--json"],
         env=env, capture_output=True, text=True,
     )
     if proc.returncode != 0:

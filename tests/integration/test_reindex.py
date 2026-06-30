@@ -159,10 +159,10 @@ def test_cli_reindex(tmp_path, monkeypatch):
     runner = testing.CliRunner()
     runner.invoke(app, ["store", "a memory to reindex", "--project", "api"])
 
-    dry = runner.invoke(app, ["reindex", "--dry-run"])
+    dry = runner.invoke(app, ["reindex", "--dry-run", "--json"])
     assert dry.exit_code == 0 and json.loads(dry.stdout)["dry_run"] is True
 
-    run = runner.invoke(app, ["reindex"])
+    run = runner.invoke(app, ["reindex", "--json"])
     assert run.exit_code == 0
     result = json.loads(run.stdout)
     assert "dim" in result

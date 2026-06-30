@@ -87,6 +87,25 @@ uv run mnemo stats
 
 (If the venv is activated, drop the `uv run` prefix: `mnemo store ...`.)
 
+#### Output: human by default, `--json` for agents/scripts
+
+Every command prints **human-readable** text by default — scannable lists, the memory
+type, the durable `topic_key`, a date, and a one-line snippet — meant for a person at a
+terminal. Pass **`--json`** to get the bare JSON payload instead, the stable contract for
+agents and scripts to parse:
+
+```bash
+mnemo search "how is auth done" --project checkout-api          # human: ranked list with snippets
+mnemo search "how is auth done" --project checkout-api --json   # JSON: a list of hit objects
+mnemo get --topic-key auth/jwt-model --project checkout-api --json
+mnemo stats --json
+```
+
+`--json` works on every command (including `version` and `setup`). Under `--json`, `setup`
+is non-interactive: name a client or pass `--all` to wire and get the result as JSON;
+with neither, it reports the detected clients instead of prompting. Errors stay the same
+in both modes — a clean message on stderr and a non-zero exit code.
+
 All state lives in **one directory** — back up / move / wipe by copying or deleting it.
 
 ### Config (environment variables)

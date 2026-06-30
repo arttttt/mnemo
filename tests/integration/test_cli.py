@@ -23,6 +23,10 @@ def _runner_and_app(tmp_path, monkeypatch):
     return testing.CliRunner(), app
 
 
+# --- JSON contract (--json) ----------------------------------------------------------
+# These exercise the stable machine-readable payloads agents/scripts parse. The default
+# (no --json) human-readable view is covered in its own section further down.
+
 def test_cli_version_reports_installed_distribution(monkeypatch):
     import mnemo.adapters.cli.app as cli_app
 
@@ -35,21 +39,29 @@ def test_cli_version_reports_installed_distribution(monkeypatch):
 
     result = runner.invoke(cli_app.app, ["version"])
     assert result.exit_code == 0, result.output
-    assert result.stdout.strip() == expected
+    assert result.stdout.strip() == expected  # default: the bare version number
+
+
+def test_cli_version_json_wraps_the_number(monkeypatch):
+    import mnemo.adapters.cli.app as cli_app
+
+    result = testing.CliRunner().invoke(cli_app.app, ["version", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"version": package_version("mnemo")}
 
 
 def test_cli_store_then_search(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
     stored = runner.invoke(
-        app, ["store", "JWT refresh rotation", "--type", "decision", "--project", "api"]
+        app, ["store", "JWT refresh rotation", "--type", "decision", "--project", "api", "--json"]
     )
     assert stored.exit_code == 0, stored.output
     memory_id = json.loads(stored.stdout)["id"]
 
-    found = runner.invoke(app, ["search", "jwt rotation", "--project", "api"])
+    found = runner.invoke(app, ["search", "jwt rotation", "--project", "api", "--json"])
     assert found.exit_code == 0, found.output
-    assert memory_id in found.stdout
+    assert memory_id in found.stdout  # full id surfaces in the JSON payload
 
 
 def test_cli_store_project_scope_without_project_fails_cleanly(tmp_path, monkeypatch):
@@ -76,17 +88,17 @@ def test_cli_search_project_scope_without_project_fails_cleanly(tmp_path, monkey
 def test_cli_search_global_scope_needs_no_project(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
-    result = runner.invoke(app, ["search", "anything", "--scope", "global"])
+    result = runner.invoke(app, ["search", "anything", "--scope", "global", "--json"])
     assert result.exit_code == 0, result.output
     assert result.stdout.strip() == "[]"  # empty store, but the command runs end-to-end
 
 
 def test_cli_browse_lists_memories_without_a_query(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
-    a = json.loads(runner.invoke(app, ["store", "alpha", "--project", "api"]).stdout)["id"]
-    b = json.loads(runner.invoke(app, ["store", "beta", "--project", "api"]).stdout)["id"]
+    a = json.loads(runner.invoke(app, ["store", "alpha", "--project", "api", "--json"]).stdout)["id"]
+    b = json.loads(runner.invoke(app, ["store", "beta", "--project", "api", "--json"]).stdout)["id"]
 
-    result = runner.invoke(app, ["browse", "--project", "api"])
+    result = runner.invoke(app, ["browse", "--project", "api", "--json"])
     assert result.exit_code == 0, result.output
     hits = json.loads(result.stdout)
     created = [hit["created_at"] for hit in hits]
@@ -110,37 +122,41 @@ def test_cli_store_sets_tags_and_files(tmp_path, monkeypatch):
     stored = runner.invoke(
         app,
         ["store", "jwt rotation", "--project", "api",
-         "--tag", "auth", "--file", "src/auth.py"],
+         "--tag", "auth", "--file", "src/auth.py", "--json"],
     )
     assert stored.exit_code == 0, stored.output
     memory_id = json.loads(stored.stdout)["id"]
 
     # The metadata was actually set: search filters on tag/file find it...
-    by_tag = runner.invoke(app, ["search", "jwt rotation", "--project", "api", "--tag", "auth"])
+    by_tag = runner.invoke(
+        app, ["search", "jwt rotation", "--project", "api", "--tag", "auth", "--json"]
+    )
     assert memory_id in by_tag.stdout
     by_file = runner.invoke(
-        app, ["search", "jwt rotation", "--project", "api", "--file", "src/auth.py"]
+        app, ["search", "jwt rotation", "--project", "api", "--file", "src/auth.py", "--json"]
     )
     assert memory_id in by_file.stdout
 
     # ...and a non-matching tag filter excludes it (proves it wasn't silently dropped).
-    miss = runner.invoke(app, ["search", "jwt rotation", "--project", "api", "--tag", "cache"])
+    miss = runner.invoke(
+        app, ["search", "jwt rotation", "--project", "api", "--tag", "cache", "--json"]
+    )
     assert memory_id not in miss.stdout
 
 
 def test_cli_delete_purge_and_stats(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
 
-    one = json.loads(runner.invoke(app, ["store", "one", "--project", "api"]).stdout)["id"]
+    one = json.loads(runner.invoke(app, ["store", "one", "--project", "api", "--json"]).stdout)["id"]
     runner.invoke(app, ["store", "two", "--project", "api"])
     runner.invoke(app, ["store", "three", "--project", "other"])
 
-    stats = json.loads(runner.invoke(app, ["stats"]).stdout)
+    stats = json.loads(runner.invoke(app, ["stats", "--json"]).stdout)
     assert stats["total"] == 3
     assert stats["pending"] == 0  # the CLI embeds inline (sync scheduler), so nothing pending
-    assert json.loads(runner.invoke(app, ["delete", one]).stdout)["deleted"] == 1
-    assert json.loads(runner.invoke(app, ["purge", "--yes"]).stdout)["deleted"] == 2
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0
+    assert json.loads(runner.invoke(app, ["delete", one, "--json"]).stdout)["deleted"] == 1
+    assert json.loads(runner.invoke(app, ["purge", "--yes", "--json"]).stdout)["deleted"] == 2
+    assert json.loads(runner.invoke(app, ["stats", "--json"]).stdout)["total"] == 0
 
 
 def test_cli_purge_confirmation_gate(tmp_path, monkeypatch):
@@ -151,12 +167,12 @@ def test_cli_purge_confirmation_gate(tmp_path, monkeypatch):
 
     aborted = runner.invoke(app, ["purge"], input="n\n")
     assert aborted.exit_code != 0  # declined → aborted, nothing deleted
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 1
+    assert json.loads(runner.invoke(app, ["stats", "--json"]).stdout)["total"] == 1
 
     confirmed = runner.invoke(app, ["purge"], input="y\n")
     assert confirmed.exit_code == 0, confirmed.output
     # (the prompt text shares stdout, so verify the effect via stats rather than parsing it)
-    assert json.loads(runner.invoke(app, ["stats"]).stdout)["total"] == 0  # everything gone
+    assert json.loads(runner.invoke(app, ["stats", "--json"]).stdout)["total"] == 0  # everything gone
 
 
 def test_cli_delete_cascade_removes_the_whole_lineage(tmp_path, monkeypatch):
@@ -166,16 +182,16 @@ def test_cli_delete_cascade_removes_the_whole_lineage(tmp_path, monkeypatch):
     runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])
     head = json.loads(
         runner.invoke(
-            app, ["store", "auth v3", "--project", "api", "--topic-key", "auth/model"]
+            app, ["store", "auth v3", "--project", "api", "--topic-key", "auth/model", "--json"]
         ).stdout
     )["id"]
 
-    deleted = runner.invoke(app, ["delete", head, "--cascade"])
+    deleted = runner.invoke(app, ["delete", head, "--cascade", "--json"])
     assert deleted.exit_code == 0, deleted.output
     assert json.loads(deleted.stdout)["deleted"] == 3  # head + the two superseded versions
 
     # the whole topic is gone (without --cascade only the head would have been removed)
-    found = runner.invoke(app, ["search", "auth", "--project", "api"])
+    found = runner.invoke(app, ["search", "auth", "--project", "api", "--json"])
     assert json.loads(found.stdout) == []
 
 
@@ -191,7 +207,7 @@ def test_cli_stats_reports_pending(tmp_path, monkeypatch):
     repo = SqliteRepositoryImpl.open(path=str(tmp_path / "memory.db"), dim=HashEmbedder().dim)
     repo.add(Memory.create("not embedded yet", project="api"))  # no vector → pending
 
-    stats = json.loads(runner.invoke(app, ["stats"]).stdout)
+    stats = json.loads(runner.invoke(app, ["stats", "--json"]).stdout)
     assert stats["total"] == 2
     assert stats["pending"] == 1  # only the vector-less one
 
@@ -203,7 +219,7 @@ def test_cli_recall_returns_the_query_relevant_memories_as_light_sources(tmp_pat
     runner.invoke(app, ["store", "fixed a race", "--type", "learning", "--project", "api"])
     runner.invoke(app, ["store", "other thing", "--type", "decision", "--project", "other"])
 
-    result = runner.invoke(app, ["recall", "api", "auth"])
+    result = runner.invoke(app, ["recall", "api", "auth", "--json"])
     assert result.exit_code == 0, result.output
     bundle = json.loads(result.stdout)
     assert bundle["project"] == "api"
@@ -287,7 +303,7 @@ def test_cli_get_by_topic_key(tmp_path, monkeypatch):
     runner.invoke(app, ["store", "auth v1", "--project", "api", "--topic-key", "auth/model"])
     runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])
 
-    result = runner.invoke(app, ["get", "--topic-key", "auth/model", "--project", "api"])
+    result = runner.invoke(app, ["get", "--topic-key", "auth/model", "--project", "api", "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload["content"] == "auth v2" and payload["status"] == "active"
@@ -297,7 +313,9 @@ def test_cli_get_by_topic_key(tmp_path, monkeypatch):
 
 def test_cli_create_project_then_store(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
-    created = runner.invoke(app, ["create-project", "newproj", "--description", "a new one"])
+    created = runner.invoke(
+        app, ["create-project", "newproj", "--description", "a new one", "--json"]
+    )
     assert created.exit_code == 0, created.output
     assert json.loads(created.stdout)["slug"] == "newproj"
 
@@ -318,23 +336,23 @@ def test_cli_delete_project_cascades(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)
     runner.invoke(app, ["store", "doomed note", "--project", "api"])
 
-    deleted = runner.invoke(app, ["delete-project", "api"])
+    deleted = runner.invoke(app, ["delete-project", "api", "--json"])
     assert deleted.exit_code == 0, deleted.output
     assert json.loads(deleted.stdout)["slug"] == "api"
 
     # the project's memory cascaded away with it
-    found = runner.invoke(app, ["search", "doomed", "--scope", "all"])
-    assert "doomed note" not in found.stdout
+    found = runner.invoke(app, ["search", "doomed", "--scope", "all", "--json"])
+    assert json.loads(found.stdout) == []
 
 
 def test_cli_update_and_list_projects(tmp_path, monkeypatch):
     runner, app = _runner_and_app(tmp_path, monkeypatch)  # pre-registers api, other
 
-    updated = runner.invoke(app, ["update-project", "api", "the API service"])
+    updated = runner.invoke(app, ["update-project", "api", "the API service", "--json"])
     assert updated.exit_code == 0, updated.output
     assert json.loads(updated.stdout)["description"] == "the API service"
 
-    listed = runner.invoke(app, ["list-projects"])
+    listed = runner.invoke(app, ["list-projects", "--json"])
     assert listed.exit_code == 0, listed.output
     slugs = {p["slug"] for p in json.loads(listed.stdout)}
     assert {"api", "other"} <= slugs
@@ -360,3 +378,85 @@ def test_cli_update_project_rejects_an_over_budget_description(tmp_path, monkeyp
     assert "128-token limit" in result.output
     assert "Traceback" not in result.output
     assert runner.invoke(app, ["update-project", "api", "the api service"]).exit_code == 0
+
+
+# --- Human-readable default (no --json) ----------------------------------------------
+# The default view is for a person at a terminal: scannable text, not JSON. These assert
+# the default is NOT JSON and carries the right cues.
+
+def test_cli_store_default_is_human_readable(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["store", "a note", "--type", "decision", "--project", "api"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.startswith("created — ")  # status verb + id, not a JSON object
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stdout)
+
+
+def test_cli_search_default_lists_type_and_snippet(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(
+        app,
+        ["store", "JWT refresh rotation in httpOnly cookies", "--type", "decision",
+         "--project", "api", "--topic-key", "auth/jwt"],
+    )
+
+    result = runner.invoke(app, ["search", "jwt rotation", "--project", "api"])
+    assert result.exit_code == 0, result.output
+    assert "1 hit" in result.stdout
+    assert "[decision]" in result.stdout         # type cue
+    assert "auth/jwt" in result.stdout           # the durable handle leads the line
+    assert "JWT refresh rotation" in result.stdout  # the content snippet
+
+
+def test_cli_search_default_empty_is_a_clear_note(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["search", "anything", "--scope", "global"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "No memories found."
+
+
+def test_cli_stats_default_is_human_readable(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "x", "--type", "rule", "--project", "api"])
+
+    result = runner.invoke(app, ["stats"])
+    assert result.exit_code == 0, result.output
+    assert "memories: 1" in result.stdout
+    assert "by type:" in result.stdout
+    assert "rule" in result.stdout
+
+
+def test_cli_get_default_shows_content_and_chain(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "auth v1", "--project", "api", "--topic-key", "auth/model"])
+    runner.invoke(app, ["store", "auth v2", "--project", "api", "--topic-key", "auth/model"])
+
+    result = runner.invoke(app, ["get", "--topic-key", "auth/model", "--project", "api"])
+    assert result.exit_code == 0, result.output
+    assert "auth v2" in result.stdout        # untruncated content of the active head
+    assert "id: " in result.stdout           # full id is the actionable handle here
+    assert "chain (2 of 2):" in result.stdout
+
+
+def test_cli_recall_default_shows_header_and_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("MNEMO_LOG_LEVEL", "ERROR")
+    runner, app = _runner_and_app(tmp_path, monkeypatch)
+    runner.invoke(app, ["store", "use jwt", "--type", "decision", "--project", "api"])
+
+    result = runner.invoke(app, ["recall", "api", "auth"])
+    assert result.exit_code == 0, result.output
+    assert "recall: api" in result.stdout
+    assert 'query "auth"' in result.stdout
+    assert "no generated summary" in result.stdout  # generator is off in tests
+    assert "sources:" in result.stdout
+
+
+def test_cli_list_projects_default_is_human_readable(tmp_path, monkeypatch):
+    runner, app = _runner_and_app(tmp_path, monkeypatch)  # pre-registers api, other
+    result = runner.invoke(app, ["list-projects"])
+    assert result.exit_code == 0, result.output
+    assert "projects:" in result.stdout
+    assert "api" in result.stdout and "other" in result.stdout
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stdout)
