@@ -1,0 +1,98 @@
+name: tests
+
+# A change made only of documentation does not run the suite. (Should this check ever become
+# required for main, a documentation-only pull request would then wait on it forever.)
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md", "docs/**", LICENSE]
+  pull_request:
+    paths-ignore: ["**/*.md", "docs/**", LICENSE]
+  workflow_dispatch:
+
+# A newer push to a pull request supersedes the run still in progress for it. Every other run
+# (each commit on main) gets a group of its own, so none is dropped from a queue of pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Python mnemo supports (requires-python) and the one it is developed on,
+          # plus macOS, where it is mostly run.
+          - os: ubuntu-latest
+            python: "3.10"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.13"
+    env:
+      # Use uv's own Python builds, never an interpreter preinstalled on the runner: the store
+      # loads sqlite-vec as a SQLite extension, and some builds (the macOS runner's Python
+      # among them) ship sqlite3 without enable_load_extension.
+      UV_PYTHON_PREFERENCE: only-managed
+      # llama-cpp-python is published only as a source distribution, so the runner compiles
+      # it. Build for a generic CPU: a build tuned to one runner's instruction set could crash
+      # on another runner that restores it from the cache.
+      CMAKE_ARGS: -DGGML_NATIVE=OFF
+    # Actions are pinned to a commit: setup-uv publishes no floating major tag past v7, and
+    # a commit cannot be moved under the workflow the way a tag can.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # nothing here pushes; keep the token out of .git/config
+
+      # Compiling llama-cpp-python is the one slow part of a cold install; every other
+      # dependency downloads as a wheel in seconds. So the uv cache is keyed on that package's
+      # version and its build flags rather than on uv.lock, which changes with every release
+      # of mnemo itself and would otherwise recompile it on each such pull request.
+      - name: Read the compiled package's version
+        id: compiled
+        shell: bash
+        run: |
+          version=$(grep -A1 '^name = "llama-cpp-python"$' uv.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "llama-cpp-python=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: "" # never invalidated by the lock; the suffix below keys it
+          cache-suffix: llama-cpp-python-${{ steps.compiled.outputs.llama-cpp-python }}${{ env.CMAKE_ARGS }}
+
+      # --locked fails if uv.lock no longer matches pyproject.toml.
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      # The default pytest options deselect the heavy tests that download model weights.
+      - name: Run tests
+        shell: bash # runs with -o pipefail, so pytest's exit status survives the tee
+        env:
+          COLUMNS: "250" # keep pytest's one-line failure summaries from being cut short
+        run: uv run pytest 2>&1 | tee pytest.log
+
+      # Surface the failed tests without the job log. GitHub shows at most 10 annotations per
+      # step, so the first one states the count and the job summary lists every failure.
+      - name: Report failed tests
+        if: failure()
+        shell: bash
+        run: |
+          failed=$(sed -n '/short test summary info/,$p' pytest.log 2>/dev/null | grep -E '^(FAILED|ERROR) ' || true)
+          [ -n "$failed" ] || exit 0
+          count=$(printf '%s\n' "$failed" | wc -l | tr -d ' ')
+          { echo "### Failed tests ($count)"; echo '```'; printf '%s\n' "$failed"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=pytest::$count failed; the job summary lists every one"
+          # Escape what the runner would otherwise decode inside an annotation's message. sed, not
+          # head, takes the first nine: it reads its input to the end, so a long list cannot
+          # break the pipe (and fail the step under pipefail).
+          printf '%s\n' "$failed" | sed -n '1,9p' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error title=pytest::/'

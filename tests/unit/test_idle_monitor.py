@@ -4,6 +4,7 @@ Pure state-machine coverage with a scripted probe and tiny timings; the real
 flock-backed liveness is exercised in tests/integration/test_idle_exit.py.
 """
 import threading
+import time
 
 from mnemo.adapters.mcp.idle_monitor import IdleMonitor
 
@@ -19,6 +20,24 @@ class _Probe:
         value = self._counts[min(self._i, len(self._counts) - 1)]
         self._i += 1
         return value
+
+
+class _ReturningConnectorProbe:
+    """Empty for two ticks, a connector live for ``live_ticks``, then empty for good.
+    Records the moment the connector left: the first empty tick after it was live."""
+
+    def __init__(self, live_ticks: int):
+        self._counts = [0, 0] + [1] * live_ticks
+        self._i = 0
+        self.left_at: float | None = None
+
+    def live_count(self) -> int:
+        if self._i < len(self._counts):
+            self._i += 1
+            return self._counts[self._i - 1]
+        if self.left_at is None:
+            self.left_at = time.monotonic()
+        return 0
 
 
 class _FlakyProbe:
@@ -58,16 +77,28 @@ def test_stays_while_a_connector_is_live():
     thread.join(1.0)
 
 
-def test_a_returning_connector_cancels_the_grace():
+def test_a_returning_connector_restarts_the_grace():
+    """Empty, then a connector comes back for a while, then empty again: the grace counts
+    from the second emptying, not from the first.
+
+    Both moments are taken on the monitor's own thread, so how late anything is scheduled
+    cannot fail a correct monitor."""
+    grace = 0.5
+    # The connector is live for 27+ ticks of 0.02 s, longer than the grace: a monitor still
+    # counting from the first emptying would fire on the very tick the connector leaves.
+    probe = _ReturningConnectorProbe(live_ticks=25)
+    fired_at: list[float] = []
     fired = threading.Event()
-    # Empty for two ticks (< grace), then a connector returns -> the timer resets.
-    monitor = IdleMonitor(
-        _Probe([0, 0, 1]), on_idle=fired.set, grace_seconds=0.1, interval_seconds=0.02
-    )
+
+    def on_idle():
+        fired_at.append(time.monotonic())
+        fired.set()
+
+    monitor = IdleMonitor(probe, on_idle=on_idle, grace_seconds=grace, interval_seconds=0.02)
     thread = _start(monitor)
-    assert not fired.wait(0.4)
-    monitor.stop()
+    assert fired.wait(5.0)  # it does exit once the connector has left for good
     thread.join(1.0)
+    assert fired_at[0] - probe.left_at >= grace  # ... a full grace after it left
 
 
 def test_monitor_survives_a_probe_error_and_still_idle_exits():
