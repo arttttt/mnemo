@@ -32,6 +32,10 @@ jobs:
           - os: macos-latest
             python: "3.13"
     env:
+      # Use uv's own Python builds, never an interpreter preinstalled on the runner: the store
+      # loads sqlite-vec as a SQLite extension, and some builds (the macOS runner's Python
+      # among them) ship sqlite3 without enable_load_extension.
+      UV_PYTHON_PREFERENCE: only-managed
       # llama-cpp-python is published only as a source distribution, so the runner compiles
       # it. Build for a generic CPU: a build tuned to one runner's instruction set could crash
       # on another runner that restores it from the cache.
