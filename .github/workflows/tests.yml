@@ -53,4 +53,15 @@ jobs:
 
       # The default pytest options deselect the heavy tests that download model weights.
       - name: Run tests
-        run: uv run pytest
+        shell: bash
+        env:
+          COLUMNS: "250" # keep pytest's one-line failure summaries from being cut short
+        run: |
+          set -o pipefail
+          uv run pytest 2>&1 | tee pytest.log
+
+      # Surface each failed test as an annotation on the run, readable without opening the log.
+      - name: Annotate failed tests
+        if: failure()
+        shell: bash
+        run: grep -E '^(FAILED|ERROR) ' pytest.log | sed 's/^/::error title=pytest::/' || true
