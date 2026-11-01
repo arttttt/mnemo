@@ -1,14 +1,12 @@
 """Shared fixtures for integration tests that drive the running shared service."""
-import os
 import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
-_SRC = Path(__file__).resolve().parents[2] / "src"
+from tests.support.mcp_wire import service_env
 
 
 def free_port() -> int:
@@ -33,18 +31,6 @@ def _wait_until_listening(proc, host: str, port: int, timeout: float = 20.0) -> 
         except OSError:
             time.sleep(0.1)
     raise TimeoutError(f"service did not start on {host}:{port}")
-
-
-def service_env(host: str, port: int, data_dir) -> dict:
-    """Env for a `mnemo-service` / `mnemo-mcp` subprocess (offline: SQLite + hash embedder)."""
-    return {
-        **os.environ,
-        "PYTHONPATH": str(_SRC),
-        "MNEMO_EMBEDDER": "hash",
-        "MNEMO_DATA_DIR": str(data_dir),
-        "MNEMO_HOST": host,
-        "MNEMO_PORT": str(port),
-    }
 
 
 @pytest.fixture

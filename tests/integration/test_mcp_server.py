@@ -39,7 +39,7 @@ def test_mcp_exposes_the_agent_tools(tmp_path):
 
 
 def test_remember_advertises_allowed_types(tmp_path):
-    schema = _tools(tmp_path)["remember"].inputSchema
+    schema = _tools(tmp_path)["remember"].input_schema
     type_schema = schema["properties"]["type"]
     enum = type_schema.get("enum")
     assert enum is not None, type_schema
@@ -50,14 +50,14 @@ def test_optional_params_expose_concrete_types(tmp_path):
     # Optional[...] would render as anyOf[T, null] (some MCP clients show that as
     # "unknown"); every parameter must expose a concrete type or enum instead.
     for name, tool in _tools(tmp_path).items():
-        for pname, pschema in (tool.inputSchema.get("properties") or {}).items():
+        for pname, pschema in (tool.input_schema.get("properties") or {}).items():
             assert "anyOf" not in pschema, f"{name}.{pname} uses anyOf"
             assert "type" in pschema or "enum" in pschema, f"{name}.{pname} lacks a type"
 
 
 def test_only_required_params_are_marked_required(tmp_path):
     required = {
-        name: tool.inputSchema.get("required", [])
+        name: tool.input_schema.get("required", [])
         for name, tool in _tools(tmp_path).items()
     }
     assert required["remember"] == ["content"]
@@ -72,9 +72,7 @@ def test_only_required_params_are_marked_required(tmp_path):
 
 
 def _call(mcp, name, args):
-    outcome = asyncio.run(mcp.call_tool(name, args))
-    blocks = outcome[0] if isinstance(outcome, tuple) else outcome
-    return [block.text for block in blocks]
+    return [block.text for block in asyncio.run(mcp.call_tool(name, args)).content]
 
 
 def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
@@ -153,7 +151,7 @@ def test_mcp_recall_refuses_without_force(tmp_path):
     """recall is experimental (LLM-synthesized, may be wrong); without force=true it
     refuses with an actionable warning instead of silently invoking the model. The gate
     fires before the use case runs, so no generator/model is touched."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))  # default (heavy) generator — must never be reached
     _call(mcp, "create_project", {"name": "api"})
@@ -169,8 +167,8 @@ def test_mcp_recall_force_is_optional_and_concrete(tmp_path):
     """force carries a default (not required) and exposes a concrete boolean type so the
     tool schema stays clean for MCP clients."""
     tool = _tools(tmp_path)["recall"]
-    assert tool.inputSchema.get("required", []) == ["query", "project"]  # force not required
-    assert tool.inputSchema["properties"]["force"]["type"] == "boolean"
+    assert tool.input_schema.get("required", []) == ["query", "project"]  # force not required
+    assert tool.input_schema["properties"]["force"]["type"] == "boolean"
 
 
 def test_mcp_delete_cascade_removes_the_whole_supersede_lineage(tmp_path):
@@ -203,10 +201,10 @@ def test_mcp_delete_project_cascades(tmp_path):
 
 
 def test_mcp_create_project_rejects_a_bad_slug(tmp_path):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
-    with pytest.raises(ToolError):
+    with pytest.raises(ToolError, match=r"invalid project slug 'Bad Slug': use kebab-case"):
         _call(mcp, "create_project", {"name": "Bad Slug"})  # spaces + uppercase
 
 
@@ -225,7 +223,7 @@ def test_mcp_update_and_list_projects(tmp_path):
 def test_mcp_remember_rejects_over_window_content(tmp_path):
     """An over-window memory surfaces an explicit, actionable tool error — not a
     silent truncation — so the calling agent can split and retry."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingScheduler
@@ -255,7 +253,7 @@ def test_mcp_remember_rejects_over_window_content(tmp_path):
 def test_mcp_remember_rejects_a_re_keyed_duplicate(tmp_path):
     """Re-storing identical content under a new topic_key surfaces an explicit tool error
     instead of being silently dropped as a duplicate (the evolution never happening)."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     container = _container(tmp_path)
     container.create_project.execute("api")
@@ -273,7 +271,7 @@ def test_mcp_remember_rejects_a_re_keyed_duplicate(tmp_path):
 def test_mcp_search_requires_a_project_in_project_scope(tmp_path):
     """A project-scoped search with no project surfaces an explicit, actionable
     tool error — not a silent empty result — so the calling agent can fix the call."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     with pytest.raises(ToolError) as exc:
@@ -285,7 +283,7 @@ def test_mcp_search_requires_a_project_in_project_scope(tmp_path):
 def test_mcp_search_rejects_project_with_all_or_global_scope(tmp_path):
     """scope='all'/'global' ignore project; passing one is a loud error, not a
     silently wrong-scoped result."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     for scope in ("all", "global"):
@@ -312,7 +310,7 @@ def test_mcp_browse_lists_memories_without_a_query(tmp_path):
 
 def test_mcp_browse_requires_a_project_in_project_scope(tmp_path):
     """Browse inherits the same scope/project guard as search."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     with pytest.raises(ToolError) as exc:
@@ -346,7 +344,7 @@ def test_mcp_get_by_id_reaches_a_superseded_version(tmp_path):
 
 
 def test_mcp_get_missing_topic_key_is_a_loud_error(tmp_path):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
@@ -358,7 +356,7 @@ def test_mcp_get_missing_topic_key_is_a_loud_error(tmp_path):
 def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):
     """The write path enforces the same contract as the read path: a project-scoped
     remember with no project is a loud error, not a silently unreachable row."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     with pytest.raises(ToolError) as exc:
@@ -367,7 +365,7 @@ def test_mcp_remember_requires_a_project_in_project_scope(tmp_path):
 
 
 def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
     with pytest.raises(ToolError) as exc:

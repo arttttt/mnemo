@@ -4,12 +4,12 @@ Concrete choices for v1, with the rationale and the alternatives considered.
 
 ## Language / runtime: **Python**
 
-- **Why:** the richest "batteries‑included" path for this stack — MCP SDK (FastMCP), ONNX Runtime,
+- **Why:** the richest "batteries‑included" path for this stack — MCP SDK (MCPServer), ONNX Runtime,
   `sqlite-vec`, `llama-cpp-python`, model tooling.
 - **Alternative:** TypeScript/Node (good MCP SDK, single‑binary‑ish via Bun). Viable, but the local‑ML
   ecosystem (embedders, llama.cpp bindings, GBNF) is smoother in Python. Pick TS only if the team is TS‑first.
 
-## MCP layer: **FastMCP** (official `mcp` Python SDK)
+## MCP layer: **MCPServer** (official `mcp` Python SDK, 2.x)
 
 - Exposes the tools from [05-mcp-api.md](05-mcp-api.md).
 - Transport: **streamable‑http** for the shared service + a thin **stdio connector** (`mnemo-mcp`) per agent.
@@ -69,7 +69,7 @@ Consolidation is a staged pipeline (see [08-consolidation.md](08-consolidation.m
 ## Dependency shortlist (Python)
 
 ```
-mcp                      # FastMCP server + stdio shim
+mcp                      # MCPServer + the stdio proxy (lowlevel Server + client)
 sqlite-vec               # vector search inside SQLite (FTS5 is built in)
 onnxruntime + tokenizers
 llama-cpp-python         # shipped recall generator runtime (model stage can be disabled)
@@ -91,7 +91,7 @@ src/mnemo/
 ├── adapters/          # implement ports / handle I/O
 │   ├── store/           InMemoryMemoryRepository (offline/tests), SqliteVecMemoryRepository
 │   ├── embedding/       HashEmbedder (model-free tests)
-│   ├── mcp/             FastMCP controller exposing remember/search/delete
+│   ├── mcp/             MCPServer controller exposing remember/search/delete
 │   └── cli/             Typer controller
 └── infrastructure/    # composition root: config, wiring (DI), entrypoints
     ├── config.py

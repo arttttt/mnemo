@@ -10,7 +10,6 @@ import logging
 import time
 from collections import Counter
 from dataclasses import asdict
-from importlib.metadata import version as package_version
 from typing import Optional
 
 import typer
@@ -24,19 +23,15 @@ from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
 from mnemo.infrastructure.dimension_guard import verify_store_dimension
 from mnemo.infrastructure.logging_config import configure_logging
+from mnemo.infrastructure.package_version import installed_version
 
 _TYPES = ", ".join(member.value for member in MemoryType)
-_PACKAGE_NAME = "mnemo"
 
 app = typer.Typer(
     help="mnemo - local memory for AI coding agents. Store and search typed memories locally.",
     no_args_is_help=True,
     add_completion=False,
 )
-
-
-def _installed_version() -> str:
-    return package_version(_PACKAGE_NAME)
 
 
 def _guarded_container() -> Container:
@@ -54,7 +49,7 @@ def _guarded_container() -> Container:
 @app.command("version")
 def show_version(json_out: bool = output.json_option()) -> None:
     """Show the installed mnemo version."""
-    version = _installed_version()
+    version = installed_version()
     output.render({"version": version}, version, as_json=json_out)
 
 

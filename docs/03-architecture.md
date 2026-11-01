@@ -23,7 +23,7 @@ separately and only runs in the background.
               │        mnemo service (ONE process)      │  ← starts on demand,
               │  ┌───────────────┐  ┌────────────────┐  │     exits on grace timer
               │  │  MCP router    │  │ write queue /  │  │
-              │  │  (FastMCP)     │  │ async handlers │  │
+              │  │  (MCPServer)   │  │ async handlers │  │
               │  └──────┬─────────┘  └───────┬────────┘  │
               │  ┌──────▼─────────┐  ┌───────▼────────┐  │
               │  │  Embedder      │  │  Store         │  │
@@ -58,7 +58,9 @@ separately and only runs in the background.
   service stamps provenance without inventing it.
 
 ### 2. mnemo service (core, one process)
-- **MCP router** (FastMCP): exposes the tools from [05-mcp-api.md](05-mcp-api.md).
+- **MCP router** (the `mcp` SDK's `MCPServer`): exposes the tools from [05-mcp-api.md](05-mcp-api.md). Every tool
+  call passes one boundary (`MnemoMCPServer.call_tool`) that runs calls one at a time in arrival order, binds the
+  calling agent's session id for the call, and returns any failure to the agent as a readable tool error.
 - **Write path** (hot, cheap): `remember` → insert + lexical index → **enqueue embed**. **No LLM, no embed on
   the hot path** — the vector is computed off it (see [Deferred embedding](#deferred-embedding-async-vector-computation)).
   Writes are serialized through an internal queue/lock to avoid races.

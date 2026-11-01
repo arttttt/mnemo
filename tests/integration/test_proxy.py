@@ -58,7 +58,7 @@ def test_proxy_forwards_agent_calls_to_the_service(service, tmp_path):
                 stored = await session.call_tool(
                     "remember", {"content": "redis via the proxy", "project": "api"}
                 )
-                assert not stored.isError, _text(stored)
+                assert not stored.is_error, _text(stored)
 
                 hits = await session.call_tool("search", {"query": "redis", "scope": "all"})
                 assert "redis via the proxy" in _text(hits)
@@ -144,7 +144,7 @@ def test_proxy_spawns_the_service_when_down(free_tcp_port, tmp_path):
                 stored = await session.call_tool(
                     "remember", {"content": "spawned by the proxy", "project": "api"}
                 )
-                assert not stored.isError, _text(stored)
+                assert not stored.is_error, _text(stored)
                 hits = await session.call_tool("search", {"query": "spawned", "scope": "all"})
                 assert "spawned by the proxy" in _text(hits)
 
@@ -215,7 +215,7 @@ def test_proxy_reconnects_after_the_service_is_killed(free_tcp_port, tmp_path):
                 first = await session.call_tool(
                     "remember", {"content": "before the kill", "project": "api"}
                 )
-                assert not first.isError, _text(first)
+                assert not first.is_error, _text(first)
 
                 # Kill the service out from under the live connector, mid-session.
                 await anyio.to_thread.run_sync(_kill_service)
@@ -225,7 +225,7 @@ def test_proxy_reconnects_after_the_service_is_killed(free_tcp_port, tmp_path):
                 after = await session.call_tool(
                     "remember", {"content": "after the respawn", "project": "api"}
                 )
-                assert not after.isError, _text(after)
+                assert not after.is_error, _text(after)
                 hits = await session.call_tool("search", {"query": "respawn", "scope": "all"})
                 assert "after the respawn" in _text(hits)
 
