@@ -2,6 +2,7 @@
 
 Every tool call passes through `MnemoMCPServer.call_tool`, which owns what surrounds it:
 
+- calls run one at a time, in arrival order;
 - the calling agent's session id — sent by the connector as request `_meta` — is bound
   for the duration of the call, so the write path stamps it on what it stores;
 - a failure reaches the agent as "Error executing tool <name>: <message>" whatever the
@@ -17,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import anyio
 import mcp.types as types
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
@@ -27,16 +29,28 @@ _log = logging.getLogger("mnemo.mcp")
 
 
 class MnemoMCPServer(MCPServer):
+    # One tool call at a time, in arrival order (anyio.Lock is FIFO). The SDK runs each
+    # tool on a worker thread, so without this, calls from several agents would overlap —
+    # and remember's checks-then-write (exact duplicate, topic_key head, then the insert or
+    # supersede) could store a duplicate or fork a topic_key's chain. Waiting happens on
+    # the event loop, which stays free to serve connections while a long call (recall)
+    # runs. Created on first use, inside the running loop. Not reentrant: a tool must
+    # never call call_tool itself.
+    _call_slot: anyio.Lock | None = None
+
     async def call_tool(
         self, name: str, arguments: dict[str, Any], context: Context | None = None
     ) -> types.CallToolResult | types.InputRequiredResult:
-        with bind_session(_session_id(context)):
-            try:
-                return await super().call_tool(name, arguments, context)
-            except UnexpectedToolError as exc:
-                cause = exc.__cause__ or exc
-                _log.info("tool %s failed", name, exc_info=cause)
-                raise ToolError(f"Error executing tool {name}: {cause}") from exc
+        if self._call_slot is None:
+            self._call_slot = anyio.Lock()
+        async with self._call_slot:
+            with bind_session(_session_id(context)):
+                try:
+                    return await super().call_tool(name, arguments, context)
+                except UnexpectedToolError as exc:
+                    cause = exc.__cause__ or exc
+                    _log.info("tool %s failed", name, exc_info=cause)
+                    raise ToolError(f"Error executing tool {name}: {cause}") from exc
 
 
 def _session_id(context: Context | None) -> str | None:
