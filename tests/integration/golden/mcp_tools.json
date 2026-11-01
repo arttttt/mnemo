@@ -70,6 +70,24 @@
       "type": "object",
       "title": "rememberArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "type": "object",
+      "title": "RememberResult"
+    },
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
@@ -160,8 +178,7 @@
       "properties": {
         "result": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/SearchResult"
           },
           "title": "Result",
           "type": "array"
@@ -171,6 +188,73 @@
         "result"
       ],
       "type": "object",
+      "$defs": {
+        "SearchResult": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "content": {
+              "title": "Content",
+              "type": "string"
+            },
+            "related_files": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Related Files",
+              "type": "array"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "topic_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Key"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "scope",
+            "project",
+            "content",
+            "related_files",
+            "created_at",
+            "topic_key"
+          ],
+          "title": "SearchResult",
+          "type": "object"
+        }
+      },
       "title": "searchOutput"
     },
     "annotations": {
@@ -257,8 +341,7 @@
       "properties": {
         "result": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/BrowseResult"
           },
           "title": "Result",
           "type": "array"
@@ -268,6 +351,78 @@
         "result"
       ],
       "type": "object",
+      "$defs": {
+        "BrowseResult": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "content": {
+              "title": "Content",
+              "type": "string"
+            },
+            "related_files": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Related Files",
+              "type": "array"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "topic_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Key"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "scope",
+            "project",
+            "content",
+            "related_files",
+            "created_at",
+            "topic_key",
+            "status"
+          ],
+          "title": "BrowseResult",
+          "type": "object"
+        }
+      },
       "title": "browseOutput"
     },
     "annotations": {
@@ -326,6 +481,127 @@
       "type": "object",
       "title": "getArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Project"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "related_files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Files",
+          "type": "array"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "topic_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Topic Key"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supersedes"
+        },
+        "chain": {
+          "items": {
+            "$ref": "#/$defs/ChainEntry"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "chain_total": {
+          "title": "Chain Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "scope",
+        "project",
+        "content",
+        "related_files",
+        "created_at",
+        "topic_key",
+        "status",
+        "supersedes",
+        "chain",
+        "chain_total"
+      ],
+      "type": "object",
+      "$defs": {
+        "ChainEntry": {
+          "description": "One version in a memory's supersede lineage — light (no content).",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "created_at"
+          ],
+          "title": "ChainEntry",
+          "type": "object"
+        }
+      },
+      "title": "GetResult"
+    },
     "annotations": {
       "readOnlyHint": true,
       "openWorldHint": false
@@ -360,6 +636,52 @@
       "type": "object",
       "title": "recallArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "project": {
+          "title": "Project",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/RecallSource"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project",
+        "summary",
+        "sources"
+      ],
+      "type": "object",
+      "$defs": {
+        "RecallSource": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "title": "RecallSource",
+          "type": "object"
+        }
+      },
+      "title": "RecallAnswer"
+    },
     "annotations": {
       "readOnlyHint": true,
       "openWorldHint": false
@@ -391,6 +713,19 @@
       "type": "object",
       "title": "deleteArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "deleted": {
+          "title": "Deleted",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "type": "object",
+      "title": "DeletionResult"
+    },
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": true,
@@ -420,6 +755,36 @@
       "type": "object",
       "title": "create_projectArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "description",
+        "created_at"
+      ],
+      "type": "object",
+      "title": "Project"
+    },
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
@@ -442,6 +807,36 @@
       ],
       "type": "object",
       "title": "delete_projectArguments"
+    },
+    "outputSchema": {
+      "properties": {
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "description",
+        "created_at"
+      ],
+      "type": "object",
+      "title": "Project"
     },
     "annotations": {
       "readOnlyHint": false,
@@ -472,6 +867,36 @@
       "type": "object",
       "title": "update_projectArguments"
     },
+    "outputSchema": {
+      "properties": {
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "description",
+        "created_at"
+      ],
+      "type": "object",
+      "title": "Project"
+    },
     "annotations": {
       "readOnlyHint": false,
       "destructiveHint": false,
@@ -490,8 +915,7 @@
       "properties": {
         "result": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/$defs/Project"
           },
           "title": "Result",
           "type": "array"
@@ -501,6 +925,38 @@
         "result"
       ],
       "type": "object",
+      "$defs": {
+        "Project": {
+          "properties": {
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "slug",
+            "description",
+            "created_at"
+          ],
+          "title": "Project",
+          "type": "object"
+        }
+      },
       "title": "list_projectsOutput"
     },
     "annotations": {

@@ -19,8 +19,7 @@ async def _call(url: str, tool: str, args: dict):
             return await session.call_tool(tool, args)
 
 
-def _text(result) -> str:
-    return " ".join(getattr(block, "text", "") or "" for block in result.content)
+from tests.support.mcp_wire import answer_text as _text  # noqa: E402 — after the skips
 
 
 def test_service_serves_tools_over_http(service):

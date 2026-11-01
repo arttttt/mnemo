@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 import pytest
 
@@ -72,20 +71,23 @@ def test_only_required_params_are_marked_required(tmp_path):
 
 
 def _call(mcp, name, args):
-    return [block.text for block in asyncio.run(mcp.call_tool(name, args)).content]
+    """A tool's answer as the agent receives it: structured content only, a list tool's
+    items unwrapped from its {"result": [...]}."""
+    result = asyncio.run(mcp.call_tool(name, args))
+    assert result.content == []  # no text copy of the structured answer
+    payload = result.structured_content
+    return payload["result"] if set(payload) == {"result"} else payload
 
 
 def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
-    stored = json.loads(
-        _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
-    )
+    stored = _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})
 
     found = _call(mcp, "search", {"query": "jwt rotation", "project": "api"})
-    assert any(stored["id"] in hit for hit in found)
+    assert any(hit["id"] == stored["id"] for hit in found)
 
-    assert json.loads(_call(mcp, "delete", {"ids": [stored["id"]]})[0])["deleted"] == 1
+    assert _call(mcp, "delete", {"ids": [stored["id"]]})["deleted"] == 1
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
@@ -95,7 +97,7 @@ def test_mcp_search_hit_exposes_topic_key(tmp_path):
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision",
                             "project": "api", "topic_key": "auth/jwt"})
-    hit = json.loads(_call(mcp, "search", {"query": "jwt rotation", "project": "api"})[0])
+    hit = _call(mcp, "search", {"query": "jwt rotation", "project": "api"})[0]
     assert hit["topic_key"] == "auth/jwt"
 
 
@@ -109,9 +111,7 @@ def test_mcp_remember_enforces_the_per_type_cap(tmp_path):
     with pytest.raises(Exception, match=r"128-token limit for a 'rule'"):
         _call(mcp, "remember", {"content": content, "type": "rule", "project": "api"})
 
-    stored = json.loads(
-        _call(mcp, "remember", {"content": content, "type": "decision", "project": "api"})[0]
-    )
+    stored = _call(mcp, "remember", {"content": content, "type": "decision", "project": "api"})
     assert stored["status"] == "created"
 
 
@@ -133,12 +133,10 @@ def test_mcp_recall_synthesizes_a_grounded_answer(tmp_path):
     )
     mcp = build_mcp(container)
     _call(mcp, "create_project", {"name": "api"})
-    remembered = json.loads(
-        _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})[0]
-    )
+    remembered = _call(mcp, "remember", {"content": "jwt refresh rotation", "type": "decision", "project": "api"})
 
     # force=True acknowledges the experimental LLM-synthesis gate (see the gate test below)
-    result = json.loads(_call(mcp, "recall", {"query": "auth", "project": "api", "force": True})[0])
+    result = _call(mcp, "recall", {"query": "auth", "project": "api", "force": True})
 
     assert result["project"] == "api"
     assert result["summary"] == "auth uses jwt refresh rotation"  # the synthesized answer
@@ -179,12 +177,10 @@ def test_mcp_delete_cascade_removes_the_whole_supersede_lineage(tmp_path):
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
     _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})
-    head = json.loads(
-        _call(mcp, "remember", {"content": "auth v3", "project": "api", "topic_key": "auth/model"})[0]
-    )
+    head = _call(mcp, "remember", {"content": "auth v3", "project": "api", "topic_key": "auth/model"})
 
     assert len(_call(mcp, "search", {"query": "auth", "project": "api"})) == 1  # only the head is visible
-    deleted = json.loads(_call(mcp, "delete", {"ids": [head["id"]], "cascade": True})[0])
+    deleted = _call(mcp, "delete", {"ids": [head["id"]], "cascade": True})
     assert deleted["deleted"] == 3  # head + the two superseded versions
     assert _call(mcp, "search", {"query": "auth", "project": "api"}) == []  # the lineage is gone
 
@@ -194,7 +190,7 @@ def test_mcp_delete_project_cascades(tmp_path):
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "remember", {"content": "doomed via mcp", "project": "api"})
 
-    deleted = json.loads(_call(mcp, "delete_project", {"name": "api"})[0])
+    deleted = _call(mcp, "delete_project", {"name": "api"})
     assert deleted["slug"] == "api"
     # its memory cascaded away — a cross-project search no longer finds it
     assert _call(mcp, "search", {"query": "doomed", "scope": "all"}) == []
@@ -213,10 +209,10 @@ def test_mcp_update_and_list_projects(tmp_path):
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "create_project", {"name": "svc"})
 
-    updated = json.loads(_call(mcp, "update_project", {"name": "api", "description": "the API"})[0])
+    updated = _call(mcp, "update_project", {"name": "api", "description": "the API"})
     assert updated["description"] == "the API"
 
-    listed = {json.loads(p)["slug"] for p in _call(mcp, "list_projects", {})}
+    listed = {p["slug"] for p in _call(mcp, "list_projects", {})}
     assert listed == {"api", "svc"}  # __global__ excluded
 
 
@@ -297,10 +293,10 @@ def test_mcp_browse_lists_memories_without_a_query(tmp_path):
     that carry no score (no relevance ranking)."""
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
-    a = json.loads(_call(mcp, "remember", {"content": "alpha", "type": "decision", "project": "api"})[0])
-    b = json.loads(_call(mcp, "remember", {"content": "beta", "project": "api"})[0])
+    a = _call(mcp, "remember", {"content": "alpha", "type": "decision", "project": "api"})
+    b = _call(mcp, "remember", {"content": "beta", "project": "api"})
 
-    hits = [json.loads(block) for block in _call(mcp, "browse", {"project": "api"})]
+    hits = _call(mcp, "browse", {"project": "api"})
     created = [hit["created_at"] for hit in hits]
     assert created == sorted(created, reverse=True)  # newest first
     assert {hit["id"] for hit in hits} == {a["id"], b["id"]}
@@ -323,9 +319,9 @@ def test_mcp_get_dereferences_by_topic_key_with_its_chain(tmp_path):
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
     _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
-    head = json.loads(_call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})[0])
+    head = _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})
 
-    result = json.loads(_call(mcp, "get", {"topic_key": "auth/model", "project": "api"})[0])
+    result = _call(mcp, "get", {"topic_key": "auth/model", "project": "api"})
     assert result["id"] == head["id"] and result["content"] == "auth v2"
     assert result["status"] == "active" and result["topic_key"] == "auth/model"
     assert [e["status"] for e in result["chain"]] == ["active", "superseded"]
@@ -336,10 +332,10 @@ def test_mcp_get_by_id_reaches_a_superseded_version(tmp_path):
     """get(id=...) reaches a record search/browse cannot surface (a superseded version)."""
     mcp = build_mcp(_container(tmp_path))
     _call(mcp, "create_project", {"name": "api"})
-    old = json.loads(_call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})[0])
+    old = _call(mcp, "remember", {"content": "auth v1", "project": "api", "topic_key": "auth/model"})
     _call(mcp, "remember", {"content": "auth v2", "project": "api", "topic_key": "auth/model"})
 
-    result = json.loads(_call(mcp, "get", {"id": old["id"]})[0])
+    result = _call(mcp, "get", {"id": old["id"]})
     assert result["content"] == "auth v1" and result["status"] == "superseded"
 
 

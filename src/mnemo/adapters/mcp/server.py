@@ -4,12 +4,21 @@
 don't require them. The `Literal` aliases are surfaced to MCP clients as
 JSON-schema enums (so agents pick valid values) and are kept in sync with the
 domain enums by a test.
+
+Every tool declares the type it returns, so the SDK publishes an outputSchema for it
+and answers with that structure; the tool boundary sends it as structured content only.
 """
-from dataclasses import asdict
+from dataclasses import dataclass
 from typing import Annotated, Literal, Optional
 
 from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
+from mnemo.application.results.browse_result import BrowseResult
+from mnemo.application.results.deletion_result import DeletionResult
+from mnemo.application.results.get_result import GetResult
+from mnemo.application.results.remember_result import RememberResult
+from mnemo.application.results.search_result import SearchResult
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
+from mnemo.domain.project import Project
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
 from mnemo.infrastructure.package_version import installed_version
@@ -24,6 +33,22 @@ MemoryTypeName = Literal[
 ]
 StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
+
+
+@dataclass(frozen=True)
+class RecallSource:
+    id: str
+    type: str
+
+
+@dataclass(frozen=True)
+class RecallAnswer:
+    """What recall returns: the written answer and the memories it drew on, by id and
+    type only, so the answer stays light on the caller's context."""
+
+    project: str
+    summary: str
+    sources: list[RecallSource]
 
 
 def build_mcp(container: Optional[Container] = None):
@@ -79,14 +104,14 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="Stable key (e.g. 'auth/jwt-model') to evolve one memory over time instead of creating duplicates."),
         ] = None,
-    ) -> dict:
+    ) -> RememberResult:
         """Save a memory to the local store so it can be recalled later.
 
         No LLM runs on write. Reusing a `topic_key` supersedes the prior memory of
         that key. Returns {id, status}, where status is "created", "duplicate"
         (identical content already stored), or "superseded" (a topic_key upsert).
         """
-        result = container.remember.execute(
+        return container.remember.execute(
             content=content,
             type=type,
             project=project,
@@ -95,7 +120,6 @@ def build_mcp(container: Optional[Container] = None):
             tags=tags,
             topic_key=topic_key,
         )
-        return asdict(result)
 
     @mcp.tool(annotations=READ_ONLY, meta=LOAD_UP_FRONT)
     def search(
@@ -131,7 +155,7 @@ def build_mcp(container: Optional[Container] = None):
             int,
             Field(ge=1, le=SEARCH_LIMIT_MAX, description="Maximum number of hits to return."),
         ] = 10,
-    ) -> list[dict]:
+    ) -> list[SearchResult]:
         """Find memories by meaning, ranked by relevance.
 
         Returns a list of hits, each {id, type, scope, project, content, related_files,
@@ -140,7 +164,7 @@ def build_mcp(container: Optional[Container] = None):
         evolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.
         Optional filters (type, tags, related_files, created_after) narrow the results.
         """
-        results = container.search.execute(
+        return container.search.execute(
             query=query,
             scope=scope,
             project=project,
@@ -150,7 +174,6 @@ def build_mcp(container: Optional[Container] = None):
             created_after=created_after,
             limit=limit,
         )
-        return [asdict(result) for result in results]
 
     @mcp.tool(annotations=READ_ONLY)
     def browse(
@@ -182,7 +205,7 @@ def build_mcp(container: Optional[Container] = None):
             int,
             Field(ge=1, le=100, description="Maximum number of memories to return."),
         ] = 10,
-    ) -> list[dict]:
+    ) -> list[BrowseResult]:
         """List memories by filter, newest first — browse without a query.
 
         Use this for category retrieval ("all type=decision in this project") where
@@ -191,7 +214,7 @@ def build_mcp(container: Optional[Container] = None):
         project, content, related_files, created_at, topic_key, status}. Use `search` to
         find by meaning, or `get` to dereference one id/topic_key.
         """
-        results = container.browse.execute(
+        return container.browse.execute(
             scope=scope,
             project=project,
             type=type,
@@ -200,7 +223,6 @@ def build_mcp(container: Optional[Container] = None):
             created_after=created_after,
             limit=limit,
         )
-        return [asdict(result) for result in results]
 
     @mcp.tool(annotations=READ_ONLY)
     def get(
@@ -228,7 +250,7 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="Chain cursor: the id of the last (oldest) chain entry you saw; returns the next-older window."),
         ] = None,
-    ) -> dict:
+    ) -> GetResult:
         """Dereference ONE memory by exact id or topic_key — its full record plus its
         supersede chain (version history). Deterministic, no LLM, no ranking.
 
@@ -241,7 +263,7 @@ def build_mcp(container: Optional[Container] = None):
         chain_after). A miss is a loud error (with near-match suggestions for a topic_key).
         Use `search` to find by meaning, `browse` to list a category.
         """
-        result = container.get.execute(
+        return container.get.execute(
             id=id,
             topic_key=topic_key,
             project=project,
@@ -249,7 +271,6 @@ def build_mcp(container: Optional[Container] = None):
             chain_limit=chain_limit,
             chain_after=chain_after,
         )
-        return asdict(result)
 
     @mcp.tool(annotations=READ_ONLY)
     def recall(
@@ -265,7 +286,7 @@ def build_mcp(container: Optional[Container] = None):
             bool,
             Field(description="Acknowledge that recall is experimental — it uses an LLM to synthesize the answer and may be wrong. Must be true to run; otherwise the call is rejected. Prefer `search`/`browse` for verbatim memories."),
         ] = False,
-    ) -> dict:
+    ) -> RecallAnswer:
         """Recall a project's memory as a synthesized, grounded answer.
 
         EXPERIMENTAL: a local LLM writes the answer, so it can be wrong — pass force=true
@@ -285,15 +306,15 @@ def build_mcp(container: Optional[Container] = None):
                 "with force=true. Prefer `search` or `browse` for verbatim memories."
             )
         bundle = container.recall.execute(project=project, query=query)
-        return {
-            "project": bundle.project,
-            "summary": bundle.summary,
-            "sources": [
-                {"id": memory.id, "type": section.type}
+        return RecallAnswer(
+            project=bundle.project,
+            summary=bundle.summary,
+            sources=[
+                RecallSource(id=memory.id, type=section.type)
                 for section in bundle.sections
                 for memory in section.memories
             ],
-        }
+        )
 
     @mcp.tool(annotations=DELETES)
     def delete(
@@ -302,7 +323,7 @@ def build_mcp(container: Optional[Container] = None):
             bool,
             Field(description="Also delete every OLDER memory each id transitively supersedes, down to the chain root (the whole lineage). Default false deletes only the given ids."),
         ] = False,
-    ) -> dict:
+    ) -> DeletionResult:
         """Permanently delete specific memories. Returns {deleted}.
 
         With cascade=true, each id is expanded to itself plus every older memory it
@@ -310,7 +331,7 @@ def build_mcp(container: Optional[Container] = None):
         lineage at once. Superseded versions aren't returned by search/browse, so they can't
         be found and deleted by id; cascade is how you remove them.
         """
-        return asdict(container.delete.delete(ids, cascade=cascade))
+        return container.delete.delete(ids, cascade=cascade)
 
     # NOTE: purge (drop EVERYTHING) is deliberately NOT exposed as an MCP tool — it is too
     # destructive to put on the agent surface. It stays a CLI-only operation (guarded by an
@@ -326,12 +347,12 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="What this project is (optional)."),
         ] = None,
-    ) -> dict:
+    ) -> Project:
         """Register a new project. Writing to or searching an unregistered project is
         rejected (with near-match suggestions), so create it first. Errors if the slug
         already exists. Returns {slug, description, created_at}.
         """
-        return asdict(container.create_project.execute(name, description))
+        return container.create_project.execute(name, description)
 
     @mcp.tool(annotations=DELETES)
     def delete_project(
@@ -339,12 +360,12 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="Project slug to delete, with ALL its memories."),
         ],
-    ) -> dict:
+    ) -> Project:
         """Permanently delete a project and EVERYTHING in it — all its memories and
         their links, in one atomic cascade. Errors (with near-match suggestions) if the
         slug is unknown. Returns the deleted {slug, description, created_at}.
         """
-        return asdict(container.delete_project.execute(name))
+        return container.delete_project.execute(name)
 
     @mcp.tool(annotations=WRITES)
     def update_project(
@@ -353,17 +374,17 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="New description for the project (what it is)."),
         ],
-    ) -> dict:
+    ) -> Project:
         """Set or change a project's description (the only way to edit it). Errors (with
         near-match suggestions) if the slug is unknown. Returns {slug, description, created_at}.
         """
-        return asdict(container.update_project.execute(name, description))
+        return container.update_project.execute(name, description)
 
     @mcp.tool(annotations=READ_ONLY)
-    def list_projects() -> list[dict]:
+    def list_projects() -> list[Project]:
         """List the registered projects (newest first). Returns a list of
         {slug, description, created_at}; the global scope is not a project and is excluded.
         """
-        return [asdict(project) for project in container.list_projects.execute()]
+        return container.list_projects.execute()
 
     return mcp

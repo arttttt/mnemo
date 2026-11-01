@@ -6,11 +6,20 @@ Only the connection helpers here touch the SDK's client API.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src"
+
+
+def answer_text(result) -> str:
+    """What the agent reads from a tool result: its structured answer as JSON, or the text
+    of an error (mnemo sends no text copy of a structured answer)."""
+    if result.structured_content is not None:
+        return json.dumps(result.structured_content, ensure_ascii=False)
+    return " ".join(getattr(block, "text", "") or "" for block in result.content)
 
 
 def service_env(host: str, port: int, data_dir) -> dict:
