@@ -126,3 +126,21 @@ def test_opencode_installer_uses_local_schema_and_preserves_keys(tmp_path):
         "command": ["/opt/bin/mnemo-mcp"],
         "enabled": True,
     }
+
+
+def test_opencode_installer_follows_a_file_in_opencode_2_shape(tmp_path):
+    # OpenCode 2 keeps servers under mcp.servers; a version-1 entry of the same name
+    # would conflict with the new one, so it goes.
+    config = tmp_path / "opencode.json"
+    remote = {"type": "remote", "url": "https://example.com/mcp"}
+    config.write_text(json.dumps({"mcp": {
+        "mnemo": {"type": "local", "command": ["uv", "run", "mnemo-mcp"], "enabled": True},
+        "servers": {"other": remote},
+    }}))
+
+    OpencodeInstaller("opencode", config, "mnemo", ["/opt/bin/mnemo-mcp"]).install()
+
+    assert json.loads(config.read_text())["mcp"] == {"servers": {
+        "other": remote,
+        "mnemo": {"type": "local", "command": ["/opt/bin/mnemo-mcp"]},
+    }}

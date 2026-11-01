@@ -192,6 +192,50 @@ def test_opencode_rules_refuse_a_config_they_cannot_change_safely(tmp_path, cont
     assert list(json.loads(refused.value.snippet)["permission"].items()) == _OPENCODE_KEYS
 
 
+_OPENCODE_2_RULES = [
+    {"action": "mnemo_*", "resource": "*", "effect": "allow"},
+    {"action": "mnemo_delete*", "resource": "*", "effect": "ask"},
+]
+
+
+def test_opencode_2_rules_go_last_in_its_permissions_list(tmp_path):
+    # OpenCode 2 places its own `permissions` list after the converted version-1
+    # `permission` keys, so a broader rule in the list would override mnemo's keys there.
+    config = tmp_path / "opencode.json"
+    ask_everything = {"action": "*", "resource": "*", "effect": "ask"}
+    config.write_text(json.dumps({
+        "permission": {"edit": "ask"},
+        "permissions": [_OPENCODE_2_RULES[0], ask_everything],
+    }))
+
+    assert OpencodePermissionRules(config, "mnemo").apply() == ADDED
+
+    data = json.loads(config.read_text())
+    assert data["permissions"] == [ask_everything, *_OPENCODE_2_RULES]
+    assert data["permission"] == {"edit": "ask"}
+
+
+def test_opencode_2_rules_already_in_place_leave_the_file_untouched(tmp_path):
+    config = tmp_path / "opencode.json"
+    config.write_text(json.dumps({"permissions": _OPENCODE_2_RULES}))
+    before = _snapshot(config)
+
+    assert OpencodePermissionRules(config, "mnemo").apply() == PRESENT
+    assert _snapshot(config) == before
+
+
+def test_opencode_2_rules_refuse_a_permissions_value_that_is_not_a_list(tmp_path):
+    config = tmp_path / "opencode.json"
+    content = json.dumps({"permissions": {"mnemo_*": "allow"}})
+    config.write_text(content)
+
+    with pytest.raises(RulesNotWritten) as refused:
+        OpencodePermissionRules(config, "mnemo").apply()
+
+    assert config.read_text() == content
+    assert json.loads(refused.value.snippet) == {"permissions": _OPENCODE_2_RULES}
+
+
 def test_opencode_setup_wires_the_server_and_its_rules_in_one_file(tmp_path):
     opencode = next(
         installer
