@@ -22,7 +22,7 @@ write path stays LLM‑free; `recall` is the single opt‑in LLM read tool, and 
 on demand, unloaded after). Disable synthesis entirely with `MNEMO_GENERATOR=off`.
 - **Experimental — `force` gate.** Because the answer is LLM‑generated it can be wrong, so `recall` is gated: `force` defaults to `false` and the call is **rejected** with a warning until you pass `force=true` to acknowledge it. Prefer `search`/`browse` for verbatim memories. The gate lives in the MCP tool and fires before any model loads.
 
-### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, status}`
+### `remember(content, type?, project?, scope?, related_files?, tags?, topic_key?) -> {id, status, replaced?}`
 The single write tool. No LLM on this path. (`importance` is **post‑MVP** — not a parameter yet.)
 ```python
 remember("Using JWT with refresh rotation; httpOnly cookies; ...",
@@ -39,6 +39,11 @@ remember("Auth model v2: ...", type="decision", project="checkout-api",
   [03-architecture.md](03-architecture.md#deferred-embedding-async-vector-computation)). Near‑similar memories are
   **not** suppressed here (see [04-data-model.md](04-data-model.md)).
 - Returns `{id, status}`: `status` is `"created"` (new record), `"duplicate"` (identical content already **active in the same project/scope** — nothing written, the existing id is returned), or `"superseded"` (a `topic_key` upsert replaced a prior record; the prior is marked superseded, recorded in the `supersedes` column).
+- A supersede also returns `replaced: {id, chars}` — the record it replaced and its length in characters. That
+  record leaves search and browse, so a writer that sent only a delta, or reused someone else's key, drops content
+  without noticing; a `chars` much larger than what it wrote is the sign to read the old version with `get(id)` and
+  write the merged text. No memory text is returned, so the addition is fixed-size; the key is absent, not null, for
+  `"created"` and `"duplicate"`.
 - **Rules** are just `remember(type="rule")` and surface via `search` (`type=rule`) — no separate rule tools. The
   agent stores a rule only on an explicit user request.
 
