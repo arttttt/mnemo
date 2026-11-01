@@ -1,4 +1,4 @@
-"""Wire a client that uses the `mcpServers` JSON schema (Cursor, Windsurf).
+"""Wire a client that uses the `mcpServers` JSON schema (Kimi Code, Cursor, Windsurf).
 
 `{ "mcpServers": { "<name>": { "command": "...", "args": [...] } } }`. The entry
 is upserted: other servers and unrelated keys in the file are preserved.

@@ -22,6 +22,16 @@ def _default_model_stages_off(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _client_configs_stay_under_the_test_home(monkeypatch):
+    """`mnemo setup` writes client configs under $HOME, which the setup tests point at a temp
+    directory, unless a client's own variable moves its config elsewhere. Drop those
+    variables, so a developer who has one set never sees a test write their real config."""
+    for var in ("KIMI_CODE_HOME",):
+        monkeypatch.delenv(var, raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_global_logging_state():
     """configure_logging() mutates process-global state — the mnemo/llmkit loggers
     (handlers, level, propagate) and threading.excepthook. Snapshot and restore it around
