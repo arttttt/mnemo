@@ -157,6 +157,25 @@ def test_opencode_rules_spell_out_a_one_word_permission(tmp_path, word):
     ]
 
 
+@pytest.mark.parametrize("own", [
+    {"mnemo_*": "deny"},
+    {"mnemo_*": "ask"},
+    {"mnemo_*": {"*": "ask"}},
+    {"mnemo_delete*": "allow"},
+])
+def test_opencode_rules_leave_a_rule_the_user_set_for_the_same_tools(tmp_path, own):
+    # Moving mnemo's allow after the user's deny would lift it, since the last match wins.
+    config = tmp_path / "opencode.json"
+    content = json.dumps({"permission": {"edit": "ask", **own}})
+    config.write_text(content)
+
+    with pytest.raises(RulesNotWritten) as refused:
+        OpencodePermissionRules(config, "mnemo").apply()
+
+    assert config.read_text() == content
+    assert next(iter(own)) in refused.value.reason
+
+
 def test_opencode_rules_leave_a_permission_that_allows_everything(tmp_path):
     config = tmp_path / "opencode.json"
     config.write_text(json.dumps({"permission": "allow"}))
@@ -213,6 +232,18 @@ def test_opencode_2_rules_go_last_in_its_permissions_list(tmp_path):
     data = json.loads(config.read_text())
     assert data["permissions"] == [ask_everything, *_OPENCODE_2_RULES]
     assert data["permission"] == {"edit": "ask"}
+
+
+def test_opencode_2_rules_leave_a_rule_the_user_set_for_the_same_tools(tmp_path):
+    config = tmp_path / "opencode.json"
+    content = json.dumps({"permissions": [{"action": "mnemo_*", "resource": "*", "effect": "deny"}]})
+    config.write_text(content)
+
+    with pytest.raises(RulesNotWritten) as refused:
+        OpencodePermissionRules(config, "mnemo").apply()
+
+    assert config.read_text() == content
+    assert '"effect": "deny"' in refused.value.reason
 
 
 def test_opencode_2_rules_already_in_place_leave_the_file_untouched(tmp_path):

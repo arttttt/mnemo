@@ -144,3 +144,16 @@ def test_opencode_installer_follows_a_file_in_opencode_2_shape(tmp_path):
         "other": remote,
         "mnemo": {"type": "local", "command": ["/opt/bin/mnemo-mcp"]},
     }}
+
+
+def test_opencode_installer_tells_a_version_1_server_named_servers_from_the_map(tmp_path):
+    config = tmp_path / "opencode.json"
+    named_servers = {"type": "local", "command": ["other-mcp"], "enabled": True}
+    config.write_text(json.dumps({"mcp": {"servers": named_servers}}))
+
+    OpencodeInstaller("opencode", config, "mnemo", ["/opt/bin/mnemo-mcp"]).install()
+
+    assert json.loads(config.read_text())["mcp"] == {
+        "servers": named_servers,
+        "mnemo": {"type": "local", "command": ["/opt/bin/mnemo-mcp"], "enabled": True},
+    }

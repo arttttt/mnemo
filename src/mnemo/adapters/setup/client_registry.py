@@ -2,8 +2,8 @@
 
 Two ship an official `mcp add` command (we shell out to it); four are wired by
 writing their config file directly. Claude Code, Kimi Code and OpenCode also get
-mnemo's permission rules (permission_policy), since they ask before every MCP call
-their config does not allow. The connector argv, `home` and the environment are
+mnemo's permission rules (permission_policy), since they do not read the tools'
+annotations. The connector argv, `home` and the environment are
 injectable so the whole set is testable against a temp home without touching real
 configs.
 """

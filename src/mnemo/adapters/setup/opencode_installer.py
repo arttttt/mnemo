@@ -40,7 +40,9 @@ class OpencodeInstaller:
         mcp = data.setdefault("mcp", {})
         entry = {"type": "local", "command": list(self._connector_argv)}
         servers = mcp.get("servers")
-        if isinstance(servers, dict):
+        # A version-1 server could itself be named "servers"; OpenCode 2 tells it from
+        # its own map by the entry's `type`.
+        if isinstance(servers, dict) and servers.get("type") not in ("local", "remote"):
             mcp.pop(self._server_name, None)
             servers[self._server_name] = entry
         else:
