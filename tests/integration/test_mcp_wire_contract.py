@@ -162,6 +162,30 @@ def test_the_handshake_names_mnemo_and_its_version(service, tmp_path):
     assert _run(through_proxy, host, port, tmp_path, _server_identity) == expected
 
 
+async def _instructions(session) -> str | None:
+    return session.instructions
+
+
+def test_the_agent_is_told_when_to_use_mnemo(service, tmp_path):
+    """Clients that load tools on demand show the model the server instructions up front.
+    The proxy answers the handshake itself, so it must send them as the service does — on
+    the earlier handshake and on the 2026-07-28 protocol alike."""
+    from mcp import Client
+
+    from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
+
+    host, port = service
+    assert _run(over_http, _url(host, port), _instructions) == SERVER_INSTRUCTIONS
+    assert _run(through_proxy, host, port, tmp_path, _instructions) == SERVER_INSTRUCTIONS
+
+    async def instructions_seen_by(target):
+        async with Client(target) as client:
+            return client.protocol_version, client.instructions
+
+    for target in (_url(host, port), proxy_params(host, port, tmp_path)):
+        assert _run(instructions_seen_by, target) == ("2026-07-28", SERVER_INSTRUCTIONS), target
+
+
 def test_tool_failures_reach_the_agent_as_readable_errors(service, tmp_path):
     """A failing call is a tool result the agent can read — isError plus the exact message —
     whether it comes straight from the service or through the proxy."""

@@ -8,6 +8,7 @@ domain enums by a test.
 from dataclasses import asdict
 from typing import Annotated, Literal, Optional
 
+from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
@@ -32,7 +33,9 @@ def build_mcp(container: Optional[Container] = None):
 
     container = container or build_container()
     # The transport (and its host/port) is chosen when the server is run, not here.
-    mcp = MnemoMCPServer("mnemo", version=installed_version())
+    mcp = MnemoMCPServer(
+        "mnemo", version=installed_version(), instructions=SERVER_INSTRUCTIONS
+    )
 
     # NOTE: optional params are typed `str = None` (etc.), NOT `Optional[str]`, on purpose.
     # Optional[...] renders in the tool schema as anyOf[T, null], which some MCP clients
