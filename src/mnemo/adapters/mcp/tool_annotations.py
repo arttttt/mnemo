@@ -1,7 +1,7 @@
-"""How each mnemo tool declares its side effects to MCP clients.
+"""Hints mnemo's tools give MCP clients beyond their schemas: side effects and loading.
 
-Clients decide from these hints whether a call needs the user's approval and whether it
-may run alongside others. Codex skips the approval prompt for a read-only tool, and for
+Clients decide from the side-effect hints whether a call needs the user's approval and
+whether it may run alongside others. Codex skips the approval prompt for a read-only tool, and for
 a writing one only when it is declared both non-destructive and closed-world; Claude Code
 runs read-only calls in parallel. Nothing mnemo does reaches outside the local store, so
 every tool is closed-world. Imports the MCP SDK, so it is loaded lazily with the server.
@@ -17,3 +17,8 @@ WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_worl
 
 # Removes memories for good.
 DELETES = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)
+
+# Tool _meta: Claude Code loads a tool marked this way at session start instead of
+# deferring it behind tool search. For search only — the tool an agent should reach for
+# before starting work; every tool loaded up front costs context in every session.
+LOAD_UP_FRONT = {"anthropic/alwaysLoad": True}

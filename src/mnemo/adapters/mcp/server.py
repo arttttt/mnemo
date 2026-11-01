@@ -29,7 +29,12 @@ SearchScope = Literal["project", "global", "all"]
 def build_mcp(container: Optional[Container] = None):
     from pydantic import Field  # lazy to keep imports light
 
-    from mnemo.adapters.mcp.tool_annotations import DELETES, READ_ONLY, WRITES  # lazy: SDK
+    from mnemo.adapters.mcp.tool_annotations import (  # lazy: loads the MCP SDK
+        DELETES,
+        LOAD_UP_FRONT,
+        READ_ONLY,
+        WRITES,
+    )
     from mnemo.adapters.mcp.tool_boundary import MnemoMCPServer  # lazy: loads the MCP SDK
 
     container = container or build_container()
@@ -92,7 +97,7 @@ def build_mcp(container: Optional[Container] = None):
         )
         return asdict(result)
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(annotations=READ_ONLY, meta=LOAD_UP_FRONT)
     def search(
         query: Annotated[
             str,

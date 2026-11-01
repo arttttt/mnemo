@@ -176,6 +176,9 @@
     "annotations": {
       "readOnlyHint": true,
       "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
     }
   },
   "browse": {
