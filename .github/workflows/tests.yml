@@ -86,7 +86,9 @@ jobs:
           failed=$(sed -n '/short test summary info/,$p' pytest.log 2>/dev/null | grep -E '^(FAILED|ERROR) ' || true)
           [ -n "$failed" ] || exit 0
           count=$(printf '%s\n' "$failed" | wc -l | tr -d ' ')
-          echo "::error title=pytest::$count failed; the job summary lists every one"
-          # Escape what the runner would otherwise decode inside an annotation's message.
-          printf '%s\n' "$failed" | head -n 9 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error title=pytest::/'
           { echo "### Failed tests ($count)"; echo '```'; printf '%s\n' "$failed"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=pytest::$count failed; the job summary lists every one"
+          # Escape what the runner would otherwise decode inside an annotation's message. sed, not
+          # head, takes the first nine: it reads its input to the end, so a long list cannot
+          # break the pipe (and fail the step under pipefail).
+          printf '%s\n' "$failed" | sed -n '1,9p' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error title=pytest::/'
