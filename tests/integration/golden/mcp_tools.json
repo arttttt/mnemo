@@ -1,0 +1,463 @@
+{
+  "remember": {
+    "name": "remember",
+    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` supersedes the prior memory of\nthat key. Returns {id, status}, where status is \"created\", \"duplicate\"\n(identical content already stored), or \"superseded\" (a topic_key upsert).\n",
+    "inputSchema": {
+      "properties": {
+        "content": {
+          "description": "The memory text. Be specific: problem, solution, reasoning. Markdown is fine.",
+          "title": "Content",
+          "type": "string"
+        },
+        "type": {
+          "default": "working-notes",
+          "description": "Kind of memory (shapes retrieval): decision, progress, research, rule, learning, working-notes.",
+          "enum": [
+            "decision",
+            "progress",
+            "research",
+            "rule",
+            "learning",
+            "working-notes"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "project": {
+          "default": null,
+          "description": "Project slug in kebab-case. Omit and set scope='global' for cross-project knowledge.",
+          "title": "Project",
+          "type": "string"
+        },
+        "scope": {
+          "default": "project",
+          "description": "'project' = belongs to one project; 'global' = applies everywhere (rules, cross-project lessons).",
+          "enum": [
+            "project",
+            "global"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "related_files": {
+          "default": null,
+          "description": "File paths this memory concerns.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Files",
+          "type": "array"
+        },
+        "tags": {
+          "default": null,
+          "description": "Optional keywords for later filtering.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "topic_key": {
+          "default": null,
+          "description": "Stable key (e.g. 'auth/jwt-model') to evolve one memory over time instead of creating duplicates.",
+          "title": "Topic Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "rememberArguments",
+      "type": "object"
+    }
+  },
+  "search": {
+    "name": "search",
+    "description": "Find memories by meaning, ranked by relevance.\n\nReturns a list of hits, each {id, type, scope, project, content, related_files,\ncreated_at, topic_key}, in rank order — there is no relevance score (read the hit\ncontent to judge relevance). `topic_key` lets you dereference a hit with `get` or\nevolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.\nOptional filters (type, tags, related_files, created_after) narrow the results.\n",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Natural-language description of what you're looking for.",
+          "title": "Query",
+          "type": "string"
+        },
+        "scope": {
+          "default": "project",
+          "description": "'project' (default) = the given project + global, and REQUIRES the project param; 'global' = only global; 'all' = every project (cross-project).",
+          "enum": [
+            "project",
+            "global",
+            "all"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "project": {
+          "default": null,
+          "description": "Project slug to scope to. Required when scope='project' (the default), and must be omitted for scope='global'/'all'.",
+          "title": "Project",
+          "type": "string"
+        },
+        "type": {
+          "default": null,
+          "description": "Restrict results to a single memory type.",
+          "enum": [
+            "decision",
+            "progress",
+            "research",
+            "rule",
+            "learning",
+            "working-notes"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "tags": {
+          "default": null,
+          "description": "Keep only memories carrying ALL of these tags.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "related_files": {
+          "default": null,
+          "description": "Keep only memories referencing ANY of these file paths.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Files",
+          "type": "array"
+        },
+        "created_after": {
+          "default": null,
+          "description": "Keep only memories created at or after this ISO-8601 instant (e.g. '2026-06-01' or '2026-06-01T00:00:00+00:00').",
+          "title": "Created After",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of hits to return.",
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "searchArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Result",
+          "type": "array"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "searchOutput",
+      "type": "object"
+    }
+  },
+  "browse": {
+    "name": "browse",
+    "description": "List memories by filter, newest first — browse without a query.\n\nUse this for category retrieval (\"all type=decision in this project\") where\na semantic query would only bias the order. No relevance ranking, so hits\ncarry no score; they are ordered by recency. Each hit is {id, type, scope,\nproject, content, related_files, created_at, topic_key, status}. Use `search` to\nfind by meaning, or `get` to dereference one id/topic_key.\n",
+    "inputSchema": {
+      "properties": {
+        "scope": {
+          "default": "project",
+          "description": "'project' (default) = the given project + global, and REQUIRES the project param; 'global' = only global; 'all' = every project (cross-project).",
+          "enum": [
+            "project",
+            "global",
+            "all"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "project": {
+          "default": null,
+          "description": "Project slug to scope to. Required when scope='project' (the default), and must be omitted for scope='global'/'all'.",
+          "title": "Project",
+          "type": "string"
+        },
+        "type": {
+          "default": null,
+          "description": "Restrict results to a single memory type.",
+          "enum": [
+            "decision",
+            "progress",
+            "research",
+            "rule",
+            "learning",
+            "working-notes"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "tags": {
+          "default": null,
+          "description": "Keep only memories carrying ALL of these tags.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "related_files": {
+          "default": null,
+          "description": "Keep only memories referencing ANY of these file paths.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Files",
+          "type": "array"
+        },
+        "created_after": {
+          "default": null,
+          "description": "Keep only memories created at or after this ISO-8601 instant (e.g. '2026-06-01' or '2026-06-01T00:00:00+00:00').",
+          "title": "Created After",
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum number of memories to return.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "browseArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Result",
+          "type": "array"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "browseOutput",
+      "type": "object"
+    }
+  },
+  "get": {
+    "name": "get",
+    "description": "Dereference ONE memory by exact id or topic_key — its full record plus its\nsupersede chain (version history). Deterministic, no LLM, no ranking.\n\nPass id OR topic_key, not both (id is the exact record of any status; topic_key\nresolves the chain's active head). A `[[wikilink]]` IS a topic_key, so\nget(topic_key=\"...\") dereferences it. Returns {id, type, scope, project, content,\nrelated_files, created_at, topic_key, status, supersedes, chain, chain_total}: `chain`\nis the version lineage (newest first, light {id, status, created_at}, capped at\nchain_limit) and `chain_total` is the full length (page older versions with\nchain_after). A miss is a loud error (with near-match suggestions for a topic_key).\nUse `search` to find by meaning, `browse` to list a category.\n",
+    "inputSchema": {
+      "properties": {
+        "id": {
+          "default": null,
+          "description": "Exact memory id (global, unique). Mutually exclusive with topic_key; id is the stronger key — with id, scope/project must not be set.",
+          "title": "Id",
+          "type": "string"
+        },
+        "topic_key": {
+          "default": null,
+          "description": "Resolve a memory by its stable topic_key — the active head plus its version chain. Needs project (or scope='global'). Mutually exclusive with id.",
+          "title": "Topic Key",
+          "type": "string"
+        },
+        "project": {
+          "default": null,
+          "description": "Project the topic_key lives in. Required when scope='project' (the default); omit for scope='global'.",
+          "title": "Project",
+          "type": "string"
+        },
+        "scope": {
+          "default": "project",
+          "description": "Where the topic_key lives: 'project' (default, needs project) or 'global'. Must not be set with id (id is global).",
+          "enum": [
+            "project",
+            "global"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "chain_limit": {
+          "default": 10,
+          "description": "Max supersede-chain versions to return (newest first).",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Chain Limit",
+          "type": "integer"
+        },
+        "chain_after": {
+          "default": null,
+          "description": "Chain cursor: the id of the last (oldest) chain entry you saw; returns the next-older window.",
+          "title": "Chain After",
+          "type": "string"
+        }
+      },
+      "title": "getArguments",
+      "type": "object"
+    }
+  },
+  "recall": {
+    "name": "recall",
+    "description": "Recall a project's memory as a synthesized, grounded answer.\n\nEXPERIMENTAL: a local LLM writes the answer, so it can be wrong — pass force=true\nto acknowledge this and run. Prefer `search`/`browse` for verbatim memories.\n\nRetrieves the memories most relevant to your query, then a local LLM writes an\nanswer using ONLY those memories — never outside knowledge — and replies exactly\n\"No relevant memories found.\" when none apply. Unlike `search` (a ranked list of\nhits), this returns a written answer. Returns {project, summary, sources}: `summary`\nis the answer and `sources` are the memories it drew on ({id, type}, not their\ncontent — so the answer stays light on the caller's context).\n",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "The question to answer from this project's memory.",
+          "title": "Query",
+          "type": "string"
+        },
+        "project": {
+          "description": "Project slug to recall from.",
+          "title": "Project",
+          "type": "string"
+        },
+        "force": {
+          "default": false,
+          "description": "Acknowledge that recall is experimental — it uses an LLM to synthesize the answer and may be wrong. Must be true to run; otherwise the call is rejected. Prefer `search`/`browse` for verbatim memories.",
+          "title": "Force",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "query",
+        "project"
+      ],
+      "title": "recallArguments",
+      "type": "object"
+    }
+  },
+  "delete": {
+    "name": "delete",
+    "description": "Permanently delete specific memories. Returns {deleted}.\n\nWith cascade=true, each id is expanded to itself plus every older memory it\ntransitively supersedes (down to the chain root) — use it to drop a whole supersede\nlineage at once. Superseded versions aren't returned by search/browse, so they can't\nbe found and deleted by id; cascade is how you remove them.\n",
+    "inputSchema": {
+      "properties": {
+        "ids": {
+          "description": "Ids of the memories to delete.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ids",
+          "type": "array"
+        },
+        "cascade": {
+          "default": false,
+          "description": "Also delete every OLDER memory each id transitively supersedes, down to the chain root (the whole lineage). Default false deletes only the given ids.",
+          "title": "Cascade",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "title": "deleteArguments",
+      "type": "object"
+    }
+  },
+  "create_project": {
+    "name": "create_project",
+    "description": "Register a new project. Writing to or searching an unregistered project is\nrejected (with near-match suggestions), so create it first. Errors if the slug\nalready exists. Returns {slug, description, created_at}.\n",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "description": "Project slug in kebab-case — the id, reused on every memory.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": null,
+          "description": "What this project is (optional).",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "create_projectArguments",
+      "type": "object"
+    }
+  },
+  "delete_project": {
+    "name": "delete_project",
+    "description": "Permanently delete a project and EVERYTHING in it — all its memories and\ntheir links, in one atomic cascade. Errors (with near-match suggestions) if the\nslug is unknown. Returns the deleted {slug, description, created_at}.\n",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "description": "Project slug to delete, with ALL its memories.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "delete_projectArguments",
+      "type": "object"
+    }
+  },
+  "update_project": {
+    "name": "update_project",
+    "description": "Set or change a project's description (the only way to edit it). Errors (with\nnear-match suggestions) if the slug is unknown. Returns {slug, description, created_at}.\n",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "description": "Project slug to update.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "New description for the project (what it is).",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "update_projectArguments",
+      "type": "object"
+    }
+  },
+  "list_projects": {
+    "name": "list_projects",
+    "description": "List the registered projects (newest first). Returns a list of\n{slug, description, created_at}; the global scope is not a project and is excluded.\n",
+    "inputSchema": {
+      "properties": {},
+      "title": "list_projectsArguments",
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Result",
+          "type": "array"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "list_projectsOutput",
+      "type": "object"
+    }
+  }
+}

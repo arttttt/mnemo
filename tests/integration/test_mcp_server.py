@@ -206,7 +206,7 @@ def test_mcp_create_project_rejects_a_bad_slug(tmp_path):
     from mcp.server.fastmcp.exceptions import ToolError
 
     mcp = build_mcp(_container(tmp_path))
-    with pytest.raises(ToolError):
+    with pytest.raises(ToolError, match=r"invalid project slug 'Bad Slug': use kebab-case"):
         _call(mcp, "create_project", {"name": "Bad Slug"})  # spaces + uppercase
 
 
