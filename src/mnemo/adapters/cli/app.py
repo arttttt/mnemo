@@ -515,13 +515,18 @@ def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
 
 
 def _install(installer):
-    """Wire one client; a config file it cannot read or write fails that client only."""
+    """Wire one client; whatever goes wrong with its config fails that client only.
+
+    Config files are the user's and may hold anything: unreadable bytes, or valid JSON
+    of a shape the installer does not expect (`"mcpServers": []`). This is the CLI's
+    boundary, so any error is reported against the client and the others still run.
+    """
     from mnemo.adapters.setup.install_result import InstallResult
 
     try:
         return installer.install()
-    except (OSError, ValueError) as error:
-        return InstallResult(installer.name, "failed", "", str(error))
+    except Exception as error:  # noqa: BLE001 - reported per client, see above
+        return InstallResult(installer.name, "failed", "", f"{type(error).__name__}: {error}")
 
 
 def main() -> None:
