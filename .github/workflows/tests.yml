@@ -1,9 +1,13 @@
 name: tests
 
+# A change made only of documentation does not run the suite. (Should this check ever become
+# required for main, a documentation-only pull request would then wait on it forever.)
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**", LICENSE]
   pull_request:
+    paths-ignore: ["**/*.md", "docs/**", LICENSE]
   workflow_dispatch:
 
 # A newer push to a pull request supersedes the run still in progress for it. Every other run
