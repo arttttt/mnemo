@@ -44,6 +44,8 @@ jobs:
     # a commit cannot be moved under the workflow the way a tag can.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # nothing here pushes; keep the token out of .git/config
 
       # Compiling llama-cpp-python is the one slow part of a cold install; every other
       # dependency downloads as a wheel in seconds. So the uv cache is keyed on that package's
