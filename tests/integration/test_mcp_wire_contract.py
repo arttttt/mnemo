@@ -4,6 +4,7 @@ Every assertion is on the JSON a client receives (see ``tests.support.mcp_wire.w
 over the real boundaries: a streamable-http client against `mnemo-service`, and a stdio
 client through the `mnemo-mcp` proxy in front of it.
 """
+import inspect
 import json
 import os
 import socket
@@ -59,10 +60,16 @@ def _run(fn, *args):
 
 
 def _definitions(listed) -> dict:
-    return {
-        tool["name"]: {key: tool[key] for key in _DEFINITION_KEYS if key in tool}
-        for tool in wire(listed)["tools"]
-    }
+    """Each tool's definition, with its description in docstring-clean form: the SDK sends a
+    tool's docstring as is, and Python 3.13+ strips its indentation at compile time while
+    earlier versions keep it. The text is the contract, not that whitespace."""
+    definitions = {}
+    for tool in wire(listed)["tools"]:
+        definition = {key: tool[key] for key in _DEFINITION_KEYS if key in tool}
+        if "description" in definition:
+            definition["description"] = inspect.cleandoc(definition["description"])
+        definitions[tool["name"]] = definition
+    return definitions
 
 
 def _pretty(text: str) -> str:

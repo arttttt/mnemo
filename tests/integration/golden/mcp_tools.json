@@ -1,7 +1,7 @@
 {
   "remember": {
     "name": "remember",
-    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` supersedes the prior memory of\nthat key. Returns {id, status}, where status is \"created\", \"duplicate\"\n(identical content already stored), or \"superseded\" (a topic_key upsert).\n",
+    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` supersedes the prior memory of\nthat key. Returns {id, status}, where status is \"created\", \"duplicate\"\n(identical content already stored), or \"superseded\" (a topic_key upsert).",
     "inputSchema": {
       "properties": {
         "content": {
@@ -67,13 +67,13 @@
       "required": [
         "content"
       ],
-      "title": "rememberArguments",
-      "type": "object"
+      "type": "object",
+      "title": "rememberArguments"
     }
   },
   "search": {
     "name": "search",
-    "description": "Find memories by meaning, ranked by relevance.\n\nReturns a list of hits, each {id, type, scope, project, content, related_files,\ncreated_at, topic_key}, in rank order — there is no relevance score (read the hit\ncontent to judge relevance). `topic_key` lets you dereference a hit with `get` or\nevolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.\nOptional filters (type, tags, related_files, created_after) narrow the results.\n",
+    "description": "Find memories by meaning, ranked by relevance.\n\nReturns a list of hits, each {id, type, scope, project, content, related_files,\ncreated_at, topic_key}, in rank order — there is no relevance score (read the hit\ncontent to judge relevance). `topic_key` lets you dereference a hit with `get` or\nevolve it with `remember(topic_key=...)`. Use scope='all' for cross-project search.\nOptional filters (type, tags, related_files, created_after) narrow the results.",
     "inputSchema": {
       "properties": {
         "query": {
@@ -148,8 +148,8 @@
       "required": [
         "query"
       ],
-      "title": "searchArguments",
-      "type": "object"
+      "type": "object",
+      "title": "searchArguments"
     },
     "outputSchema": {
       "properties": {
@@ -165,13 +165,13 @@
       "required": [
         "result"
       ],
-      "title": "searchOutput",
-      "type": "object"
+      "type": "object",
+      "title": "searchOutput"
     }
   },
   "browse": {
     "name": "browse",
-    "description": "List memories by filter, newest first — browse without a query.\n\nUse this for category retrieval (\"all type=decision in this project\") where\na semantic query would only bias the order. No relevance ranking, so hits\ncarry no score; they are ordered by recency. Each hit is {id, type, scope,\nproject, content, related_files, created_at, topic_key, status}. Use `search` to\nfind by meaning, or `get` to dereference one id/topic_key.\n",
+    "description": "List memories by filter, newest first — browse without a query.\n\nUse this for category retrieval (\"all type=decision in this project\") where\na semantic query would only bias the order. No relevance ranking, so hits\ncarry no score; they are ordered by recency. Each hit is {id, type, scope,\nproject, content, related_files, created_at, topic_key, status}. Use `search` to\nfind by meaning, or `get` to dereference one id/topic_key.",
     "inputSchema": {
       "properties": {
         "scope": {
@@ -238,8 +238,8 @@
           "type": "integer"
         }
       },
-      "title": "browseArguments",
-      "type": "object"
+      "type": "object",
+      "title": "browseArguments"
     },
     "outputSchema": {
       "properties": {
@@ -255,13 +255,13 @@
       "required": [
         "result"
       ],
-      "title": "browseOutput",
-      "type": "object"
+      "type": "object",
+      "title": "browseOutput"
     }
   },
   "get": {
     "name": "get",
-    "description": "Dereference ONE memory by exact id or topic_key — its full record plus its\nsupersede chain (version history). Deterministic, no LLM, no ranking.\n\nPass id OR topic_key, not both (id is the exact record of any status; topic_key\nresolves the chain's active head). A `[[wikilink]]` IS a topic_key, so\nget(topic_key=\"...\") dereferences it. Returns {id, type, scope, project, content,\nrelated_files, created_at, topic_key, status, supersedes, chain, chain_total}: `chain`\nis the version lineage (newest first, light {id, status, created_at}, capped at\nchain_limit) and `chain_total` is the full length (page older versions with\nchain_after). A miss is a loud error (with near-match suggestions for a topic_key).\nUse `search` to find by meaning, `browse` to list a category.\n",
+    "description": "Dereference ONE memory by exact id or topic_key — its full record plus its\nsupersede chain (version history). Deterministic, no LLM, no ranking.\n\nPass id OR topic_key, not both (id is the exact record of any status; topic_key\nresolves the chain's active head). A `[[wikilink]]` IS a topic_key, so\nget(topic_key=\"...\") dereferences it. Returns {id, type, scope, project, content,\nrelated_files, created_at, topic_key, status, supersedes, chain, chain_total}: `chain`\nis the version lineage (newest first, light {id, status, created_at}, capped at\nchain_limit) and `chain_total` is the full length (page older versions with\nchain_after). A miss is a loud error (with near-match suggestions for a topic_key).\nUse `search` to find by meaning, `browse` to list a category.",
     "inputSchema": {
       "properties": {
         "id": {
@@ -307,13 +307,13 @@
           "type": "string"
         }
       },
-      "title": "getArguments",
-      "type": "object"
+      "type": "object",
+      "title": "getArguments"
     }
   },
   "recall": {
     "name": "recall",
-    "description": "Recall a project's memory as a synthesized, grounded answer.\n\nEXPERIMENTAL: a local LLM writes the answer, so it can be wrong — pass force=true\nto acknowledge this and run. Prefer `search`/`browse` for verbatim memories.\n\nRetrieves the memories most relevant to your query, then a local LLM writes an\nanswer using ONLY those memories — never outside knowledge — and replies exactly\n\"No relevant memories found.\" when none apply. Unlike `search` (a ranked list of\nhits), this returns a written answer. Returns {project, summary, sources}: `summary`\nis the answer and `sources` are the memories it drew on ({id, type}, not their\ncontent — so the answer stays light on the caller's context).\n",
+    "description": "Recall a project's memory as a synthesized, grounded answer.\n\nEXPERIMENTAL: a local LLM writes the answer, so it can be wrong — pass force=true\nto acknowledge this and run. Prefer `search`/`browse` for verbatim memories.\n\nRetrieves the memories most relevant to your query, then a local LLM writes an\nanswer using ONLY those memories — never outside knowledge — and replies exactly\n\"No relevant memories found.\" when none apply. Unlike `search` (a ranked list of\nhits), this returns a written answer. Returns {project, summary, sources}: `summary`\nis the answer and `sources` are the memories it drew on ({id, type}, not their\ncontent — so the answer stays light on the caller's context).",
     "inputSchema": {
       "properties": {
         "query": {
@@ -337,13 +337,13 @@
         "query",
         "project"
       ],
-      "title": "recallArguments",
-      "type": "object"
+      "type": "object",
+      "title": "recallArguments"
     }
   },
   "delete": {
     "name": "delete",
-    "description": "Permanently delete specific memories. Returns {deleted}.\n\nWith cascade=true, each id is expanded to itself plus every older memory it\ntransitively supersedes (down to the chain root) — use it to drop a whole supersede\nlineage at once. Superseded versions aren't returned by search/browse, so they can't\nbe found and deleted by id; cascade is how you remove them.\n",
+    "description": "Permanently delete specific memories. Returns {deleted}.\n\nWith cascade=true, each id is expanded to itself plus every older memory it\ntransitively supersedes (down to the chain root) — use it to drop a whole supersede\nlineage at once. Superseded versions aren't returned by search/browse, so they can't\nbe found and deleted by id; cascade is how you remove them.",
     "inputSchema": {
       "properties": {
         "ids": {
@@ -364,13 +364,13 @@
       "required": [
         "ids"
       ],
-      "title": "deleteArguments",
-      "type": "object"
+      "type": "object",
+      "title": "deleteArguments"
     }
   },
   "create_project": {
     "name": "create_project",
-    "description": "Register a new project. Writing to or searching an unregistered project is\nrejected (with near-match suggestions), so create it first. Errors if the slug\nalready exists. Returns {slug, description, created_at}.\n",
+    "description": "Register a new project. Writing to or searching an unregistered project is\nrejected (with near-match suggestions), so create it first. Errors if the slug\nalready exists. Returns {slug, description, created_at}.",
     "inputSchema": {
       "properties": {
         "name": {
@@ -388,13 +388,13 @@
       "required": [
         "name"
       ],
-      "title": "create_projectArguments",
-      "type": "object"
+      "type": "object",
+      "title": "create_projectArguments"
     }
   },
   "delete_project": {
     "name": "delete_project",
-    "description": "Permanently delete a project and EVERYTHING in it — all its memories and\ntheir links, in one atomic cascade. Errors (with near-match suggestions) if the\nslug is unknown. Returns the deleted {slug, description, created_at}.\n",
+    "description": "Permanently delete a project and EVERYTHING in it — all its memories and\ntheir links, in one atomic cascade. Errors (with near-match suggestions) if the\nslug is unknown. Returns the deleted {slug, description, created_at}.",
     "inputSchema": {
       "properties": {
         "name": {
@@ -406,13 +406,13 @@
       "required": [
         "name"
       ],
-      "title": "delete_projectArguments",
-      "type": "object"
+      "type": "object",
+      "title": "delete_projectArguments"
     }
   },
   "update_project": {
     "name": "update_project",
-    "description": "Set or change a project's description (the only way to edit it). Errors (with\nnear-match suggestions) if the slug is unknown. Returns {slug, description, created_at}.\n",
+    "description": "Set or change a project's description (the only way to edit it). Errors (with\nnear-match suggestions) if the slug is unknown. Returns {slug, description, created_at}.",
     "inputSchema": {
       "properties": {
         "name": {
@@ -430,17 +430,17 @@
         "name",
         "description"
       ],
-      "title": "update_projectArguments",
-      "type": "object"
+      "type": "object",
+      "title": "update_projectArguments"
     }
   },
   "list_projects": {
     "name": "list_projects",
-    "description": "List the registered projects (newest first). Returns a list of\n{slug, description, created_at}; the global scope is not a project and is excluded.\n",
+    "description": "List the registered projects (newest first). Returns a list of\n{slug, description, created_at}; the global scope is not a project and is excluded.",
     "inputSchema": {
       "properties": {},
-      "title": "list_projectsArguments",
-      "type": "object"
+      "type": "object",
+      "title": "list_projectsArguments"
     },
     "outputSchema": {
       "properties": {
@@ -456,8 +456,8 @@
       "required": [
         "result"
       ],
-      "title": "list_projectsOutput",
-      "type": "object"
+      "type": "object",
+      "title": "list_projectsOutput"
     }
   }
 }
