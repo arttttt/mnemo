@@ -20,8 +20,8 @@ SERVER_INSTRUCTIONS = (
     "- When you reach a decision, finding, rule or checkpoint worth keeping, save it with "
     "`remember`: one topic per memory, with a stable `topic_key` so a later update "
     "replaces it instead of adding a duplicate.\n"
-    "- Memories live in registered projects (`list_projects`); the project is usually the "
-    "repository's name. Use `scope=\"global\"` only for knowledge that applies across "
-    "projects.\n"
+    "- Memories live in registered projects (`list_projects`): pass the project's slug, "
+    "usually the repository's name, as `project`. Use `scope=\"global\"` only for knowledge "
+    "that applies across projects.\n"
     "- Never store secrets such as keys, tokens or passwords."
 )
