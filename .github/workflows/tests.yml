@@ -69,15 +69,21 @@ jobs:
 
       # The default pytest options deselect the heavy tests that download model weights.
       - name: Run tests
-        shell: bash
+        shell: bash # runs with -o pipefail, so pytest's exit status survives the tee
         env:
           COLUMNS: "250" # keep pytest's one-line failure summaries from being cut short
-        run: |
-          set -o pipefail
-          uv run pytest 2>&1 | tee pytest.log
+        run: uv run pytest 2>&1 | tee pytest.log
 
-      # Surface each failed test as an annotation on the run, readable without opening the log.
-      - name: Annotate failed tests
+      # Surface the failed tests without the job log. GitHub shows at most 10 annotations per
+      # step, so the first one states the count and the job summary lists every failure.
+      - name: Report failed tests
         if: failure()
         shell: bash
-        run: grep -E '^(FAILED|ERROR) ' pytest.log | sed 's/^/::error title=pytest::/' || true
+        run: |
+          failed=$(sed -n '/short test summary info/,$p' pytest.log 2>/dev/null | grep -E '^(FAILED|ERROR) ' || true)
+          [ -n "$failed" ] || exit 0
+          count=$(printf '%s\n' "$failed" | wc -l | tr -d ' ')
+          echo "::error title=pytest::$count failed; the job summary lists every one"
+          # Escape what the runner would otherwise decode inside an annotation's message.
+          printf '%s\n' "$failed" | head -n 9 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error title=pytest::/'
+          { echo "### Failed tests ($count)"; echo '```'; printf '%s\n' "$failed"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
