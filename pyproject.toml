@@ -9,6 +9,7 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp>=2.3.0,<3",           # MCP server, stdio proxy and client (MCPServer API)
     "pydantic>=2.12",          # tool-parameter schemas (Field) on the MCP surface
+    "anyio>=4.10",             # the MCP layer's event loop and its one-call-at-a-time slot
     "typer>=0.12.0",
     "sqlite-vec>=0.1.6",       # the store: vector search inside SQLite (FTS5 is built in)
     "onnxruntime>=1.16",        # default pplx embedder runtime (CPU)
