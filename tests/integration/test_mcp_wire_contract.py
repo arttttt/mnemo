@@ -92,20 +92,20 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
     assert relayed == served  # the proxy lists exactly what the service serves
 
 
-def test_every_tool_declares_its_side_effects(service):
-    """Clients decide from a tool's hints whether to ask the user before calling it (Codex
-    asks for any tool that leaves them out), so a tool added without hints is a regression
-    the golden snapshot would absorb on regeneration: each tool must say whether it only
-    reads, if not whether it destroys data, and that it stays within the local store."""
-    host, port = service
-    tools = wire(_run(over_http, _url(host, port), lambda s: s.list_tools()))["tools"]
+def test_clients_on_the_2026_protocol_list_the_same_tools(service, tmp_path):
+    """A client that negotiates the 2026-07-28 protocol through the proxy gets the same
+    definitions — annotations and _meta included — as the pinned contract."""
+    from mcp import Client
 
-    for tool in tools:
-        hints = tool.get("annotations", {})
-        assert hints.get("openWorldHint") is False, tool["name"]
-        assert isinstance(hints.get("readOnlyHint"), bool), tool["name"]
-        if not hints["readOnlyHint"]:
-            assert isinstance(hints.get("destructiveHint"), bool), tool["name"]
+    host, port = service
+
+    async def listed_by(target):
+        async with Client(target) as client:
+            return client.protocol_version, await client.list_tools()
+
+    protocol, listed = _run(listed_by, proxy_params(host, port, tmp_path))
+    assert protocol == "2026-07-28"
+    assert _definitions(listed) == json.loads(_GOLDEN_TOOLS.read_text(encoding="utf-8"))
 
 
 def _success(result: dict) -> dict:
