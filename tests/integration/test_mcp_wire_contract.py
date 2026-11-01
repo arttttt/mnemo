@@ -21,33 +21,18 @@ from tests.support.mcp_wire import over_http, through_proxy, wire
 _GOLDEN_TOOLS = Path(__file__).parent / "golden" / "mcp_tools.json"
 _DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema")
 
-# Failing calls and the exact text the agent must read for each (the near-match case needs
-# a registered "api" project).
-_FAILURES = [
-    (
-        "search", {"query": "x"},
-        "Error executing tool search: scope='project' needs a project to scope to, but none was "
-        "given; pass the project slug, or use scope='global' (only global memories) or "
-        "scope='all' (across every project)",
-    ),
-    (
-        "search", {"query": "x", "project": "ap"},
-        "Error executing tool search: unknown project 'ap' — create it with create_project, or "
-        "use an existing slug. Did you mean: api?",
-    ),
-    (
-        "recall", {"query": "x", "project": "api"},
-        "Error executing tool recall: recall is an EXPERIMENTAL feature: it uses an LLM to "
-        "synthesize the answer and may return an incorrect answer. If you want to proceed, call "
-        "recall again with force=true. Prefer `search` or `browse` for verbatim memories.",
-    ),
-    (
-        "create_project", {"name": "Bad Slug"},
-        "Error executing tool create_project: invalid project slug 'Bad Slug': use kebab-case — "
-        "lowercase letters, digits and single hyphens (e.g. 'checkout-api')",
-    ),
-    ("nope_tool", {}, "Unknown tool: nope_tool"),
+# Failing calls whose message mnemo writes. The agent reads it after the prefix
+# "Error executing tool <name>: "; the envelope and the prefix are pinned exactly, the
+# message only by a phrase that identifies it — its wording belongs to the code that
+# raises it and is checked there. (The near-match case needs a registered "api" project.)
+_TOOL_FAILURES = [
+    ("search", {"query": "x"}, "scope='project' needs a project to scope to"),
+    ("search", {"query": "x", "project": "ap"}, "unknown project 'ap'"),
+    ("recall", {"query": "x", "project": "api"}, "call recall again with force=true"),
+    ("create_project", {"name": "Bad Slug"}, "invalid project slug 'Bad Slug'"),
 ]
+# Failures whose message the SDK writes: pinned exactly.
+_UNKNOWN_TOOL = ("nope_tool", {}, "Unknown tool: nope_tool")
 # An argument the tool's schema rejects. pydantic writes the message, and its tail links
 # to a docs URL that embeds the pydantic version, so only the stable head is pinned.
 _BAD_ARGUMENT = ("search", {"query": "x", "scope": "nope", "project": "api"})
@@ -128,14 +113,21 @@ def test_tool_failures_reach_the_agent_as_readable_errors(service, tmp_path):
     _run(over_http, _url(host, port), lambda s: s.call_tool("create_project", {"name": "api"}))
 
     async def failing_calls(session):
-        calls = [(name, args) for name, args, _ in _FAILURES] + [_BAD_ARGUMENT]
+        calls = [(name, args) for name, args, _ in _TOOL_FAILURES]
+        calls += [_UNKNOWN_TOOL[:2], _BAD_ARGUMENT]
         return [wire(await session.call_tool(name, args)) for name, args in calls]
 
     served = _run(over_http, _url(host, port), failing_calls)
     relayed = _run(through_proxy, host, port, tmp_path, failing_calls)
 
-    for (name, args, text), result in zip(_FAILURES, served):
-        assert result == {"content": [{"type": "text", "text": text}], "isError": True}, (name, args)
+    for (name, args, phrase), result in zip(_TOOL_FAILURES, served):
+        assert set(result) == {"content", "isError"} and result["isError"] is True, (name, args)
+        (block,) = result["content"]
+        prefix = f"Error executing tool {name}: "
+        assert block["type"] == "text" and block["text"].startswith(prefix), (name, args)
+        assert phrase in block["text"][len(prefix):], (name, args)
+    unknown_tool = served[len(_TOOL_FAILURES)]
+    assert unknown_tool == {"content": [{"type": "text", "text": _UNKNOWN_TOOL[2]}], "isError": True}
     bad_argument = served[-1]
     assert set(bad_argument) == {"content", "isError"} and bad_argument["isError"] is True
     (block,) = bad_argument["content"]
