@@ -58,15 +58,23 @@ def test_stays_while_a_connector_is_live():
     thread.join(1.0)
 
 
-def test_a_returning_connector_cancels_the_grace():
+def test_a_returning_connector_restarts_the_grace():
+    """Empty, then a connector comes back for a while, then empty again: the grace counts
+    from the second emptying, not from the first.
+
+    Ticks never come early, only late, so on a slow machine every moment below can only
+    move later: the "not yet" check cannot fail for a correct monitor."""
     fired = threading.Event()
-    # Empty for two ticks (< grace), then a connector returns -> the timer resets.
+    interval, grace, live_ticks = 0.02, 0.5, 25
     monitor = IdleMonitor(
-        _Probe([0, 0, 1]), on_idle=fired.set, grace_seconds=0.1, interval_seconds=0.02
+        _Probe([0, 0] + [1] * live_ticks + [0]),  # the connector stays ~0.5 s, then leaves
+        on_idle=fired.set, grace_seconds=grace, interval_seconds=interval,
     )
     thread = _start(monitor)
-    assert not fired.wait(0.4)
-    monitor.stop()
+    # Leaves at tick 28 (>= 0.56 s); a full grace after that is >= 1.06 s. A monitor still
+    # counting from the first emptying would fire right as the connector leaves (~0.56 s).
+    assert not fired.wait(0.9)
+    assert fired.wait(3.0)  # ... and it still exits once the new grace has elapsed
     thread.join(1.0)
 
 
