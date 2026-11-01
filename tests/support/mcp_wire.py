@@ -26,8 +26,16 @@ def service_env(host: str, port: int, data_dir) -> dict:
 
 
 def wire(model) -> dict:
-    """The JSON an MCP client receives for a protocol result."""
-    return model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    """The JSON an MCP client receives for a protocol result.
+
+    The SDK's client model fills in ``resultType: "complete"`` for a result that arrives
+    without one — and on the protocol versions these sessions negotiate the server never
+    sends it (it is sieved out for pre-2026 versions) — so that default is dropped: it
+    was not on the wire."""
+    dumped = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if dumped.get("resultType") == "complete":
+        del dumped["resultType"]
+    return dumped
 
 
 async def over_http(url: str, act):
@@ -35,7 +43,7 @@ async def over_http(url: str, act):
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    async with streamable_http_client(url) as (read, write, _):
+    async with streamable_http_client(url) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             return await act(session)

@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Optional
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
+from mnemo.infrastructure.package_version import installed_version
 
 MemoryTypeName = Literal[
     "decision",
@@ -24,13 +25,14 @@ StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
 
 
-def build_mcp(container: Optional[Container] = None, **settings):
-    from mcp.server.fastmcp import FastMCP  # lazy, optional dependency
-    from pydantic import Field  # provided by mcp; lazy to keep imports light
+def build_mcp(container: Optional[Container] = None):
+    from pydantic import Field  # lazy to keep imports light
+
+    from mnemo.adapters.mcp.tool_boundary import MnemoMCPServer  # lazy: loads the MCP SDK
 
     container = container or build_container()
-    # `settings` (e.g. host/port) configure the transport; stdio ignores them.
-    mcp = FastMCP("mnemo", **settings)
+    # The transport (and its host/port) is chosen when the server is run, not here.
+    mcp = MnemoMCPServer("mnemo", version=installed_version())
 
     # NOTE: optional params are typed `str = None` (etc.), NOT `Optional[str]`, on purpose.
     # Optional[...] renders in the tool schema as anyOf[T, null], which some MCP clients

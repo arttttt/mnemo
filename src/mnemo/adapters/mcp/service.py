@@ -62,9 +62,9 @@ def main() -> None:
         "service up: embedder=%s dim=%d workers=%d on %s:%d (encode runs on the embed worker, off the write path)",
         config.embedder, container.embedder.dim, config.embed_workers, config.host, config.port,
     )
-    mcp = build_mcp(container, host=config.host, port=config.port)
+    mcp = build_mcp(container)
     _start_idle_monitor(config, scheduler, container.embedder)
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="streamable-http", host=config.host, port=config.port)
 
 
 def _start_idle_monitor(

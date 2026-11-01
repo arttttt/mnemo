@@ -13,7 +13,7 @@ async def _call(url: str, tool: str, args: dict):
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    async with streamable_http_client(url) as (read, write, _):
+    async with streamable_http_client(url) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             return await session.call_tool(tool, args)
@@ -31,10 +31,10 @@ def test_service_serves_tools_over_http(service):
 
     anyio.run(_call, url, "create_project", {"name": "api"})
     stored = anyio.run(_call, url, "remember", {"content": "redis caching layer", "project": "api"})
-    assert not stored.isError, _text(stored)
+    assert not stored.is_error, _text(stored)
 
     hits = anyio.run(_call, url, "search", {"query": "redis cache", "scope": "all"})
-    assert not hits.isError
+    assert not hits.is_error
     assert "redis caching layer" in _text(hits)
 
 
