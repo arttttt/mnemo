@@ -11,6 +11,7 @@ import pytest
 from mnemo.adapters.setup.claude_permission_rules import ClaudePermissionRules
 from mnemo.adapters.setup.client_registry import build_installers
 from mnemo.adapters.setup.install_result import InstallResult
+from mnemo.adapters.setup.opencode_permission_rules import ALREADY_ALLOWED, OpencodePermissionRules
 from mnemo.adapters.setup.permission_rules import ADDED, PRESENT, RulesNotWritten
 from mnemo.adapters.setup.with_permission_rules import WithPermissionRules
 
@@ -109,6 +110,104 @@ def test_claude_settings_follow_claude_config_dir(tmp_path):
 
     assert (custom / "settings.json").exists()
     assert not (tmp_path / ".claude").exists()
+
+
+# --- OpenCode: opencode.json -----------------------------------------------------------
+
+_OPENCODE_KEYS = [("mnemo_*", "allow"), ("mnemo_delete*", "ask")]
+
+
+def test_opencode_rules_allow_every_tool_and_ask_before_deletes(tmp_path):
+    config = tmp_path / "opencode.json"
+
+    note = OpencodePermissionRules(config, "mnemo").apply()
+
+    assert note == ADDED
+    assert list(json.loads(config.read_text())["permission"].items()) == _OPENCODE_KEYS
+
+
+def test_opencode_rules_go_last_and_keep_everything_else(tmp_path):
+    # OpenCode applies the last matching key, so mnemo's keys must follow a broader one
+    # such as "*", and the ask rule for deletes must follow the allow rule.
+    config = tmp_path / "opencode.json"
+    config.write_text(json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": {"mnemo": {"type": "local", "command": ["mnemo-mcp"], "enabled": True}},
+        "permission": {"mnemo_delete*": "ask", "edit": "ask", "*": "ask", "mnemo_*": "allow"},
+    }))
+
+    assert OpencodePermissionRules(config, "mnemo").apply() == ADDED
+
+    data = json.loads(config.read_text())
+    assert data["$schema"] == "https://opencode.ai/config.json"
+    assert data["mcp"] == {"mnemo": {"type": "local", "command": ["mnemo-mcp"], "enabled": True}}
+    assert list(data["permission"].items()) == [("edit", "ask"), ("*", "ask"), *_OPENCODE_KEYS]
+
+
+@pytest.mark.parametrize("word", ["ask", "deny"])
+def test_opencode_rules_spell_out_a_one_word_permission(tmp_path, word):
+    # OpenCode reads `"permission": "ask"` as `{"*": "ask"}`.
+    config = tmp_path / "opencode.json"
+    config.write_text(json.dumps({"permission": word}))
+
+    OpencodePermissionRules(config, "mnemo").apply()
+
+    assert list(json.loads(config.read_text())["permission"].items()) == [
+        ("*", word), *_OPENCODE_KEYS
+    ]
+
+
+def test_opencode_rules_leave_a_permission_that_allows_everything(tmp_path):
+    config = tmp_path / "opencode.json"
+    config.write_text(json.dumps({"permission": "allow"}))
+    before = _snapshot(config)
+
+    assert OpencodePermissionRules(config, "mnemo").apply() == ALREADY_ALLOWED
+    assert _snapshot(config) == before
+
+
+def test_opencode_rules_already_in_place_leave_the_file_untouched(tmp_path):
+    config = tmp_path / "opencode.json"
+    rules = OpencodePermissionRules(config, "mnemo")
+    rules.apply()
+    before = _snapshot(config)
+
+    assert rules.apply() == PRESENT
+    assert _snapshot(config) == before
+
+
+@pytest.mark.parametrize("content", [
+    "{not json",
+    json.dumps({"permission": ["mnemo_*"]}),
+    json.dumps({"permission": "sometimes"}),
+])
+def test_opencode_rules_refuse_a_config_they_cannot_change_safely(tmp_path, content):
+    config = tmp_path / "opencode.json"
+    config.write_text(content)
+
+    with pytest.raises(RulesNotWritten) as refused:
+        OpencodePermissionRules(config, "mnemo").apply()
+
+    assert config.read_text() == content
+    assert list(json.loads(refused.value.snippet)["permission"].items()) == _OPENCODE_KEYS
+
+
+def test_opencode_setup_wires_the_server_and_its_rules_in_one_file(tmp_path):
+    opencode = next(
+        installer
+        for installer in build_installers(
+            connector_argv=["/opt/bin/mnemo-mcp"], runner=_Runner(0), home=tmp_path, env={},
+        )
+        if installer.name == "opencode"
+    )
+
+    result = opencode.install()
+
+    config = tmp_path / ".config" / "opencode" / "opencode.json"
+    assert result.status == "ok" and result.message == ADDED
+    data = json.loads(config.read_text())
+    assert data["mcp"]["mnemo"]["command"] == ["/opt/bin/mnemo-mcp"]
+    assert list(data["permission"].items()) == _OPENCODE_KEYS
 
 
 # --- Wiring a server and writing its rules together ----------------------------------

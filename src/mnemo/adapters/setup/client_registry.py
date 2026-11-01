@@ -18,6 +18,7 @@ from mnemo.adapters.setup.command_runner import CommandRunner, SubprocessCommand
 from mnemo.adapters.setup.connector_command import connector_command
 from mnemo.adapters.setup.mcp_servers_json_installer import McpServersJsonInstaller
 from mnemo.adapters.setup.opencode_installer import OpencodeInstaller
+from mnemo.adapters.setup.opencode_permission_rules import OpencodePermissionRules
 from mnemo.adapters.setup.with_permission_rules import WithPermissionRules
 
 SERVER_NAME = "mnemo"
@@ -33,6 +34,7 @@ def build_installers(
     runner = runner or SubprocessCommandRunner()
     home = home or Path.home()
     env = os.environ if env is None else env
+    opencode_json = home / ".config" / "opencode" / "opencode.json"
     return [
         WithPermissionRules(
             CliClientInstaller(
@@ -56,8 +58,9 @@ def build_installers(
         McpServersJsonInstaller(
             "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", SERVER_NAME, argv
         ),
-        OpencodeInstaller(
-            "opencode", home / ".config" / "opencode" / "opencode.json", SERVER_NAME, argv
+        WithPermissionRules(
+            OpencodeInstaller("opencode", opencode_json, SERVER_NAME, argv),
+            OpencodePermissionRules(opencode_json, SERVER_NAME),
         ),
     ]
 

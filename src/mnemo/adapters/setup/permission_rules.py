@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from mnemo.adapters.setup.json_config import load_json
+
 ADDED = "permission rules added"
 PRESENT = "permission rules already in place"
 
@@ -40,3 +42,14 @@ class PermissionRules(Protocol):
 def describe_rules(rules: list[tuple[str, str]], target: Path) -> str:
     listed = ", ".join(f"{decision} {pattern}" for decision, pattern in rules)
     return f"add permission rules ({listed}) to {target}"
+
+
+def load_json_object(path: Path, snippet: str) -> dict:
+    """A JSON config file's top-level object ({} when absent); RulesNotWritten otherwise."""
+    try:
+        data = load_json(path)
+    except ValueError as error:
+        raise RulesNotWritten(f"{path} is not valid JSON ({error})", snippet) from error
+    if not isinstance(data, dict):
+        raise RulesNotWritten(f"{path} does not hold a JSON object", snippet)
+    return data
