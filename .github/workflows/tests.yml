@@ -45,11 +45,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Compiling llama-cpp-python is the one slow part of a cold install; every other
+      # dependency downloads as a wheel in seconds. So the uv cache is keyed on that package's
+      # version and its build flags rather than on uv.lock, which changes with every release
+      # of mnemo itself and would otherwise recompile it on each such pull request.
+      - name: Read the compiled package's version
+        id: compiled
+        shell: bash
+        run: |
+          version=$(grep -A1 '^name = "llama-cpp-python"$' uv.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "llama-cpp-python=$version" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: "" # never invalidated by the lock; the suffix below keys it
+          cache-suffix: llama-cpp-python-${{ steps.compiled.outputs.llama-cpp-python }}${{ env.CMAKE_ARGS }}
 
       # --locked fails if uv.lock no longer matches pyproject.toml.
       - name: Install dependencies
