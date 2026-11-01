@@ -297,13 +297,14 @@ class _Runner:
 
 
 class _Installer:
-    def __init__(self, status, message=""):
+    def __init__(self, status, message="", installed=True):
         self._result = InstallResult("claude-code", status, "claude mcp add mnemo", message)
+        self._installed = installed
 
     name = "claude-code"
 
     def detect(self):
-        return True
+        return self._installed
 
     def describe(self):
         return "run `claude mcp add mnemo`"
@@ -325,6 +326,28 @@ def test_rules_are_written_even_when_wiring_the_server_fails(tmp_path):
     assert result.target == f"claude mcp add mnemo; {settings}"
     assert result.message == f"`claude` exited with 1; {ADDED}"
     assert "mcp__mnemo__*" in json.loads(settings.read_text())["permissions"]["allow"]
+
+
+def test_a_client_that_is_not_installed_gets_no_config_created(tmp_path):
+    # `mnemo setup claude-code` on a machine without Claude Code: the `claude` binary is
+    # missing, and ~/.claude/settings.json must not be created for it.
+    settings = tmp_path / ".claude" / "settings.json"
+    missing = _Installer("failed", "`claude` exited with 127", installed=False)
+
+    result = WithPermissionRules(missing, ClaudePermissionRules(settings, "mnemo")).install()
+
+    assert result == missing.install()
+    assert not settings.parent.exists()
+
+
+def test_a_config_that_cannot_be_read_fails_this_client_without_raising(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.mkdir()  # a directory where the file should be
+
+    result = WithPermissionRules(_Installer("ok"), ClaudePermissionRules(settings, "mnemo")).install()
+
+    assert result.status == "failed"
+    assert result.message.startswith("permission rules not written: ")
 
 
 def test_rules_that_cannot_be_written_fail_the_install_and_say_what_to_add(tmp_path):

@@ -502,7 +502,7 @@ def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
         for item in plan:
             typer.echo(f"[dry-run] {item['client']}: {item['action']}")
         return
-    results = [installer.install() for installer in installers]
+    results = [_install(installer) for installer in installers]
     if as_json:
         output.render([asdict(result) for result in results], "", as_json=True)
         return
@@ -512,6 +512,16 @@ def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
         mark = "✓" if result.status == "ok" else "✗"
         suffix = f"  ({result.message})" if result.message else ""
         typer.echo(f"{mark} {result.client}: {result.target}{suffix}")
+
+
+def _install(installer):
+    """Wire one client; a config file it cannot read or write fails that client only."""
+    from mnemo.adapters.setup.install_result import InstallResult
+
+    try:
+        return installer.install()
+    except (OSError, ValueError) as error:
+        return InstallResult(installer.name, "failed", "", str(error))
 
 
 def main() -> None:

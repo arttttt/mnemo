@@ -89,6 +89,21 @@ def test_setup_all_json_wires_every_detected_client(tmp_path, monkeypatch):
     assert (tmp_path / ".config" / "opencode" / "opencode.json").exists()
 
 
+def test_a_client_whose_config_cannot_be_read_does_not_stop_the_others(tmp_path, monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text("{not json")
+    (tmp_path / ".config" / "opencode").mkdir(parents=True)
+
+    result = CliRunner().invoke(app, ["setup", "--all", "--json"], env={"HOME": str(tmp_path)})
+
+    assert result.exit_code == 0, result.output
+    status = {entry["client"]: entry["status"] for entry in json.loads(result.stdout)}
+    assert status == {"cursor": "failed", "opencode": "ok"}
+    assert (tmp_path / ".cursor" / "mcp.json").read_text() == "{not json"
+    assert (tmp_path / ".config" / "opencode" / "opencode.json").exists()
+
+
 def test_setup_dry_run_json_emits_a_plan_and_writes_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: None)
     (tmp_path / ".cursor").mkdir()
