@@ -77,23 +77,41 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
     assert relayed == served  # the proxy lists exactly what the service serves
 
 
-def test_successful_results_keep_their_shape(service):
+def _assert_dict_result(result: dict) -> dict:
+    """A dict result: one text block of 2-space-indented JSON, no structured copy."""
+    assert set(result) == {"content", "isError"} and result["isError"] is False
+    (block,) = result["content"]
+    assert block["type"] == "text" and block["text"] == _pretty(block["text"])
+    return json.loads(block["text"])
+
+
+def test_successful_results_keep_their_shape(service, tmp_path):
+    """dict, list[dict] and empty-list results as the service serves them — and relayed
+    unchanged by the proxy."""
     host, port = service
 
-    async def calls(session):
+    async def write(session):
         created = await session.call_tool("create_project", {"name": "api"})
-        await session.call_tool("remember", {"content": "jwt refresh rotation", "project": "api"})
-        hits = await session.call_tool("search", {"query": "jwt", "project": "api"})
-        empty = await session.call_tool("search", {"query": "nothing here", "scope": "global"})
-        return [wire(result) for result in (created, hits, empty)]
+        await session.call_tool(
+            "remember", {"content": "jwt refresh rotation", "project": "api", "topic_key": "auth/jwt"}
+        )
+        return wire(created)
 
-    created, hits, empty = _run(over_http, _url(host, port), calls)
+    async def reads(session):
+        calls = [
+            ("get", {"topic_key": "auth/jwt", "project": "api"}),
+            ("search", {"query": "jwt", "project": "api"}),
+            ("search", {"query": "nothing here", "scope": "global"}),
+        ]
+        return [wire(await session.call_tool(name, args)) for name, args in calls]
 
-    # A dict result: one text block of 2-space-indented JSON, no structured copy.
-    assert set(created) == {"content", "isError"} and created["isError"] is False
-    (block,) = created["content"]
-    assert block["type"] == "text" and block["text"] == _pretty(block["text"])
-    assert json.loads(block["text"])["slug"] == "api"
+    created = _run(over_http, _url(host, port), write)
+    served = _run(over_http, _url(host, port), reads)
+    relayed = _run(through_proxy, host, port, tmp_path, reads)
+    record, hits, empty = served
+
+    assert _assert_dict_result(created)["slug"] == "api"
+    assert _assert_dict_result(record)["topic_key"] == "auth/jwt"
 
     # A list[dict] result: one text block per item, plus the items as {"result": [...]}.
     assert hits["isError"] is False
@@ -104,6 +122,22 @@ def test_successful_results_keep_their_shape(service):
 
     # An empty list: no blocks and an empty structured result.
     assert empty == {"content": [], "structuredContent": {"result": []}, "isError": False}
+
+    assert relayed == served  # the proxy relays successful results unchanged
+
+
+async def _server_identity(session) -> dict:
+    return {"name": session.server_info.name, "version": session.server_info.version}
+
+
+def test_the_handshake_names_mnemo_and_its_version(service, tmp_path):
+    """Both the service and the proxy introduce themselves as mnemo at its installed version."""
+    from mnemo.infrastructure.package_version import installed_version
+
+    host, port = service
+    expected = {"name": "mnemo", "version": installed_version()}
+    assert _run(over_http, _url(host, port), _server_identity) == expected
+    assert _run(through_proxy, host, port, tmp_path, _server_identity) == expected
 
 
 def test_tool_failures_reach_the_agent_as_readable_errors(service, tmp_path):
