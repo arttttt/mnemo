@@ -36,10 +36,11 @@ class _Occupancy:
             self.active -= 1
 
 
-def _server(occupancy: _Occupancy | None = None) -> MnemoMCPServer:
+def _server(occupancy: _Occupancy | None = None, entered: list | None = None) -> MnemoMCPServer:
     server = MnemoMCPServer("boundary-test")
     provider = MetaSessionProvider()
     occupancy = occupancy or _Occupancy()
+    entered = entered if entered is not None else []
 
     @server.tool()
     def whoami() -> str:  # sync, so the SDK runs it on a worker thread
@@ -55,7 +56,34 @@ def _server(occupancy: _Occupancy | None = None) -> MnemoMCPServer:
             time.sleep(0.1)
         return "done"
 
+    @server.tool()
+    def record(tag: int) -> str:
+        entered.append(tag)
+        return str(tag)
+
     return server
+
+
+def _run_guarded(scenario, timeout: float = 10.0):
+    """Run an async ``scenario`` on its own thread under a watchdog. A call slot that blocks
+    the event loop itself cannot be interrupted by any deadline inside that loop; this
+    turns such a hang into a failed test instead of a stuck suite."""
+    outcome = {}
+
+    def target():
+        try:
+            outcome["value"] = anyio.run(scenario)
+        except BaseException as exc:  # handed back to the test thread below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        pytest.fail(f"the event loop was still blocked after {timeout}s")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
 
 
 def _request(server, meta) -> Context:
@@ -109,13 +137,48 @@ def test_concurrent_calls_run_one_at_a_time():
     server = _server(occupancy)
 
     async def three_at_once():
-        with anyio.fail_after(5):  # a call slot that is never released fails, not hangs
-            async with anyio.create_task_group() as group:
-                for _ in range(3):
-                    group.start_soon(server.call_tool, "slow", {}, None)
+        async with anyio.create_task_group() as group:
+            for _ in range(3):
+                group.start_soon(server.call_tool, "slow", {}, None)
 
-    anyio.run(three_at_once)
+    _run_guarded(three_at_once)
     assert occupancy.peak == 1
+
+
+def test_waiting_calls_run_in_arrival_order():
+    entered = []
+    server = _server(entered=entered)
+
+    async def queue_three_behind_a_slow_call():
+        async with anyio.create_task_group() as group:
+            group.start_soon(server.call_tool, "slow", {}, None)
+            await anyio.sleep(0.02)  # the slow call holds the slot
+            for tag in (1, 2, 3):
+                group.start_soon(server.call_tool, "record", {"tag": tag}, None)
+                await anyio.sleep(0.005)  # arrive strictly in this order
+
+    _run_guarded(queue_three_behind_a_slow_call)
+    assert entered == [1, 2, 3]
+
+
+def test_the_server_stays_responsive_while_calls_wait():
+    """One call runs, another waits for its turn — and requests that need no call slot (here,
+    listing the tools) are still answered meanwhile: the waiting does not block the loop."""
+    occupancy = _Occupancy()
+    server = _server(occupancy)
+
+    async def list_tools_while_a_call_waits():
+        async with anyio.create_task_group() as group:
+            group.start_soon(server.call_tool, "slow", {}, None)
+            await anyio.sleep(0.02)  # the slow call holds the slot
+            group.start_soon(server.call_tool, "whoami", {}, None)  # waits for it
+            await anyio.sleep(0.01)
+            tools = await server.list_tools()
+            still_running = occupancy.active
+        return len(tools), still_running
+
+    listed, still_running = _run_guarded(list_tools_while_a_call_waits)
+    assert listed == 4 and still_running == 1  # answered before the slow call finished
 
 
 def test_a_failed_call_does_not_block_the_next():
@@ -124,10 +187,9 @@ def test_a_failed_call_does_not_block_the_next():
     async def crash_then_call():
         with pytest.raises(ToolError):
             await server.call_tool("crash", {}, None)
-        with anyio.fail_after(2):  # would hang if the failure kept the call slot
-            return await server.call_tool("whoami", {}, None)
+        return await server.call_tool("whoami", {}, None)
 
-    assert anyio.run(crash_then_call).content[0].text == _NO_SESSION
+    assert _run_guarded(crash_then_call).content[0].text == _NO_SESSION
 
 
 def test_a_call_abandoned_while_waiting_does_not_block_the_next():
@@ -139,7 +201,6 @@ def test_a_call_abandoned_while_waiting_does_not_block_the_next():
             await anyio.sleep(0.02)  # the slow call is running
             with anyio.move_on_after(0.02):  # this caller gives up while still waiting
                 await server.call_tool("whoami", {}, None)
-        with anyio.fail_after(2):  # would hang if the abandoned wait kept the call slot
-            return await server.call_tool("whoami", {}, None)
+        return await server.call_tool("whoami", {}, None)
 
-    assert anyio.run(abandon_one_then_call).content[0].text == _NO_SESSION
+    assert _run_guarded(abandon_one_then_call).content[0].text == _NO_SESSION
