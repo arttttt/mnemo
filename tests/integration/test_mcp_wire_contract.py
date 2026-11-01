@@ -20,7 +20,7 @@ pytest.importorskip("sqlite_vec")
 from tests.support.mcp_wire import over_http, proxy_params, through_proxy, wire
 
 _GOLDEN_TOOLS = Path(__file__).parent / "golden" / "mcp_tools.json"
-_DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema")
+_DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema", "annotations", "_meta")
 
 # Failing calls whose message mnemo writes. The agent reads it after the prefix
 # "Error executing tool <name>: "; the envelope and the prefix are pinned exactly, the
@@ -77,8 +77,9 @@ def _pretty(text: str) -> str:
 
 
 def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
-    """Names, descriptions and input/output schemas of every tool, as listed over HTTP and
-    through the proxy. Regenerate deliberately with MNEMO_UPDATE_GOLDEN=1."""
+    """Names, descriptions, input/output schemas, annotations and _meta of every tool, as
+    listed over HTTP and through the proxy. Regenerate deliberately with
+    MNEMO_UPDATE_GOLDEN=1."""
     host, port = service
     served = _definitions(_run(over_http, _url(host, port), lambda s: s.list_tools()))
     relayed = _definitions(_run(through_proxy, host, port, tmp_path, lambda s: s.list_tools()))
@@ -89,6 +90,22 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
         )
     assert served == json.loads(_GOLDEN_TOOLS.read_text(encoding="utf-8"))
     assert relayed == served  # the proxy lists exactly what the service serves
+
+
+def test_every_tool_declares_its_side_effects(service):
+    """Clients decide from a tool's hints whether to ask the user before calling it (Codex
+    asks for any tool that leaves them out), so a tool added without hints is a regression
+    the golden snapshot would absorb on regeneration: each tool must say whether it only
+    reads, if not whether it destroys data, and that it stays within the local store."""
+    host, port = service
+    tools = wire(_run(over_http, _url(host, port), lambda s: s.list_tools()))["tools"]
+
+    for tool in tools:
+        hints = tool.get("annotations", {})
+        assert hints.get("openWorldHint") is False, tool["name"]
+        assert isinstance(hints.get("readOnlyHint"), bool), tool["name"]
+        if not hints["readOnlyHint"]:
+            assert isinstance(hints.get("destructiveHint"), bool), tool["name"]
 
 
 def _success(result: dict) -> dict:
