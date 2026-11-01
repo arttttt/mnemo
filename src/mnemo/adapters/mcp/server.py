@@ -11,11 +11,13 @@ and answers with that structure; the tool boundary sends it as structured conten
 from dataclasses import dataclass
 from typing import Annotated, Literal, Optional
 
+from typing_extensions import NotRequired, TypedDict  # pydantic needs these before 3.12
+
 from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
 from mnemo.application.results.browse_result import BrowseResult
 from mnemo.application.results.deletion_result import DeletionResult
 from mnemo.application.results.get_result import GetResult
-from mnemo.application.results.remember_result import RememberResult
+from mnemo.application.results.remember_result import ReplacedMemory
 from mnemo.application.results.search_result import SearchResult
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
 from mnemo.domain.project import Project
@@ -33,6 +35,15 @@ MemoryTypeName = Literal[
 ]
 StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
+
+
+class RememberAnswer(TypedDict):
+    """What remember returns. `replaced` is there only for a supersede: a key that is
+    absent rather than null costs the caller nothing on every other write."""
+
+    id: str
+    status: str
+    replaced: NotRequired[ReplacedMemory]
 
 
 @dataclass(frozen=True)
@@ -104,14 +115,18 @@ def build_mcp(container: Optional[Container] = None):
             str,
             Field(description="Stable key (e.g. 'auth/jwt-model') to evolve one memory over time instead of creating duplicates."),
         ] = None,
-    ) -> RememberResult:
+    ) -> RememberAnswer:
         """Save a memory to the local store so it can be recalled later.
 
-        No LLM runs on write. Reusing a `topic_key` supersedes the prior memory of
-        that key. Returns {id, status}, where status is "created", "duplicate"
-        (identical content already stored), or "superseded" (a topic_key upsert).
+        No LLM runs on write. Reusing a `topic_key` replaces the prior memory of that
+        key: it leaves search and browse (get still reaches it). Returns {id, status},
+        where status is "created", "duplicate" (identical content already stored), or
+        "superseded" (a topic_key upsert); a supersede also returns `replaced` {id,
+        chars}, the record it replaced. If `replaced.chars` is much larger than what you
+        wrote, you may have dropped content: read it with get(id=...) and write the
+        merged text.
         """
-        return container.remember.execute(
+        result = container.remember.execute(
             content=content,
             type=type,
             project=project,
@@ -120,6 +135,10 @@ def build_mcp(container: Optional[Container] = None):
             tags=tags,
             topic_key=topic_key,
         )
+        answer: RememberAnswer = {"id": result.id, "status": result.status}
+        if result.replaced is not None:
+            answer["replaced"] = result.replaced
+        return answer
 
     @mcp.tool(annotations=READ_ONLY, meta=LOAD_UP_FRONT)
     def search(

@@ -86,8 +86,15 @@ def test_format_hits_collapses_whitespace_and_elides_long_content():
 # --- format_remember -----------------------------------------------------------------
 
 def test_format_remember_shows_status_and_id():
-    result = SimpleNamespace(id="abc123", status="created")
+    result = SimpleNamespace(id="abc123", status="created", replaced=None)
     assert output.format_remember(result) == "created — abc123"
+
+
+def test_format_remember_shows_what_a_supersede_replaced():
+    result = SimpleNamespace(
+        id="new456", status="superseded", replaced=SimpleNamespace(id="old123", chars=1840)
+    )
+    assert output.format_remember(result) == "superseded — new456 (replaced old123, 1840 chars)"
 
 
 # --- format_get ----------------------------------------------------------------------

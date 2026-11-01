@@ -89,8 +89,12 @@ def format_hits(hits: list[Any]) -> str:
 
 def format_remember(result: Any) -> str:
     """The outcome of a store: status verb + the id it applies to (the new head, the
-    existing duplicate, or the freshly created row)."""
-    return f"{result.status} — {result.id}"
+    existing duplicate, or the freshly created row), and for a supersede the record it
+    replaced with its length."""
+    line = f"{result.status} — {result.id}"
+    if getattr(result, "replaced", None) is not None:
+        line += f" (replaced {result.replaced.id}, {result.replaced.chars} chars)"
+    return line
 
 
 def format_get(result: Any) -> str:

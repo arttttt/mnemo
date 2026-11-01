@@ -698,6 +698,7 @@ dependencies = [
     { name = "sqlite-vec" },
     { name = "tokenizers" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -718,6 +719,7 @@ requires-dist = [
     { name = "sqlite-vec", specifier = ">=0.1.6" },
     { name = "tokenizers", specifier = ">=0.15" },
     { name = "typer", specifier = ">=0.12.0" },
+    { name = "typing-extensions", specifier = ">=4.12" },
 ]
 provides-extras = ["dev"]
 
