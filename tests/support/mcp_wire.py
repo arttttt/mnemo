@@ -43,18 +43,24 @@ async def over_http(url: str, act):
             return await act(session)
 
 
-async def through_proxy(host: str, port: int, data_dir, act):
-    """Run ``act(session)`` in one stdio client session through a `mnemo-mcp` proxy process
-    pointed at ``host:port``."""
-    from mcp.client.session import ClientSession
-    from mcp.client.stdio import StdioServerParameters, stdio_client
+def proxy_params(host: str, port: int, data_dir):
+    """How a stdio MCP client launches a `mnemo-mcp` proxy pointed at ``host:port``."""
+    from mcp.client.stdio import StdioServerParameters
 
-    params = StdioServerParameters(
+    return StdioServerParameters(
         command=sys.executable,
         args=["-c", "from mnemo.adapters.mcp.proxy import main; main()"],
         env=service_env(host, port, data_dir),
     )
-    async with stdio_client(params) as (read, write):
+
+
+async def through_proxy(host: str, port: int, data_dir, act):
+    """Run ``act(session)`` in one stdio client session through a `mnemo-mcp` proxy process
+    pointed at ``host:port``."""
+    from mcp.client.session import ClientSession
+    from mcp.client.stdio import stdio_client
+
+    async with stdio_client(proxy_params(host, port, data_dir)) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             return await act(session)

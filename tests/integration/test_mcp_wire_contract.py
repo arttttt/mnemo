@@ -16,7 +16,7 @@ pytest.importorskip("mcp")
 pytest.importorskip("uvicorn")
 pytest.importorskip("sqlite_vec")
 
-from tests.support.mcp_wire import over_http, through_proxy, wire
+from tests.support.mcp_wire import over_http, proxy_params, through_proxy, wire
 
 _GOLDEN_TOOLS = Path(__file__).parent / "golden" / "mcp_tools.json"
 _DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema")
@@ -182,6 +182,30 @@ def test_tool_failures_reach_the_agent_as_readable_errors(service, tmp_path):
     (block,) = bad_argument["content"]
     assert block["type"] == "text" and block["text"].startswith(_BAD_ARGUMENT_HEAD)
     assert relayed == served  # the proxy relays every failure verbatim
+
+
+def test_clients_on_the_2026_protocol_read_tool_failures_the_same_way(service, tmp_path):
+    """The service and the proxy also serve clients that negotiate the 2026-07-28 protocol
+    (the handshake the other tests use is the earlier one); a tool failure reaches them as
+    the same readable error."""
+    from mcp import Client
+
+    host, port = service
+
+    async def failure_seen_by(target):
+        async with Client(target) as client:
+            result = wire(await client.call_tool("search", {"query": "x"}))
+            return client.protocol_version, result
+
+    for target in (_url(host, port), proxy_params(host, port, tmp_path)):
+        protocol, result = _run(failure_seen_by, target)
+        assert protocol == "2026-07-28", target
+        assert result["isError"] is True and "structuredContent" not in result
+        (block,) = result["content"]
+        assert block["type"] == "text"
+        assert block["text"].startswith(
+            "Error executing tool search: scope='project' needs a project to scope to"
+        )
 
 
 def test_proxy_reports_a_failed_forward_as_a_tool_error(tmp_path):
