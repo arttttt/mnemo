@@ -146,6 +146,16 @@ without keeping it, but is declared non‑destructive: it is one line that is ea
 touched. `search` also carries
 `_meta["anthropic/alwaysLoad"]`, so Claude Code loads it at session start instead of deferring it.
 
+## Response format
+
+Every tool publishes an `outputSchema` and answers with **structured content only** (`structuredContent`, with an
+empty `content` list). A list tool (`search`, `browse`, `list_projects`) answers `{"result": [...]}`; the others
+answer the object itself. The MCP SDK would also render each structured answer as text blocks, one per list item,
+for clients from before structured output; mnemo drops that copy. A client that shows both, such as Kimi Code,
+put every result in front of the model twice, and elsewhere the copy was about half of the bytes on the wire.
+Claude Code and Codex read the structured content; OpenCode and Kimi Code read it when no text is sent. A failed
+call is still a text result with `isError: true`.
+
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
 ```

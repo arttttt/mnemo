@@ -9,10 +9,11 @@ import pytest
 pytest.importorskip("mcp")
 
 import anyio
+import mcp.types as types
 from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 
-from mnemo.adapters.mcp.tool_boundary import MnemoMCPServer
+from mnemo.adapters.mcp.tool_boundary import MnemoMCPServer, _structured_only
 from mnemo.adapters.session.meta_session_provider import SESSION_META_KEY, MetaSessionProvider
 
 _NO_SESSION = "<no session>"
@@ -91,12 +92,18 @@ def _request(server, meta) -> Context:
     return Context(request_context=SimpleNamespace(meta=meta), mcp_server=server)
 
 
+def _answer(result):
+    """A str-returning tool's answer: structured {"result": ...} only, no text copy."""
+    assert result.content == []
+    return result.structured_content["result"]
+
+
 def test_the_session_sent_with_the_request_is_bound_for_the_call_only():
     server = _server()
 
     async def call_then_read_after():
         result = await server.call_tool("whoami", {}, _request(server, {SESSION_META_KEY: "s-1"}))
-        return result.content[0].text, MetaSessionProvider().current_session_id()
+        return _answer(result), MetaSessionProvider().current_session_id()
 
     during, after = anyio.run(call_then_read_after)
     assert during == "s-1"  # visible to the tool on its worker thread
@@ -116,7 +123,7 @@ def test_the_session_sent_with_the_request_is_bound_for_the_call_only():
 def test_a_call_without_a_session_id_runs_without_one(context):
     server = _server()
     result = anyio.run(server.call_tool, "whoami", {}, context(server))
-    assert result.content[0].text == _NO_SESSION
+    assert _answer(result) == _NO_SESSION
 
 
 def test_a_crash_reaches_the_caller_with_its_message_and_is_logged(caplog):
@@ -189,7 +196,7 @@ def test_a_failed_call_does_not_block_the_next():
             await server.call_tool("crash", {}, None)
         return await server.call_tool("whoami", {}, None)
 
-    assert _run_guarded(crash_then_call).content[0].text == _NO_SESSION
+    assert _answer(_run_guarded(crash_then_call)) == _NO_SESSION
 
 
 def test_a_call_abandoned_while_waiting_does_not_block_the_next():
@@ -203,4 +210,16 @@ def test_a_call_abandoned_while_waiting_does_not_block_the_next():
                 await server.call_tool("whoami", {}, None)
         return await server.call_tool("whoami", {}, None)
 
-    assert _run_guarded(abandon_one_then_call).content[0].text == _NO_SESSION
+    assert _answer(_run_guarded(abandon_one_then_call)) == _NO_SESSION
+
+
+def test_only_a_successful_structured_answer_loses_its_text_copy():
+    text = [types.TextContent(type="text", text='{"result": 1}')]
+    structured = types.CallToolResult(content=text, structured_content={"result": 1})
+    error = types.CallToolResult(content=text, structured_content={"result": 1}, is_error=True)
+    unstructured = types.CallToolResult(content=text)
+
+    assert _structured_only(structured).content == []
+    assert _structured_only(structured).structured_content == {"result": 1}
+    assert _structured_only(error).content == text  # an error is read from its text
+    assert _structured_only(unstructured).content == text  # nothing else to read

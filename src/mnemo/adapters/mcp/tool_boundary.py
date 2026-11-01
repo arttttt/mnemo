@@ -9,7 +9,12 @@ Every tool call passes through `MnemoMCPServer.call_tool`, which owns what surro
   exception. The SDK alone shows the message only for its own ToolError and replaces
   anything else with a bare "Error executing tool <name>"; mnemo's use cases signal the
   caller's mistakes (unknown project, scope without project, over-cap content) with
-  ordinary exceptions whose message is the guidance the agent needs.
+  ordinary exceptions whose message is the guidance the agent needs;
+- an answer goes out as structured content only. For backwards compatibility the SDK
+  also renders a structured result as text blocks (one per item of a list), and a client
+  that shows both, such as Kimi Code, then puts every result in front of the model twice.
+  Every client mnemo targets reads structured content when no text is sent, so the text
+  copy is dropped. An error result keeps its text, which is all it has.
 
 Imported by `build_mcp` only, so importing the server module stays free of the SDK.
 """
@@ -46,11 +51,25 @@ class MnemoMCPServer(MCPServer):
         async with self._call_slot:
             with bind_session(_session_id(context)):
                 try:
-                    return await super().call_tool(name, arguments, context)
+                    result = await super().call_tool(name, arguments, context)
                 except UnexpectedToolError as exc:
                     cause = exc.__cause__ or exc
                     _log.info("tool %s failed", name, exc_info=cause)
                     raise ToolError(f"Error executing tool {name}: {cause}") from exc
+        return _structured_only(result)
+
+
+def _structured_only(
+    result: types.CallToolResult | types.InputRequiredResult,
+) -> types.CallToolResult | types.InputRequiredResult:
+    """The result without the SDK's text rendering of its structured content."""
+    if (
+        isinstance(result, types.CallToolResult)
+        and result.structured_content is not None
+        and not result.is_error
+    ):
+        return result.model_copy(update={"content": []})
+    return result
 
 
 def _session_id(context: Context | None) -> str | None:

@@ -72,10 +72,6 @@ def _definitions(listed) -> dict:
     return definitions
 
 
-def _pretty(text: str) -> str:
-    return json.dumps(json.loads(text), indent=2, ensure_ascii=False)
-
-
 def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
     """Names, descriptions, input/output schemas, annotations and _meta of every tool, as
     listed over HTTP and through the proxy. Regenerate deliberately with
@@ -115,17 +111,15 @@ def _success(result: dict) -> dict:
     return {key: value for key, value in result.items() if key != "isError"}
 
 
-def _assert_dict_result(result: dict) -> dict:
-    """A dict result: one text block of 2-space-indented JSON, no structured copy."""
+def _structured(result: dict):
+    """A successful result: structured content only, with no text copy of it."""
     body = _success(result)
-    assert set(body) == {"content"}
-    (block,) = body["content"]
-    assert block["type"] == "text" and block["text"] == _pretty(block["text"])
-    return json.loads(block["text"])
+    assert set(body) == {"content", "structuredContent"} and body["content"] == [], body
+    return body["structuredContent"]
 
 
-def test_successful_results_keep_their_shape(service, tmp_path):
-    """dict, list[dict] and empty-list results as the service serves them — and relayed
+def test_successful_results_carry_only_structured_content(service, tmp_path):
+    """Object, list and empty-list results as the service serves them — and relayed
     unchanged by the proxy."""
     host, port = service
 
@@ -149,20 +143,51 @@ def test_successful_results_keep_their_shape(service, tmp_path):
     relayed = _run(through_proxy, host, port, tmp_path, reads)
     record, hits, empty = served
 
-    assert _assert_dict_result(created)["slug"] == "api"
-    assert _assert_dict_result(record)["topic_key"] == "auth/jwt"
+    assert _structured(created)["slug"] == "api"
+    assert _structured(record)["topic_key"] == "auth/jwt"
 
-    # A list[dict] result: one text block per item, plus the items as {"result": [...]}.
-    hits = _success(hits)
-    items = hits["structuredContent"]["result"]
+    # A list result: the items as {"result": [...]}.
+    items = _structured(hits)["result"]
     assert [item["content"] for item in items] == ["jwt refresh rotation"]
-    assert all(b["type"] == "text" and b["text"] == _pretty(b["text"]) for b in hits["content"])
-    assert [json.loads(b["text"]) for b in hits["content"]] == items
 
-    # An empty list: no blocks and an empty structured result.
-    assert _success(empty) == {"content": [], "structuredContent": {"result": []}}
+    assert _structured(empty) == {"result": []}
 
     assert relayed == served  # the proxy relays successful results unchanged
+
+
+def test_every_answer_matches_the_schema_its_tool_publishes(service, tmp_path):
+    """MCP clients built on the TypeScript SDK (Kimi Code, OpenCode) check each structured
+    answer against the outputSchema the tool listed, and fail the call on a mismatch. Every
+    tool but recall (it needs a model) is called through the proxy and checked the same way."""
+    from jsonschema import validate
+
+    host, port = service
+
+    async def every_tool(session):
+        schemas = {tool.name: wire(tool)["outputSchema"] for tool in (await session.list_tools()).tools}
+        calls = [
+            ("create_project", {"name": "api"}),
+            ("update_project", {"name": "api", "description": "the API"}),
+            ("remember", {"content": "jwt v1", "project": "api", "topic_key": "auth/jwt"}),
+            ("remember", {"content": "jwt v2", "project": "api", "topic_key": "auth/jwt"}),
+            ("search", {"query": "jwt", "project": "api"}),
+            ("browse", {"project": "api"}),
+            ("get", {"topic_key": "auth/jwt", "project": "api"}),
+            ("list_projects", {}),
+            ("create_project", {"name": "doomed"}),
+            ("delete_project", {"name": "doomed"}),
+        ]
+        answers = [(name, wire(await session.call_tool(name, args))) for name, args in calls]
+        head = _structured(answers[3][1])["id"]
+        answers.append(("delete", wire(await session.call_tool("delete", {"ids": [head]}))))
+        return schemas, answers
+
+    schemas, answers = _run(through_proxy, host, port, tmp_path, every_tool)
+
+    assert set(schemas) - {name for name, _ in answers} == {"recall"}
+    assert all(schemas.values())  # every tool publishes an outputSchema
+    for name, result in answers:
+        validate(_structured(result), schemas[name])
 
 
 async def _server_identity(session) -> dict:
@@ -312,5 +337,5 @@ def test_proxy_relays_a_result_larger_than_one_mebibyte(service, tmp_path):
         lambda s: s.call_tool("browse", {"project": "api", "limit": 100}),
     ))
 
-    assert len(_success(result)["content"]) == 100
+    assert len(_structured(result)["result"]) == 100
     assert len(json.dumps(result)) > 1_048_576  # the relayed result really exceeds 1 MiB

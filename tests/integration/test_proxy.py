@@ -16,9 +16,7 @@ pytest.importorskip("sqlite_vec")
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 
-
-def _text(result) -> str:
-    return " ".join(getattr(block, "text", "") or "" for block in result.content)
+from tests.support.mcp_wire import answer_text as _text  # noqa: E402 — after the skips
 
 
 def _proxy_params(host: str, port: int, data_dir):
