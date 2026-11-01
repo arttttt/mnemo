@@ -84,10 +84,18 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
     assert relayed == served  # the proxy lists exactly what the service serves
 
 
+def _success(result: dict) -> dict:
+    """A successful result without its isError flag: a server may send it as false or leave
+    it out, and absent means false."""
+    assert result.get("isError", False) is False, result.get("content", [])[:1]
+    return {key: value for key, value in result.items() if key != "isError"}
+
+
 def _assert_dict_result(result: dict) -> dict:
     """A dict result: one text block of 2-space-indented JSON, no structured copy."""
-    assert set(result) == {"content", "isError"} and result["isError"] is False
-    (block,) = result["content"]
+    body = _success(result)
+    assert set(body) == {"content"}
+    (block,) = body["content"]
     assert block["type"] == "text" and block["text"] == _pretty(block["text"])
     return json.loads(block["text"])
 
@@ -121,14 +129,14 @@ def test_successful_results_keep_their_shape(service, tmp_path):
     assert _assert_dict_result(record)["topic_key"] == "auth/jwt"
 
     # A list[dict] result: one text block per item, plus the items as {"result": [...]}.
-    assert hits["isError"] is False
+    hits = _success(hits)
     items = hits["structuredContent"]["result"]
     assert [item["content"] for item in items] == ["jwt refresh rotation"]
     assert all(b["type"] == "text" and b["text"] == _pretty(b["text"]) for b in hits["content"])
     assert [json.loads(b["text"]) for b in hits["content"]] == items
 
     # An empty list: no blocks and an empty structured result.
-    assert empty == {"content": [], "structuredContent": {"result": []}, "isError": False}
+    assert _success(empty) == {"content": [], "structuredContent": {"result": []}}
 
     assert relayed == served  # the proxy relays successful results unchanged
 
@@ -232,6 +240,5 @@ def test_proxy_relays_a_result_larger_than_one_mebibyte(service, tmp_path):
         lambda s: s.call_tool("browse", {"project": "api", "limit": 100}),
     ))
 
-    assert result["isError"] is False, result["content"][:1]
-    assert len(result["content"]) == 100
+    assert len(_success(result)["content"]) == 100
     assert len(json.dumps(result)) > 1_048_576  # the relayed result really exceeds 1 MiB
