@@ -48,9 +48,14 @@ def _url(host: str, port: int) -> str:
 
 
 def _run(fn, *args):
+    """Run one client flow; a transport that hangs fails the test instead of the suite."""
     import anyio
 
-    return anyio.run(fn, *args)
+    async def bounded():
+        with anyio.fail_after(60):
+            return await fn(*args)
+
+    return anyio.run(bounded)
 
 
 def _definitions(listed) -> dict:
@@ -72,8 +77,10 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
     relayed = _definitions(_run(through_proxy, host, port, tmp_path, lambda s: s.list_tools()))
 
     if os.environ.get("MNEMO_UPDATE_GOLDEN") == "1":
-        _GOLDEN_TOOLS.write_text(json.dumps(served, indent=2, ensure_ascii=False) + "\n")
-    assert served == json.loads(_GOLDEN_TOOLS.read_text())
+        _GOLDEN_TOOLS.write_text(
+            json.dumps(served, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+    assert served == json.loads(_GOLDEN_TOOLS.read_text(encoding="utf-8"))
     assert relayed == served  # the proxy lists exactly what the service serves
 
 
@@ -211,14 +218,14 @@ def test_proxy_relays_a_result_larger_than_one_mebibyte(service, tmp_path):
     relay it whole rather than fail on the size."""
     from mnemo.adapters.embedding.hash_embedder import HashEmbedder
     from mnemo.domain.memory import Memory
-    from tests.support.sqlite_store import open_store
+    from tests.support.sqlite_store import opened_store
 
     host, port = service
     embedder = HashEmbedder()
-    repo, _ = open_store(tmp_path, embedder.dim, projects=("api",))  # the service's own store
-    for i in range(100):
-        content = f"note {i:03d} " + "x" * 12_000
-        repo.add(Memory.create(content, project="api"), embedder.encode(content))
+    with opened_store(tmp_path, embedder.dim, projects=("api",)) as (repo, _):  # the service's store
+        for i in range(100):
+            content = f"note {i:03d} " + "x" * 12_000
+            repo.add(Memory.create(content, project="api"), embedder.encode(content))
 
     result = wire(_run(
         through_proxy, host, port, tmp_path,
