@@ -140,7 +140,10 @@ before a call (Codex skips the prompt for read‑only tools and for non‑destru
 | writes, non‑destructive | `remember`, `create_project`, `update_project` |
 | destructive | `delete`, `delete_project` |
 
-All tools are closed‑world (nothing reaches outside the local store). `search` also carries
+All tools are closed‑world: they work on the local store and send no memory content anywhere (the only
+network access is the first download of the local models). `update_project` overwrites the previous description
+without keeping it, but is declared non‑destructive: it is one line that is easy to set again, and no memory is
+touched. `search` also carries
 `_meta["anthropic/alwaysLoad"]`, so Claude Code loads it at session start instead of deferring it.
 
 ## Operational — CLI (not agent‑facing MCP tools)
