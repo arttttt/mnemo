@@ -8,6 +8,7 @@ domain enums by a test.
 from dataclasses import asdict
 from typing import Annotated, Literal, Optional
 
+from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
@@ -28,11 +29,19 @@ SearchScope = Literal["project", "global", "all"]
 def build_mcp(container: Optional[Container] = None):
     from pydantic import Field  # lazy to keep imports light
 
+    from mnemo.adapters.mcp.tool_annotations import (  # lazy: loads the MCP SDK
+        DELETES,
+        LOAD_UP_FRONT,
+        READ_ONLY,
+        WRITES,
+    )
     from mnemo.adapters.mcp.tool_boundary import MnemoMCPServer  # lazy: loads the MCP SDK
 
     container = container or build_container()
     # The transport (and its host/port) is chosen when the server is run, not here.
-    mcp = MnemoMCPServer("mnemo", version=installed_version())
+    mcp = MnemoMCPServer(
+        "mnemo", version=installed_version(), instructions=SERVER_INSTRUCTIONS
+    )
 
     # NOTE: optional params are typed `str = None` (etc.), NOT `Optional[str]`, on purpose.
     # Optional[...] renders in the tool schema as anyOf[T, null], which some MCP clients
@@ -40,7 +49,7 @@ def build_mcp(container: Optional[Container] = None):
     # tests/integration/test_mcp_server.py::test_optional_params_expose_concrete_types —
     # do not "fix" these to Optional.
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITES)
     def remember(
         content: Annotated[
             str,
@@ -88,7 +97,7 @@ def build_mcp(container: Optional[Container] = None):
         )
         return asdict(result)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY, meta=LOAD_UP_FRONT)
     def search(
         query: Annotated[
             str,
@@ -143,7 +152,7 @@ def build_mcp(container: Optional[Container] = None):
         )
         return [asdict(result) for result in results]
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def browse(
         scope: Annotated[
             SearchScope,
@@ -193,7 +202,7 @@ def build_mcp(container: Optional[Container] = None):
         )
         return [asdict(result) for result in results]
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def get(
         id: Annotated[
             str,
@@ -242,7 +251,7 @@ def build_mcp(container: Optional[Container] = None):
         )
         return asdict(result)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def recall(
         query: Annotated[
             str,
@@ -286,7 +295,7 @@ def build_mcp(container: Optional[Container] = None):
             ],
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations=DELETES)
     def delete(
         ids: Annotated[list[str], Field(description="Ids of the memories to delete.")],
         cascade: Annotated[
@@ -307,7 +316,7 @@ def build_mcp(container: Optional[Container] = None):
     # destructive to put on the agent surface. It stays a CLI-only operation (guarded by an
     # interactive confirmation there). Agents delete narrowly via `delete` / `delete_project`.
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITES)
     def create_project(
         name: Annotated[
             str,
@@ -324,7 +333,7 @@ def build_mcp(container: Optional[Container] = None):
         """
         return asdict(container.create_project.execute(name, description))
 
-    @mcp.tool()
+    @mcp.tool(annotations=DELETES)
     def delete_project(
         name: Annotated[
             str,
@@ -337,7 +346,7 @@ def build_mcp(container: Optional[Container] = None):
         """
         return asdict(container.delete_project.execute(name))
 
-    @mcp.tool()
+    @mcp.tool(annotations=WRITES)
     def update_project(
         name: Annotated[str, Field(description="Project slug to update.")],
         description: Annotated[
@@ -350,7 +359,7 @@ def build_mcp(container: Optional[Container] = None):
         """
         return asdict(container.update_project.execute(name, description))
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def list_projects() -> list[dict]:
         """List the registered projects (newest first). Returns a list of
         {slug, description, created_at}; the global scope is not a project and is excluded.

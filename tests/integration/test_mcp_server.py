@@ -371,3 +371,103 @@ def test_mcp_remember_rejects_project_with_global_scope(tmp_path):
     with pytest.raises(ToolError) as exc:
         _call(mcp, "remember", {"content": "a rule", "scope": "global", "project": "api"})
     assert "scope='global'" in str(exc.value)
+
+
+# What each tool does to the store: the side-effect class it declares to clients. Clients
+# act on it — Codex runs a read-only tool without asking and asks before a destructive one;
+# Claude Code runs read-only calls in parallel. Listed by hand, so a new tool cannot reach
+# agents without someone deciding its class here.
+_SIDE_EFFECTS = {
+    "search": "reads",
+    "browse": "reads",
+    "get": "reads",
+    "recall": "reads",
+    "list_projects": "reads",
+    "remember": "writes",
+    "create_project": "writes",
+    "update_project": "writes",
+    "delete": "deletes",
+    "delete_project": "deletes",
+}
+_DECLARED_HINTS = {
+    "reads": {"readOnlyHint": True, "openWorldHint": False},
+    "writes": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    "deletes": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+}
+# One call per reading tool, against the store _remembered_twice builds.
+_READS = {
+    "search": {"query": "jwt rotation", "project": "api"},
+    "browse": {"project": "api"},
+    "get": {"topic_key": "auth/jwt", "project": "api"},
+    "recall": {"query": "auth", "project": "api", "force": True},
+    "list_projects": {},
+}
+
+
+def test_every_tool_declares_its_side_effect_class(tmp_path):
+    declared = {
+        name: tool.annotations.model_dump(by_alias=True, exclude_none=True)
+        if tool.annotations else None
+        for name, tool in _tools(tmp_path).items()
+    }
+    assert declared == {name: _DECLARED_HINTS[kind] for name, kind in _SIDE_EFFECTS.items()}
+
+
+def _store_rows(db_path) -> dict:
+    """Every row of every table — FTS and vector tables included — to compare a store
+    before and after a call."""
+    import sqlite3
+
+    import sqlite_vec
+
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.enable_load_extension(True)
+        sqlite_vec.load(connection)
+        tables = [name for (name,) in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )]
+        return {table: sorted(map(repr, connection.execute(f'SELECT * FROM "{table}"')))
+                for table in tables}
+    finally:
+        connection.close()
+
+
+class _QuietGenerator:
+    """Stands in for the recall model, which is too heavy for a test; recall still reads
+    the store end to end."""
+
+    def generate(self, prompt, *, max_tokens):
+        return "an answer"
+
+
+def _remembered_twice(tmp_path):
+    """A server over a store holding one project and a two-version topic_key chain."""
+    container = _container(tmp_path)
+    container.recall = RecallProjectUseCaseImpl(
+        container.repository, container.embedder, Fuser(),
+        reranker=None, generator=_QuietGenerator(),
+        rerank_top_k=20, generator_max_tokens=128,
+    )
+    mcp = build_mcp(container)
+    _call(mcp, "create_project", {"name": "api"})
+    for content in ("jwt refresh rotation", "jwt refresh rotation, every 15 minutes"):
+        _call(mcp, "remember", {"content": content, "type": "decision",
+                                "project": "api", "topic_key": "auth/jwt"})
+    return mcp
+
+
+def test_the_read_calls_cover_every_reading_tool():
+    assert set(_READS) == {name for name, kind in _SIDE_EFFECTS.items() if kind == "reads"}
+
+
+@pytest.mark.parametrize("name", sorted(_READS))
+def test_a_reading_tool_leaves_the_store_unchanged(tmp_path, name):
+    """A tool declared read-only is run without the user's approval and alongside other
+    calls, so it must not change the store at all."""
+    mcp = _remembered_twice(tmp_path)
+    before = _store_rows(tmp_path / "memory.db")
+
+    assert _call(mcp, name, _READS[name])  # the call did read something
+
+    assert _store_rows(tmp_path / "memory.db") == before

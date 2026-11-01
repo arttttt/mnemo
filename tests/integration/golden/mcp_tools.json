@@ -69,6 +69,11 @@
       ],
       "type": "object",
       "title": "rememberArguments"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   "search": {
@@ -167,6 +172,13 @@
       ],
       "type": "object",
       "title": "searchOutput"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
     }
   },
   "browse": {
@@ -257,6 +269,10 @@
       ],
       "type": "object",
       "title": "browseOutput"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
     }
   },
   "get": {
@@ -309,6 +325,10 @@
       },
       "type": "object",
       "title": "getArguments"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
     }
   },
   "recall": {
@@ -339,6 +359,10 @@
       ],
       "type": "object",
       "title": "recallArguments"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
     }
   },
   "delete": {
@@ -366,6 +390,11 @@
       ],
       "type": "object",
       "title": "deleteArguments"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": false
     }
   },
   "create_project": {
@@ -390,6 +419,11 @@
       ],
       "type": "object",
       "title": "create_projectArguments"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   "delete_project": {
@@ -408,6 +442,11 @@
       ],
       "type": "object",
       "title": "delete_projectArguments"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": false
     }
   },
   "update_project": {
@@ -432,6 +471,11 @@
       ],
       "type": "object",
       "title": "update_projectArguments"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   "list_projects": {
@@ -458,6 +502,10 @@
       ],
       "type": "object",
       "title": "list_projectsOutput"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
     }
   }
 }

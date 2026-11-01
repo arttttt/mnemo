@@ -8,6 +8,7 @@ that one process regardless of how many agents are connected.
 from __future__ import annotations
 
 from mnemo.adapters.mcp.connector_presence import ConnectorPresence
+from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
 from mnemo.adapters.mcp.launcher import ensure_service_running
 from mnemo.adapters.mcp.run_paths import connectors_dir
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
@@ -68,8 +69,13 @@ async def _serve(url: str, session: InProcessSessionProvider, config: Config) ->
                 content=[types.TextContent(type="text", text=str(exc))], is_error=True
             )
 
+    # The proxy answers initialize itself, so the instructions the agent sees are these.
     server = Server(
-        "mnemo", version=installed_version(), on_list_tools=list_tools, on_call_tool=call_tool
+        "mnemo",
+        version=installed_version(),
+        instructions=SERVER_INSTRUCTIONS,
+        on_list_tools=list_tools,
+        on_call_tool=call_tool,
     )
 
     async with stdio_server() as (stdio_read, stdio_write):

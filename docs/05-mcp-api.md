@@ -122,6 +122,30 @@ delete_project("x")         # remove a project and ALL its memories (one atomic 
 ```
 A whole project is the unit of bulk deletion (`delete_project`); there is no per‑project `clear`. Superseding (evolution) is separate and keeps history; deletion physically removes records. `delete(ids, cascade=True)` expands each id to itself plus every older member it transitively supersedes (down to the chain root) and removes them in one transaction — the way to drop a whole supersede lineage in one call — superseded versions are hidden from `search`/`browse` (surface them with `get` — by `id`, or a `topic_key`'s chain), so cascade is the convenient way to remove the lineage by its head.
 
+## Server instructions and tool hints
+
+Clients that load tools on demand (Claude Code, Codex) show the model little more than tool names and the
+**server instructions** up front, and OpenCode puts the instructions into its system prompt. So mnemo sends
+instructions that say *when* to `search` and when to `remember`; how each tool works stays in its own description
+(`src/mnemo/adapters/mcp/instructions.py`). The per‑agent proxy answers `initialize` itself, so the proxy sends
+them; the service sends the same text to clients that connect to it directly. They are static text about mnemo —
+no memory is injected.
+
+Every tool declares its side effects as MCP annotations, which clients use to decide whether to ask the user
+before a call (Codex skips the prompt for read‑only tools and for non‑destructive, closed‑world writes):
+
+| Annotation | Tools |
+|---|---|
+| read‑only | `search`, `browse`, `get`, `recall`, `list_projects` |
+| writes, non‑destructive | `remember`, `create_project`, `update_project` |
+| destructive | `delete`, `delete_project` |
+
+All tools are closed‑world: they work on the local store and send no memory content anywhere (the only
+network access is the first download of the local models). `update_project` overwrites the previous description
+without keeping it, but is declared non‑destructive: it is one line that is easy to set again, and no memory is
+touched. `search` also carries
+`_meta["anthropic/alwaysLoad"]`, so Claude Code loads it at session start instead of deferring it.
+
 ## Operational — CLI (not agent‑facing MCP tools)
 Kept off the agent surface:
 ```

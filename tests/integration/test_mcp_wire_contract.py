@@ -20,7 +20,7 @@ pytest.importorskip("sqlite_vec")
 from tests.support.mcp_wire import over_http, proxy_params, through_proxy, wire
 
 _GOLDEN_TOOLS = Path(__file__).parent / "golden" / "mcp_tools.json"
-_DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema")
+_DEFINITION_KEYS = ("name", "description", "inputSchema", "outputSchema", "annotations", "_meta")
 
 # Failing calls whose message mnemo writes. The agent reads it after the prefix
 # "Error executing tool <name>: "; the envelope and the prefix are pinned exactly, the
@@ -77,8 +77,9 @@ def _pretty(text: str) -> str:
 
 
 def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
-    """Names, descriptions and input/output schemas of every tool, as listed over HTTP and
-    through the proxy. Regenerate deliberately with MNEMO_UPDATE_GOLDEN=1."""
+    """Names, descriptions, input/output schemas, annotations and _meta of every tool, as
+    listed over HTTP and through the proxy. Regenerate deliberately with
+    MNEMO_UPDATE_GOLDEN=1."""
     host, port = service
     served = _definitions(_run(over_http, _url(host, port), lambda s: s.list_tools()))
     relayed = _definitions(_run(through_proxy, host, port, tmp_path, lambda s: s.list_tools()))
@@ -89,6 +90,22 @@ def test_tool_definitions_match_the_pinned_contract(service, tmp_path):
         )
     assert served == json.loads(_GOLDEN_TOOLS.read_text(encoding="utf-8"))
     assert relayed == served  # the proxy lists exactly what the service serves
+
+
+def test_clients_on_the_2026_protocol_list_the_same_tools(service, tmp_path):
+    """A client that negotiates the 2026-07-28 protocol through the proxy gets the same
+    definitions — annotations and _meta included — as the pinned contract."""
+    from mcp import Client
+
+    host, port = service
+
+    async def listed_by(target):
+        async with Client(target) as client:
+            return client.protocol_version, await client.list_tools()
+
+    protocol, listed = _run(listed_by, proxy_params(host, port, tmp_path))
+    assert protocol == "2026-07-28"
+    assert _definitions(listed) == json.loads(_GOLDEN_TOOLS.read_text(encoding="utf-8"))
 
 
 def _success(result: dict) -> dict:
@@ -160,6 +177,30 @@ def test_the_handshake_names_mnemo_and_its_version(service, tmp_path):
     expected = {"name": "mnemo", "version": installed_version()}
     assert _run(over_http, _url(host, port), _server_identity) == expected
     assert _run(through_proxy, host, port, tmp_path, _server_identity) == expected
+
+
+async def _instructions(session) -> str | None:
+    return session.instructions
+
+
+def test_the_agent_is_told_when_to_use_mnemo(service, tmp_path):
+    """Clients that load tools on demand show the model the server instructions up front.
+    The proxy answers the handshake itself, so it must send them as the service does — on
+    the earlier handshake and on the 2026-07-28 protocol alike."""
+    from mcp import Client
+
+    from mnemo.adapters.mcp.instructions import SERVER_INSTRUCTIONS
+
+    host, port = service
+    assert _run(over_http, _url(host, port), _instructions) == SERVER_INSTRUCTIONS
+    assert _run(through_proxy, host, port, tmp_path, _instructions) == SERVER_INSTRUCTIONS
+
+    async def instructions_seen_by(target):
+        async with Client(target) as client:
+            return client.protocol_version, client.instructions
+
+    for target in (_url(host, port), proxy_params(host, port, tmp_path)):
+        assert _run(instructions_seen_by, target) == ("2026-07-28", SERVER_INSTRUCTIONS), target
 
 
 def test_tool_failures_reach_the_agent_as_readable_errors(service, tmp_path):
