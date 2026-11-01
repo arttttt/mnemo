@@ -29,6 +29,19 @@ def test_an_existing_file_keeps_its_mode(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o640
 
 
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes anyway")
+def test_a_read_only_file_is_left_alone(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_bytes(b"old")
+    path.chmod(0o444)
+
+    with pytest.raises(PermissionError):
+        replace_file(path, b"new")
+
+    assert path.read_bytes() == b"old"
+    assert os.listdir(tmp_path) == ["settings.json"]
+
+
 def test_a_symlinked_config_stays_a_symlink(tmp_path):
     dotfiles = tmp_path / "dotfiles" / "settings.json"
     dotfiles.parent.mkdir()
