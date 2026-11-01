@@ -7,6 +7,7 @@ from mnemo.adapters.embedding.sync_embedding_scheduler import SyncEmbeddingSched
 from mnemo.adapters.session.in_process_session_provider import InProcessSessionProvider
 from mnemo.application.fusion.fuser import Fuser
 from mnemo.application.project_gate import ProjectGate, UnknownProject
+from mnemo.application.results.remember_result import ReplacedMemory
 from mnemo.application.use_cases.browse_memory import BrowseMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_memory import DeleteMemoryUseCaseImpl
 from mnemo.application.use_cases.delete_project import DeleteProjectUseCaseImpl
@@ -194,7 +195,7 @@ def test_topic_key_upsert_supersedes_prior(wiring):
     second = remember.execute(
         content="Auth model v2", type="decision", project="api", topic_key="auth/model"
     )
-    assert second.status == "superseded"  # which record it replaced lives in the links edge
+    assert second.status == "superseded"
 
     status_by_id = {m.id: m.status for m in repo.list_all()}
     assert status_by_id[first.id] == "superseded"
@@ -215,6 +216,26 @@ def test_topic_key_upsert_records_the_supersedes_pointer(wiring):
     # A first-time write (no prior topic_key) records no supersede pointer.
     solo = remember.execute(content="standalone note", project="api")
     assert next(m for m in repo.list_all() if m.id == solo.id).supersedes is None
+
+
+def test_a_supersede_says_which_record_it_replaced_and_how_long_it_was(wiring):
+    # A writer that sends only a delta under a reused topic_key drops the rest of the
+    # record from search; the length of what it replaced is how it can tell.
+    _, remember, *_ = wiring
+    full = "Auth model: JWT access tokens, refresh rotation, httpOnly cookies, 15 min TTL"
+    first = remember.execute(content=full, project="api", topic_key="auth/model")
+    delta = remember.execute(content="TTL is now 30 min", project="api", topic_key="auth/model")
+
+    assert delta.replaced == ReplacedMemory(id=first.id, chars=len(full))
+    assert first.replaced is None  # nothing was replaced by a first write
+
+
+def test_a_duplicate_replaces_nothing(wiring):
+    _, remember, *_ = wiring
+    remember.execute(content="Auth model v1", project="api", topic_key="auth/model")
+    again = remember.execute(content="Auth model v1", project="api", topic_key="auth/model")
+
+    assert again.status == "duplicate" and again.replaced is None
 
 
 def test_near_similar_memories_coexist(wiring):

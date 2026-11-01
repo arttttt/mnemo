@@ -11,7 +11,7 @@ from mnemo.application.ports.memory_repository import MemoryRepository
 from mnemo.application.ports.session_provider import SessionProvider
 from mnemo.application.ports.token_window import TokenWindow
 from mnemo.application.project_gate import ProjectGate
-from mnemo.application.results.remember_result import RememberResult
+from mnemo.application.results.remember_result import RememberResult, ReplacedMemory
 from mnemo.application.scope_contract import validate_scope_project
 from mnemo.application.token_budget import TokenBudget
 from mnemo.domain.constants import DEFAULT_TYPE
@@ -116,6 +116,7 @@ class RememberMemoryUseCaseImpl:
         # searchable at once. Near-similar memories are NOT suppressed here — they
         # coexist; the background worker may merge/flag genuine duplicates later
         # (docs/04-data-model.md).
+        replaced = None
         if prior is not None:
             # Establish the relationship HERE (application layer owns it): the successor
             # supersedes the prior (recorded in the `supersedes` column). The repository
@@ -124,6 +125,7 @@ class RememberMemoryUseCaseImpl:
             memory.supersedes = prior.id
             self._repository.supersede(memory)
             status = "superseded"
+            replaced = ReplacedMemory(id=prior.id, chars=len(prior.content))
         else:
             self._repository.add(memory)
             status = "created"
@@ -131,4 +133,4 @@ class RememberMemoryUseCaseImpl:
         # Hand the embedding off only AFTER the write has committed, so the background
         # worker (reading via its own connection) is guaranteed to see the pending row.
         self._scheduler.schedule(memory.id)
-        return RememberResult(id=memory.id, status=status)
+        return RememberResult(id=memory.id, status=status, replaced=replaced)

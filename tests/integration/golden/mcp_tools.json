@@ -1,7 +1,7 @@
 {
   "remember": {
     "name": "remember",
-    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` supersedes the prior memory of\nthat key. Returns {id, status}, where status is \"created\", \"duplicate\"\n(identical content already stored), or \"superseded\" (a topic_key upsert).",
+    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` replaces the prior memory of that\nkey: it leaves search and browse (get still reaches it). Returns {id, status},\nwhere status is \"created\", \"duplicate\" (identical content already stored), or\n\"superseded\" (a topic_key upsert); a supersede also returns `replaced` {id,\nchars}, the record it replaced. If `replaced.chars` is much larger than what you\nwrote, you may have dropped content: read it with get(id=...) and write the\nmerged text.",
     "inputSchema": {
       "properties": {
         "content": {
@@ -79,6 +79,9 @@
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "replaced": {
+          "$ref": "#/$defs/ReplacedMemory"
         }
       },
       "required": [
@@ -86,7 +89,29 @@
         "status"
       ],
       "type": "object",
-      "title": "RememberResult"
+      "$defs": {
+        "ReplacedMemory": {
+          "description": "The record a supersede replaced: its id, and its length in characters, so the\nwriter can tell whether it just dropped more than it wrote.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "chars": {
+              "title": "Chars",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "chars"
+          ],
+          "title": "ReplacedMemory",
+          "type": "object"
+        }
+      },
+      "description": "What remember returns. `replaced` is there only for a supersede: a key that is\nabsent rather than null costs the caller nothing on every other write.",
+      "title": "RememberAnswer"
     },
     "annotations": {
       "readOnlyHint": false,

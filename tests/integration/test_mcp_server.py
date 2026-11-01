@@ -91,6 +91,22 @@ def test_mcp_remember_search_and_delete_roundtrip(tmp_path):
     assert _call(mcp, "search", {"query": "jwt rotation", "project": "api"}) == []
 
 
+def test_mcp_remember_names_the_record_a_supersede_replaced(tmp_path):
+    """Only a supersede carries `replaced`; other answers have no such key at all."""
+    mcp = build_mcp(_container(tmp_path))
+    _call(mcp, "create_project", {"name": "api"})
+    full = "auth: jwt access tokens, refresh rotation, httpOnly cookies"
+
+    first = _call(mcp, "remember", {"content": full, "project": "api", "topic_key": "auth/jwt"})
+    duplicate = _call(mcp, "remember", {"content": full, "project": "api", "topic_key": "auth/jwt"})
+    delta = _call(mcp, "remember", {"content": "ttl 30 min", "project": "api", "topic_key": "auth/jwt"})
+
+    assert set(first) == {"id", "status"} and first["status"] == "created"
+    assert set(duplicate) == {"id", "status"} and duplicate["status"] == "duplicate"
+    assert delta["status"] == "superseded"
+    assert delta["replaced"] == {"id": first["id"], "chars": len(full)}
+
+
 def test_mcp_search_hit_exposes_topic_key(tmp_path):
     """A search hit carries topic_key so the agent can pivot to get / remember by key."""
     mcp = build_mcp(_container(tmp_path))
