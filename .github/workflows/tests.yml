@@ -1,0 +1,54 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or pull request supersedes a run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Python mnemo supports (requires-python) and the one it is developed on,
+          # plus macOS, where it is mostly run.
+          - os: ubuntu-latest
+            python: "3.10"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.13"
+    env:
+      # llama-cpp-python is published only as a source distribution, so the runner compiles
+      # it. Build for a generic CPU: a build tuned to one runner's instruction set could crash
+      # on another runner that restores it from the cache.
+      CMAKE_ARGS: -DGGML_NATIVE=OFF
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --locked fails if uv.lock no longer matches pyproject.toml.
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      # The default pytest options deselect the heavy tests that download model weights.
+      - name: Run tests
+        run: uv run pytest
