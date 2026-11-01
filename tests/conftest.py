@@ -26,7 +26,7 @@ def _client_configs_stay_under_the_test_home(monkeypatch):
     """`mnemo setup` writes client configs under $HOME, which the setup tests point at a temp
     directory, unless a client's own variable moves its config elsewhere. Drop those
     variables, so a developer who has one set never sees a test write their real config."""
-    for var in ("KIMI_CODE_HOME",):
+    for var in ("CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME"):
         monkeypatch.delenv(var, raising=False)
     yield
 
