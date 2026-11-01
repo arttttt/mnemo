@@ -246,6 +246,20 @@ def test_opencode_2_rules_leave_a_rule_the_user_set_for_the_same_tools(tmp_path)
     assert '"effect": "deny"' in refused.value.reason
 
 
+def test_opencode_2_rules_leave_a_version_1_rule_the_user_set_in_the_same_file(tmp_path):
+    # Someone moving to OpenCode 2 may keep the old `permission` beside the new list;
+    # OpenCode 2 places the list after it, so a list rule would override their deny.
+    config = tmp_path / "opencode.json"
+    content = json.dumps({"permission": {"mnemo_*": "deny"}, "permissions": []})
+    config.write_text(content)
+
+    with pytest.raises(RulesNotWritten) as refused:
+        OpencodePermissionRules(config, "mnemo").apply()
+
+    assert config.read_text() == content
+    assert "mnemo_*" in refused.value.reason
+
+
 def test_opencode_2_rules_already_in_place_leave_the_file_untouched(tmp_path):
     config = tmp_path / "opencode.json"
     config.write_text(json.dumps({"permissions": _OPENCODE_2_RULES}))

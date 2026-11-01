@@ -62,23 +62,26 @@ class OpencodePermissionRules:
 
     def apply(self) -> str:
         data = load_json_object(self._path, self._snippet)
+        permission = data.get("permission", {})
+        # Checked before choosing where the rules go: in a file that also has OpenCode 2's
+        # `permissions` list, the rules added to that list would override these.
+        if isinstance(permission, dict):
+            own = [
+                f"{key}: {json.dumps(permission[key])}"
+                for key, value in self._keys.items()
+                if key in permission and permission[key] != value
+            ]
+            if own:
+                raise RulesNotWritten(_users_own(own), self._snippet)
         if "permissions" in data:
             return self._apply_to_list(data)
 
-        permission = data.get("permission", {})
         if permission == "allow":
             return ALREADY_ALLOWED
         if permission in ("ask", "deny"):
             permission = {"*": permission}
         if not isinstance(permission, dict):
             raise RulesNotWritten(f"`permission` is {json.dumps(permission)}", self._snippet)
-        own = [
-            f"{key}: {json.dumps(permission[key])}"
-            for key, value in self._keys.items()
-            if key in permission and permission[key] != value
-        ]
-        if own:
-            raise RulesNotWritten(_users_own(own), self._snippet)
 
         keys = list(permission.items())
         if keys[-len(self._keys):] == list(self._keys.items()):
