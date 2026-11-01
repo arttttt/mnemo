@@ -1,9 +1,11 @@
 """The set of MCP clients mnemo can wire to, each behind a ClientInstaller.
 
 Two ship an official `mcp add` command (we shell out to it); four are wired by
-writing their config file directly. The connector argv, `home` and the environment
-are injectable so the whole set is testable against a temp home without touching
-real configs.
+writing their config file directly. Claude Code, Kimi Code and OpenCode also get
+mnemo's permission rules (permission_policy), since they ask before every MCP call
+their config does not allow. The connector argv, `home` and the environment are
+injectable so the whole set is testable against a temp home without touching real
+configs.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from mnemo.adapters.setup.cli_client_installer import CliClientInstaller
 from mnemo.adapters.setup.client_installer import ClientInstaller
 from mnemo.adapters.setup.command_runner import CommandRunner, SubprocessCommandRunner
 from mnemo.adapters.setup.connector_command import connector_command
+from mnemo.adapters.setup.kimi_permission_rules import KimiPermissionRules
 from mnemo.adapters.setup.mcp_servers_json_installer import McpServersJsonInstaller
 from mnemo.adapters.setup.opencode_installer import OpencodeInstaller
 from mnemo.adapters.setup.opencode_permission_rules import OpencodePermissionRules
@@ -34,6 +37,7 @@ def build_installers(
     runner = runner or SubprocessCommandRunner()
     home = home or Path.home()
     env = os.environ if env is None else env
+    kimi_home = _kimi_home(home, env)
     opencode_json = home / ".config" / "opencode" / "opencode.json"
     return [
         WithPermissionRules(
@@ -49,8 +53,9 @@ def build_installers(
         CliClientInstaller("codex", "codex", ["mcp", "add"], SERVER_NAME, argv, runner),
         # Kimi Code has no `mcp add` command; it reads its servers from mcp.json in its
         # home directory.
-        McpServersJsonInstaller(
-            "kimi-code", _kimi_home(home, env) / "mcp.json", SERVER_NAME, argv
+        WithPermissionRules(
+            McpServersJsonInstaller("kimi-code", kimi_home / "mcp.json", SERVER_NAME, argv),
+            KimiPermissionRules(kimi_home / "config.toml", SERVER_NAME),
         ),
         McpServersJsonInstaller(
             "cursor", home / ".cursor" / "mcp.json", SERVER_NAME, argv

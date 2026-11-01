@@ -45,7 +45,9 @@ def test_kimi_code_is_wired_through_its_mcp_json_not_a_cli(tmp_path):
     assert kimi.detect()
     result = kimi.install()
 
-    assert result.status == "ok" and result.target == str(config)
+    # The status also covers the permission rules, which need tomllib (Python 3.11+);
+    # they have their own tests.
+    assert result.target.startswith(f"{config}; ")
     assert runner.calls == []
     servers = json.loads(config.read_text())["mcpServers"]
     assert servers == {
