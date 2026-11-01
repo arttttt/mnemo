@@ -122,7 +122,8 @@ All state lives in **one directory** — back up / move / wipe by copying or del
 
 `mnemo setup` wires a client to the connector for you — no hand-editing JSON. It resolves the right
 launch command (an absolute `mnemo-mcp`, or `uv run --directory <repo> mnemo-mcp` from a checkout) and
-either runs the client's own `mcp add` or writes its config file.
+either runs the client's own `mcp add` or writes its config file. For clients that do not read the
+tools' side-effect hints, it also adds permission rules (below).
 
 ```bash
 mnemo setup                 # detect installed clients, list them, pick which to wire
@@ -131,11 +132,37 @@ mnemo setup --all           # wire every detected client
 mnemo setup --dry-run       # show what it would do, write nothing
 ```
 
-Supported clients: **claude-code**, **codex**, **kimi-code** (via each one's official `mcp add`), and
-**cursor**, **windsurf**, **opencode** (by writing their MCP config). The agent then has the mnemo
+Supported clients: **claude-code**, **codex** (via each one's official `mcp add`), and **kimi-code**,
+**cursor**, **windsurf**, **opencode** (by writing their MCP config: `$KIMI_CODE_HOME/mcp.json` or
+`~/.kimi-code/mcp.json` for Kimi Code; for OpenCode, `~/.config/opencode/opencode.json` in the shape
+OpenCode 1 and 2 both read, or OpenCode 2's own shape when the file already uses it). The agent then has the mnemo
 memory tools — **`remember`**, **`search`**, **`browse`**, **`get`**, **`recall`**, **`delete`**, and the project
 tools (`create-project` / `update-project` / `list-projects` / `delete-project`). Wiping everything
 (`purge`) is intentionally **CLI‑only**.
+
+**Permission rules.** mnemo's tools run without an approval prompt, except the deletes (`delete`,
+`delete_project`), which still ask. Codex gets this from the tools' annotations. Claude Code, Kimi Code
+and OpenCode 2 ask before every MCP call their config does not allow, and OpenCode 1 runs every tool
+unasked in its main agents, deletes included; none of them reads the annotations, so `setup` adds
+these rules to their config, keeping everything else in the file:
+
+| Client | File | Rules |
+|---|---|---|
+| Claude Code | `~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR/settings.json` when set) | `permissions.allow`: `mcp__mnemo__*`; `permissions.ask`: `mcp__mnemo__delete*` |
+| Kimi Code | `config.toml` next to `mcp.json` | two `[[permission.rules]]`: ask `mcp__mnemo__delete*`, then allow `mcp__mnemo__*` |
+| OpenCode | `opencode.json` | `"permission"`: `"mnemo_*": "allow"`, `"mnemo_delete*": "ask"`, last; with OpenCode 2's `permissions` list, the same two rules at its end |
+
+OpenCode applies these rules to every agent, after the agent's own defaults, so agents that deny
+every tool by default, such as `explore`, can use mnemo's tools too.
+
+Re-running `setup` adds only the rules that are missing; a file that already has them keeps its
+content. Setup leaves a file alone when it cannot change it safely: not valid JSON or TOML, a Kimi
+`permission.rules` written inline, or an OpenCode rule the user set for mnemo's tools with another
+value (`"mnemo_*": "deny"`, say), which mnemo's rules would otherwise override. It then reports the
+client as failed and prints the rules to add by hand. On Python 3.10, which cannot read TOML, it
+prints Kimi Code's rules instead of writing them. `claude mcp add` refuses a server that is already
+there, so on a machine where mnemo is wired, `setup claude-code` reports that failure but still adds
+the rules.
 
 Prefer to wire it by hand? Point the client's MCP config (stdio transport) at `mnemo-mcp`, e.g. for
 Claude Code:

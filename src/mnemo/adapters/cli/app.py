@@ -502,7 +502,7 @@ def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
         for item in plan:
             typer.echo(f"[dry-run] {item['client']}: {item['action']}")
         return
-    results = [installer.install() for installer in installers]
+    results = [_install(installer) for installer in installers]
     if as_json:
         output.render([asdict(result) for result in results], "", as_json=True)
         return
@@ -512,6 +512,21 @@ def _apply(installers, dry_run: bool, *, as_json: bool = False) -> None:
         mark = "✓" if result.status == "ok" else "✗"
         suffix = f"  ({result.message})" if result.message else ""
         typer.echo(f"{mark} {result.client}: {result.target}{suffix}")
+
+
+def _install(installer):
+    """Wire one client; whatever goes wrong with its config fails that client only.
+
+    Config files are the user's and may hold anything: unreadable bytes, or valid JSON
+    of a shape the installer does not expect (`"mcpServers": []`). This is the CLI's
+    boundary, so any error is reported against the client and the others still run.
+    """
+    from mnemo.adapters.setup.install_result import InstallResult
+
+    try:
+        return installer.install()
+    except Exception as error:  # noqa: BLE001 - reported per client, see above
+        return InstallResult(installer.name, "failed", "", f"{type(error).__name__}: {error}")
 
 
 def main() -> None:

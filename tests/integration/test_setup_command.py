@@ -7,6 +7,7 @@ config dirs are created to simulate "installed") are wired, against a temp home.
 import json
 import shutil
 
+import pytest
 from typer.testing import CliRunner
 
 from mnemo.adapters.cli.app import app
@@ -86,6 +87,24 @@ def test_setup_all_json_wires_every_detected_client(tmp_path, monkeypatch):
     assert {entry["client"] for entry in payload} == {"cursor", "opencode"}
     assert all(entry["status"] == "ok" for entry in payload)
     assert (tmp_path / ".cursor" / "mcp.json").exists()
+    assert (tmp_path / ".config" / "opencode" / "opencode.json").exists()
+
+
+@pytest.mark.parametrize("content", ["{not json", '{"mcpServers": []}'])
+def test_a_client_whose_config_cannot_be_used_does_not_stop_the_others(
+    tmp_path, monkeypatch, content
+):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(content)
+    (tmp_path / ".config" / "opencode").mkdir(parents=True)
+
+    result = CliRunner().invoke(app, ["setup", "--all", "--json"], env={"HOME": str(tmp_path)})
+
+    assert result.exit_code == 0, result.output
+    status = {entry["client"]: entry["status"] for entry in json.loads(result.stdout)}
+    assert status == {"cursor": "failed", "opencode": "ok"}
+    assert (tmp_path / ".cursor" / "mcp.json").read_text() == content
     assert (tmp_path / ".config" / "opencode" / "opencode.json").exists()
 
 

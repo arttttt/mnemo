@@ -1,4 +1,4 @@
-"""Wire a client that ships its own `mcp add` command (Claude Code, Codex, Kimi).
+"""Wire a client that ships its own `mcp add` command (Claude Code, Codex).
 
 Shelling out to the client's official command is more robust than hand-editing
 its config: the client owns its format/scopes. The runner is injected so this is
