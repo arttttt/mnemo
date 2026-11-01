@@ -26,16 +26,10 @@ def service_env(host: str, port: int, data_dir) -> dict:
 
 
 def wire(model) -> dict:
-    """The JSON an MCP client receives for a protocol result.
-
-    The SDK's client model fills in ``resultType: "complete"`` for a result that arrives
-    without one — and on the protocol versions these sessions negotiate the server never
-    sends it (it is sieved out for pre-2026 versions) — so that default is dropped: it
-    was not on the wire."""
-    dumped = model.model_dump(mode="json", by_alias=True, exclude_none=True)
-    if dumped.get("resultType") == "complete":
-        del dumped["resultType"]
-    return dumped
+    """The JSON an MCP client received for a protocol result: exactly the fields the server
+    sent. Fields the client model fills in with a default when they are absent (such as
+    the 2.x ``resultType``) are not part of it."""
+    return model.model_dump(mode="json", by_alias=True, exclude_unset=True)
 
 
 async def over_http(url: str, act):
