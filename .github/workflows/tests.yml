@@ -6,9 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push to the same branch or pull request supersedes a run still in progress.
+# A newer push to a pull request supersedes the run still in progress for it. Every other run
+# (each commit on main) gets a group of its own, so none is dropped from a queue of pushes.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
