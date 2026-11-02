@@ -213,6 +213,34 @@ def test_a_call_abandoned_while_waiting_does_not_block_the_next():
     assert _answer(_run_guarded(abandon_one_then_call)) == _NO_SESSION
 
 
+def test_a_tool_is_described_by_its_docstring_without_the_indentation():
+    server = MnemoMCPServer("description-test")
+
+    def note() -> str:
+        return "noted"
+
+    # Set by hand: Python 3.13 strips a literal docstring's indentation at compile time,
+    # so only an explicit one carries the indentation 3.10-3.12 keep, on every version.
+    note.__doc__ = "Take a note.\n\n        Indented as 3.10-3.12 keep it.\n        "
+    server.tool()(note)
+
+    def blank() -> str:
+        return "blank"
+
+    blank.__doc__ = note.__doc__
+    server.tool(description="")(blank)  # no description of its own: the docstring, cleaned
+
+    @server.tool(description="  Given as is.\n    ")
+    def given() -> str:
+        """Not the description."""
+        return "given"
+
+    tools = {tool.name: tool for tool in anyio.run(server.list_tools)}
+    assert tools["note"].description == "Take a note.\n\nIndented as 3.10-3.12 keep it."
+    assert tools["blank"].description == tools["note"].description
+    assert tools["given"].description == "  Given as is.\n    "
+
+
 def test_only_a_successful_structured_answer_loses_its_text_copy():
     text = [types.TextContent(type="text", text='{"result": 1}')]
     structured = types.CallToolResult(content=text, structured_content={"result": 1})

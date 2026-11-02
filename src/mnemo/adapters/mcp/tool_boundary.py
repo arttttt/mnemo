@@ -1,5 +1,10 @@
 """The MCP server behind mnemo's tools: the SDK's MCPServer plus mnemo's tool-call boundary.
 
+A tool registered from a function without a description of its own is described by
+its docstring in clean form (inspect.cleandoc). The SDK sends the docstring as is:
+Python 3.10–3.12 keep its indentation, and 3.13 strips that at compile time but keeps
+the trailing newline. Cleaned, the text is the same whatever Python runs the service.
+
 Every tool call passes through `MnemoMCPServer.call_tool`, which owns what surrounds it:
 
 - calls run one at a time, in arrival order;
@@ -20,8 +25,9 @@ Imported by `build_mcp` only, so importing the server module stays free of the S
 """
 from __future__ import annotations
 
+import inspect
 import logging
-from typing import Any
+from typing import Any, Callable
 
 import anyio
 import mcp.types as types
@@ -42,6 +48,30 @@ class MnemoMCPServer(MCPServer):
     # runs. Created on first use, inside the running loop. Not reentrant: a tool must
     # never call call_tool itself.
     _call_slot: anyio.Lock | None = None
+
+    def add_tool(
+        self,
+        fn: Callable[..., Any],
+        name: str | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        annotations: types.ToolAnnotations | None = None,
+        icons: list[types.Icon] | None = None,
+        meta: dict[str, Any] | None = None,
+        structured_output: bool | None = None,
+    ) -> None:
+        if not description and fn.__doc__:
+            description = inspect.cleandoc(fn.__doc__)
+        super().add_tool(
+            fn,
+            name=name,
+            title=title,
+            description=description,
+            annotations=annotations,
+            icons=icons,
+            meta=meta,
+            structured_output=structured_output,
+        )
 
     async def call_tool(
         self, name: str, arguments: dict[str, Any], context: Context | None = None
