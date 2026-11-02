@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-import sqlite_vec
+from mnemo.adapters.store.sqlite_vec_extension import load_sqlite_vec
 
 
 class SqliteConnections:
@@ -67,9 +67,7 @@ class SqliteConnections:
         # BEGIN/COMMIT, so this connection just runs whatever they drive on it.
         conn.isolation_level = None
         conn.row_factory = sqlite3.Row
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
+        load_sqlite_vec(conn)
         for pragma in (
             "journal_mode=WAL",
             "synchronous=NORMAL",
