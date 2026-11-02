@@ -311,8 +311,8 @@ class _Runner:
 
 
 class _Installer:
-    def __init__(self, status, message="", installed=True):
-        self._result = InstallResult("claude-code", status, "claude mcp add mnemo", message)
+    def __init__(self, status, message="", installed=True, target="claude mcp add mnemo"):
+        self._result = InstallResult("claude-code", status, target, message)
         self._installed = installed
 
     name = "claude-code"
@@ -340,6 +340,16 @@ def test_rules_are_written_even_when_wiring_the_server_fails(tmp_path):
     assert result.target == f"claude mcp add mnemo; {settings}"
     assert result.message == f"`claude` exited with 1; {ADDED}"
     assert "mcp__mnemo__*" in json.loads(settings.read_text())["permissions"]["allow"]
+
+
+def test_a_file_that_holds_the_server_and_the_rules_is_named_once(tmp_path):
+    # OpenCode keeps its servers and its permission rules in one opencode.json.
+    config = tmp_path / "opencode.json"
+    wired = _Installer("ok", target=str(config))
+
+    result = WithPermissionRules(wired, OpencodePermissionRules(config, "mnemo")).install()
+
+    assert result.target == str(config)
 
 
 def test_a_client_that_is_not_installed_gets_no_config_created(tmp_path):

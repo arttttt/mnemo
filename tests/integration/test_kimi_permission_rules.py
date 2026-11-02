@@ -109,6 +109,54 @@ def test_kimi_rules_already_in_place_leave_the_file_untouched(tmp_path):
 
 
 @needs_tomllib
+@pytest.mark.parametrize("content", [
+    # The shorthand: the key is the decision, an array of tables.
+    '[[permission.ask]]\npattern = "mcp__mnemo__delete*"\n\n'
+    '[[permission.allow]]\npattern = "mcp__mnemo__*"\n',
+    # One table per key, and a rule named by its tool.
+    '[permission]\nask = { pattern = "mcp__mnemo__delete*" }\nallow = { tool = "mcp__mnemo__*" }\n',
+    # The two forms together.
+    '[[permission.rules]]\ndecision = "ask"\ntool = "mcp__mnemo__delete*"\n\n'
+    '[[permission.allow]]\npattern = "mcp__mnemo__*"\n',
+    # `rules` as one table rather than an array of them.
+    '[permission.rules]\ndecision = "ask"\npattern = "mcp__mnemo__delete*"\n\n'
+    '[permission.allow]\npattern = "mcp__mnemo__*"\n',
+])
+def test_kimi_rules_written_in_any_form_kimi_reads_are_in_place(tmp_path, content):
+    config = tmp_path / "config.toml"
+    config.write_text(content, encoding="utf-8")
+
+    assert KimiPermissionRules(config, "mnemo").apply() == PRESENT
+    assert config.read_text(encoding="utf-8") == content
+
+
+@needs_tomllib
+def test_kimi_rules_for_a_tool_with_an_argument_pattern_are_other_rules(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[[permission.ask]]\ntool = "mcp__mnemo__delete*"\nmatch = "*"\n\n'
+        '[[permission.allow]]\ntool = "mcp__mnemo__*"\npattern = "*"\n',
+        encoding="utf-8",
+    )
+
+    assert KimiPermissionRules(config, "mnemo").apply() == ADDED
+    assert _rules_in(config) == _RULES
+
+
+@needs_tomllib
+def test_kimi_rules_given_as_bare_strings_are_not_rules(tmp_path):
+    # Kimi rejects a rule that is not a table, so these grant nothing.
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[permission]\nask = ["mcp__mnemo__delete*"]\nallow = ["mcp__mnemo__*"]\n',
+        encoding="utf-8",
+    )
+
+    assert KimiPermissionRules(config, "mnemo").apply() == ADDED
+    assert _rules_in(config) == _RULES
+
+
+@needs_tomllib
 def test_kimi_rules_add_only_the_missing_one(tmp_path):
     config = tmp_path / "config.toml"
     config.write_text(

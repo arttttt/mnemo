@@ -21,8 +21,7 @@ import os
 import re
 import sqlite3
 
-import sqlite_vec
-
+from mnemo.adapters.store.sqlite_vec_extension import load_sqlite_vec
 from mnemo.adapters.store.sqlite_vec_repository import (
     _FTS_STATEMENT,
     _INDEX_STATEMENTS,
@@ -62,9 +61,7 @@ def add_project_foreign_keys(sqlite_path: str) -> bool:
         return False  # fresh install — the eager schema already declares the FKs
     conn = sqlite3.connect(sqlite_path)
     conn.isolation_level = None  # we drive the transaction explicitly
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)  # the memories CHECK(vec_length(...)) needs the extension
-    conn.enable_load_extension(False)
+    load_sqlite_vec(conn)  # the memories CHECK(vec_length(...)) needs the extension
     conn.execute("PRAGMA busy_timeout=5000")
     try:
         if not _has_table(conn, "memories") or _already_migrated(conn):
@@ -85,9 +82,7 @@ def drop_links_table(sqlite_path: str) -> bool:
         return False
     conn = sqlite3.connect(sqlite_path)
     conn.isolation_level = None
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)  # the memories CHECK(vec_length(...)) needs the extension
-    conn.enable_load_extension(False)
+    load_sqlite_vec(conn)  # the memories CHECK(vec_length(...)) needs the extension
     conn.execute("PRAGMA busy_timeout=5000")
     try:
         if not _has_table(conn, "links"):
@@ -118,9 +113,7 @@ def remap_retired_memory_types(sqlite_path: str) -> bool:
         return False
     conn = sqlite3.connect(sqlite_path)
     conn.isolation_level = None
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)  # an UPDATE re-checks the memories CHECK(vec_length(...)) constraint
-    conn.enable_load_extension(False)
+    load_sqlite_vec(conn)  # an UPDATE re-checks the memories CHECK(vec_length(...)) constraint
     conn.execute("PRAGMA busy_timeout=5000")
     try:
         if not _has_table(conn, "memories"):

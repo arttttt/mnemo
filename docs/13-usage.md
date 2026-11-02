@@ -1,7 +1,6 @@
 # 13 — Build, install, use, update
 
-A practical flow for running and testing mnemo. Commands below are verified against the Phase 0 build
-(Python 3.14, uv 0.10). `uv` is the primary path; plain `pip`/`venv` works too.
+A practical flow for running and testing mnemo. `uv` is the primary path; plain `pip`/`venv` works too.
 
 ## Quick commands — `dev.sh`
 
@@ -27,10 +26,24 @@ The sections below explain the same steps manually (and the `pip` alternative).
 
 ## Prerequisites
 
-- **Python 3.10+** (tested on 3.14). Note: a fresh macOS ships `/usr/bin/python3` at **3.9**, which is too
-  old — a plain `pip install -e .` against the system interpreter fails before mnemo runs.
-- **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provisions a
-  new‑enough interpreter automatically. With plain `pip`/`venv` you must first install Python 3.10+ yourself.
+- **macOS or Linux.** CI tests both. Windows is not supported: the service and the connector use
+  Unix-only modules (`fcntl`, `resource`) and signals.
+- **Python 3.10+ whose `sqlite3` can load SQLite extensions** (CI runs 3.10 and 3.13). mnemo keeps its
+  vectors in sqlite-vec, an SQLite extension, and Python can load one only when it was built with
+  `--enable-loadable-sqlite-extensions`.
+  - Can: the Python builds uv installs, Homebrew's, conda-forge's, and the packages of Debian and Ubuntu,
+    Fedora, Arch and Alpine.
+  - Cannot: the macOS system Python (`/usr/bin/python3`, which is also only 3.9), the python.org installer
+    for macOS, and pyenv's default build.
+  - To check an interpreter:
+    `python3 -c "import sqlite3; sqlite3.connect(':memory:').enable_load_extension(True); print('ok')"`
+    prints `ok`, or fails with an AttributeError. On such a Python mnemo installs, then stops when it
+    opens the store, with an error that names the interpreter. An MCP client shows only that the
+    service exited; the error is in `~/.mnemo/run/service.log`.
+- **[uv](https://docs.astral.sh/uv/)** — effectively required, not just convenient: it provides a
+  suitable interpreter. Note that uv takes a Python 3.10+ already on the machine before it downloads its
+  own; if that one cannot load extensions, ask for uv's own with `uv venv --managed-python`. With plain
+  `pip`/`venv` you must first install a suitable Python yourself.
 - The default install includes the runtime for the pplx embedder and recall generator. Model weights are
   fetched once into `~/.mnemo/models`, then loaded cache-first without a network round-trip.
 
