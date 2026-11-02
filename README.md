@@ -38,5 +38,8 @@ and abstention.
 
 ## Install & use
 
+mnemo runs on macOS and Linux, under Python 3.10+ whose `sqlite3` can load SQLite extensions: the
+macOS system Python, the python.org installer for macOS and pyenv's default build cannot.
+
 See [docs/13-usage.md](docs/13-usage.md) for install, the CLI, and one‑command MCP client setup
 (`mnemo setup`). The full tool surface is in [docs/05-mcp-api.md](docs/05-mcp-api.md).
