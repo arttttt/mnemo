@@ -117,6 +117,15 @@ def test_mcp_search_hit_exposes_topic_key(tmp_path):
     assert hit["topic_key"] == "auth/jwt"
 
 
+def test_mcp_remember_states_the_size_caps_it_enforces(tmp_path):
+    """An agent reads the cap before it writes, not from a rejection: the content field
+    names the caps remember enforces — the largest per-type cap and the rule's."""
+    content = _tools(tmp_path)["remember"].input_schema["properties"]["content"]["description"]
+    largest = max(member.max_tokens for member in MemoryType)
+
+    assert f"At most {largest} tokens, {MemoryType.RULE.max_tokens} for a rule" in content
+
+
 def test_mcp_remember_enforces_the_per_type_cap(tmp_path):
     # A `rule` is capped at 128 tokens, a `decision` at 512: the SAME ~140-token content is
     # rejected as a rule but stored as a decision — enforced end-to-end through the MCP tool.

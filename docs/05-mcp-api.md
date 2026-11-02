@@ -33,6 +33,8 @@ remember("quick note about the retry loop", project="checkout-api")          # t
 remember("Auth model v2: ...", type="decision", project="checkout-api",
          topic_key="auth/model")                                             # evolves the same record
 ```
+- `content` is capped per type: 512 tokens, 128 for a `rule`; over the cap it is rejected with a message, never
+  truncated. The `content` field's description states the cap, so an agent sees it before it writes.
 - `type` default `working-notes`; `scope` default `project`. A project‑scoped write **requires** a `project` (or use `scope="global"`), and passing a `project` with `scope="global"` is rejected — the same scope↔project contract the read tools enforce.
 - Behavior: reject blank content → normalize → **exact‑dup** check (hash, only against **active** records in the **same project/scope**) → **`topic_key` upsert** if matched (supersede) → **insert +
   lexical index → enqueue embed** (the vector is computed off the hot path — see
