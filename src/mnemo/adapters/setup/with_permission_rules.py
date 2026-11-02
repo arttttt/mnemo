@@ -5,7 +5,8 @@ rules come after it. They are written even when the wiring fails, as long as the
 is installed: `claude mcp add` refuses a server that is already there, and a re-run of
 setup on a machine that has mnemo wired is how the rules get added. A client that is
 not installed gets no config file created for it. The result is "failed" when either
-step is, and a file the rules cannot go into fails this client only.
+step is, and a file the rules cannot go into fails this client only. Its target names
+what was run or written, a file once even when the server and the rules share it.
 """
 from __future__ import annotations
 
@@ -46,4 +47,5 @@ class WithPermissionRules:
             status = "failed"
             note = f"permission rules not written: {error}"
         message = "; ".join(part for part in (wired.message, note) if part)
-        return InstallResult(wired.client, status, f"{wired.target}; {self._rules.target}", message)
+        targets = dict.fromkeys((wired.target, str(self._rules.target)))
+        return InstallResult(wired.client, status, "; ".join(targets), message)
