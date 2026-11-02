@@ -7,6 +7,13 @@ in the file, so the ask rule for deletes wins over the allow rule. Its documenta
 says instead that the first matching rule takes effect; the ask rule is written first,
 so deletes ask under either reading.
 
+A rule counts as present in any form Kimi reads it from (permissionRules/configSection.ts
+at 2.4.1): a `[[permission.rules]]` table, or the shorthand `permission.allow`, `ask` or
+`deny`, one table or an array of them, whose key is the decision. A rule names its
+pattern, or a `tool` that Kimi turns into the same pattern. Kimi lists shorthand rules
+after every `permission.rules` table, so when the user's own ask rule is in the
+shorthand, deletes ask by Kimi 2.4's ordering by decision, not by the first match.
+
 The standard library reads TOML but does not write it, so missing rules are appended
 to the file as text, in the file's own line endings, and the rest of the file,
 comments included, stays byte for byte. The result is parsed before it is written:
@@ -85,14 +92,34 @@ def _toml_reader():
 
 
 def _configured(config: dict) -> set[tuple[str, str]]:
-    """The (decision, pattern) of every rule already in `permission.rules`."""
+    """The (decision, pattern) of every rule already configured."""
     permission = config.get("permission")
-    rules = permission.get("rules") if isinstance(permission, dict) else None
-    if not isinstance(rules, list):
+    if not isinstance(permission, dict):
         return set()
-    return {
-        (rule.get("decision"), rule.get("pattern")) for rule in rules if isinstance(rule, dict)
+    configured = {
+        (rule.get("decision"), _pattern(rule)) for rule in _tables_in(permission.get("rules"))
     }
+    for decision in ("allow", "ask", "deny"):
+        configured |= {(decision, _pattern(rule)) for rule in _tables_in(permission.get(decision))}
+    return configured
+
+
+def _tables_in(value) -> list[dict]:
+    """The tables under a key that holds one table or an array of them."""
+    entries = value if isinstance(value, list) else [value]
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def _pattern(rule: dict):
+    """The pattern Kimi matches a rule by: a `tool`, with its argument pattern (`match`,
+    else `pattern`) as tool(argument) when it has one; else the rule's `pattern`."""
+    tool = rule.get("tool")
+    if not isinstance(tool, str):
+        return rule.get("pattern")
+    argument = rule.get("match")
+    if not isinstance(argument, str):
+        argument = rule.get("pattern")
+    return f"{tool}({argument})" if isinstance(argument, str) else tool
 
 
 def _tables(rules: list[tuple[str, str]], newline: str) -> str:
