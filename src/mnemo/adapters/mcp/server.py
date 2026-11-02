@@ -20,6 +20,7 @@ from mnemo.application.results.get_result import GetResult
 from mnemo.application.results.remember_result import ReplacedMemory
 from mnemo.application.results.search_result import SearchResult
 from mnemo.domain.constants import SEARCH_LIMIT_MAX
+from mnemo.domain.memory_type import MemoryType
 from mnemo.domain.project import Project
 from mnemo.infrastructure.composition import build_container
 from mnemo.infrastructure.container import Container
@@ -35,6 +36,16 @@ MemoryTypeName = Literal[
 ]
 StoreScope = Literal["project", "global"]
 SearchScope = Literal["project", "global", "all"]
+
+# The size cap, stated where the agent writes, so it learns the cap before a rejection
+# instead of from one. Built from the per-type caps so the text cannot drift from them.
+_CAP = max(member.max_tokens for member in MemoryType)
+_RULE_CAP = MemoryType.RULE.max_tokens
+_CONTENT_DESCRIPTION = (
+    "The memory text: one focused idea, put concisely, in theses where it helps. "
+    f"At most {_CAP} tokens, {_RULE_CAP} for a rule; longer content is rejected, never cut. "
+    "Separate ideas go in separate memories. Markdown is fine."
+)
 
 
 class RememberAnswer(TypedDict):
@@ -89,7 +100,7 @@ def build_mcp(container: Optional[Container] = None):
     def remember(
         content: Annotated[
             str,
-            Field(description="The memory text. Be specific: problem, solution, reasoning. Markdown is fine."),
+            Field(description=_CONTENT_DESCRIPTION),
         ],
         type: Annotated[
             MemoryTypeName,
@@ -118,7 +129,8 @@ def build_mcp(container: Optional[Container] = None):
     ) -> RememberAnswer:
         """Save a memory to the local store so it can be recalled later.
 
-        No LLM runs on write. Reusing a `topic_key` replaces the prior memory of that
+        A memory holds one focused idea; `content` says how long it may be. No LLM
+        runs on write. Reusing a `topic_key` replaces the prior memory of that
         key: it leaves search and browse (get still reaches it). Returns {id, status},
         where status is "created", "duplicate" (identical content already stored), or
         "superseded" (a topic_key upsert); a supersede also returns `replaced` {id,

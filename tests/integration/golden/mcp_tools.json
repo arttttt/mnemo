@@ -1,11 +1,11 @@
 {
   "remember": {
     "name": "remember",
-    "description": "Save a memory to the local store so it can be recalled later.\n\nNo LLM runs on write. Reusing a `topic_key` replaces the prior memory of that\nkey: it leaves search and browse (get still reaches it). Returns {id, status},\nwhere status is \"created\", \"duplicate\" (identical content already stored), or\n\"superseded\" (a topic_key upsert); a supersede also returns `replaced` {id,\nchars}, the record it replaced. If `replaced.chars` is much larger than what you\nwrote, you may have dropped content: read it with get(id=...) and write the\nmerged text.",
+    "description": "Save a memory to the local store so it can be recalled later.\n\nA memory holds one focused idea; `content` says how long it may be. No LLM\nruns on write. Reusing a `topic_key` replaces the prior memory of that\nkey: it leaves search and browse (get still reaches it). Returns {id, status},\nwhere status is \"created\", \"duplicate\" (identical content already stored), or\n\"superseded\" (a topic_key upsert); a supersede also returns `replaced` {id,\nchars}, the record it replaced. If `replaced.chars` is much larger than what you\nwrote, you may have dropped content: read it with get(id=...) and write the\nmerged text.",
     "inputSchema": {
       "properties": {
         "content": {
-          "description": "The memory text. Be specific: problem, solution, reasoning. Markdown is fine.",
+          "description": "The memory text: one focused idea, put concisely, in theses where it helps. At most 512 tokens, 128 for a rule; longer content is rejected, never cut. Separate ideas go in separate memories. Markdown is fine.",
           "title": "Content",
           "type": "string"
         },
